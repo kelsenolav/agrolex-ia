@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ShieldCheck, ArrowLeft, Radar, AlertTriangle, Bell, CheckCircle2, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
-export default function RadarPage() {
+function RadarContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [properties, setProperties] = useState<any[]>([]);
@@ -160,5 +160,13 @@ export default function RadarPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function RadarPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50 text-brand-green">Carregando Radar...</div>}>
+      <RadarContent />
+    </Suspense>
   );
 }
