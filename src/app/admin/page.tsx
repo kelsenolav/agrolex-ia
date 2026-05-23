@@ -209,7 +209,7 @@ UPDATE public.profiles SET role = 'admin';`}
                   <Tooltip 
                     cursor={{fill: '#f9fafb'}}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR')}`, 'Receita']}
+                    formatter={(value: any) => [`R$ ${Number(value).toLocaleString('pt-BR')}`, 'Receita']}
                   />
                   <Bar dataKey="receita" fill="#166534" radius={[4, 4, 0, 0]} barSize={40} />
                 </BarChart>
