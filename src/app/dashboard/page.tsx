@@ -112,13 +112,13 @@ export default function DashboardPage() {
             <p className="text-gray-600 mt-1">Acompanhe a segurança jurídica das suas propriedades.</p>
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/dashboard/planos" className="flex items-center gap-2 bg-white text-brand-dark border-2 border-brand-gold px-5 py-3 rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm">
+            <Link href="/dashboard/planos" className="flex items-center justify-center gap-2 bg-white text-brand-dark border-2 border-brand-gold px-5 h-[52px] rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm">
               <Plus size={20} className="text-brand-gold" />
-              {credits > 0 ? `${credits} Crédito(s) B2B` : 'Planos B2B'}
+              <span>{credits > 0 ? `${credits} Crédito(s) B2B` : 'Planos B2B'}</span>
             </Link>
-            <Link href="/dashboard/nova-analise" className="flex items-center gap-2 bg-brand-gold text-brand-green px-5 py-3 rounded-lg font-bold hover:brightness-110 transition-all shadow-lg hover:-translate-y-1">
+            <Link href="/dashboard/nova-analise" className="flex items-center justify-center gap-2 bg-brand-gold text-brand-green px-5 h-[52px] rounded-lg font-bold hover:brightness-110 transition-all shadow-lg hover:-translate-y-1">
               <Plus size={20} />
-              Nova Análise
+              <span>Nova Análise</span>
             </Link>
           </div>
         </div>
@@ -136,26 +136,26 @@ export default function DashboardPage() {
         </div>
 
         <h2 className="text-xl font-bold text-gray-800 mb-4">Módulos Enterprise</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10" translate="no">
           <Link href="/dashboard/fornecedores" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
             <div className="bg-blue-50 text-blue-600 p-3 rounded-full"><Clock size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center">Fornecedores</h3>
+            <h3 className="font-bold text-gray-800 text-center"><span>Fornecedores</span></h3>
             <span className="text-xs text-gray-500 text-center">Análise de Cadeia</span>
           </Link>
           <Link href="/dashboard/cofre" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
             <div className="bg-purple-50 text-purple-600 p-3 rounded-full"><FileText size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center">Data Room</h3>
-            <span className="text-xs text-gray-500 text-center">Cofre Criptografado</span>
+            <h3 className="font-bold text-gray-800 text-center"><span>Cofre de Dados</span></h3>
+            <span className="text-xs text-gray-500 text-center">Ambiente Criptografado</span>
           </Link>
           <Link href="/dashboard/calendario" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
             <div className="bg-orange-50 text-orange-600 p-3 rounded-full"><MapPin size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center">Calendário</h3>
+            <h3 className="font-bold text-gray-800 text-center"><span>Calendário</span></h3>
             <span className="text-xs text-gray-500 text-center">Condicionantes</span>
           </Link>
           <Link href="/dashboard/radar" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
             <div className="bg-red-50 text-red-600 p-3 rounded-full"><AlertTriangle size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center">Radar Fundiário</h3>
-            <span className="text-xs text-gray-500 text-center">Monitoramento</span>
+            <h3 className="font-bold text-gray-800 text-center"><span>Radar Fundiário</span></h3>
+            <span className="text-xs text-gray-500 text-center">Monitoramento 24/7</span>
           </Link>
         </div>
 
