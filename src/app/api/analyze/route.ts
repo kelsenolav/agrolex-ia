@@ -20,15 +20,16 @@ export async function POST(req: Request) {
     console.error("FATAL: SUPABASE_SERVICE_ROLE_KEY não está definida!");
   }
 
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { persistSession: false }
+  });
+
   const genAI = new GoogleGenerativeAI(geminiKey);
   try {
     const authHeader = req.headers.get('Authorization');
     const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: false },
       global: { headers: { Authorization: authHeader || '' } }
-    });
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { persistSession: false }
     });
 
     const { propertyId, analysisId, analysisLevel, cpfCnpj, carNumber } = await req.json();
@@ -255,7 +256,7 @@ Os módulos de análise solicitados pelo usuário são:
     try {
       const body = await req.clone().json().catch(() => ({}));
       if (body.analysisId) {
-        await supabaseUser.from('analyses').update({ status: 'error', risk_level: 'Alto' }).eq('id', body.analysisId);
+        await supabaseAdmin.from('analyses').update({ status: 'error', risk_level: 'Alto' }).eq('id', body.analysisId);
       }
     } catch(e) {}
     return NextResponse.json({ error: error.message || 'Falha ao processar' }, { status: 500 });
