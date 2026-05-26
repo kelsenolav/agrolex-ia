@@ -197,7 +197,7 @@ function ResultadoContent() {
     
   const mockHtml = parseMarkdown(mockText || mockResponses['titulos_incra']);
 
-  const showMap = isMock || selectedModules.includes('geoespacial') || (analise?.findings?.modulesSelected && analise.findings.modulesSelected.includes('geoespacial'));
+  const showMap = true;
 
   let finalResumo = mockHtml;
   if (!isMock && analise.findings?.resumo) {
