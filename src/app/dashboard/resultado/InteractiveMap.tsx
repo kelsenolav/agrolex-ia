@@ -20,6 +20,12 @@ export default function InteractiveMap({ lat = -17.785, lng = -50.92 }: { lat?: 
       const L = (window as any).L;
       if (!L) return;
 
+      // Limpar contêiner do Leaflet se ele já foi inicializado anteriormente no DOM
+      const container = L.DomUtil.get(containerId);
+      if (container) {
+        container._leaflet_id = null;
+      }
+
       // Limpar mapa antigo se existir
       if (mapRef.current) {
         try {
