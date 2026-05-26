@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock, ChevronDown, ChevronUp, PieChart as ChartIcon } from 'lucide-react';
+import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock, ChevronDown, ChevronUp, PieChart as ChartIcon, Landmark } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import dynamic from 'next/dynamic';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
@@ -330,7 +330,7 @@ export default function DashboardPage() {
         </div>
 
         <h2 className="text-xl font-bold text-gray-800 mb-4">Módulos Enterprise</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10" translate="no">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-10" translate="no">
           <Link href="/dashboard/fornecedores" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
             <div className="bg-blue-50 text-blue-600 p-3 rounded-full"><Clock size={24} /></div>
             <h3 className="font-bold text-gray-800 text-center"><span>Fornecedores</span></h3>
@@ -350,6 +350,11 @@ export default function DashboardPage() {
             <div className="bg-red-50 text-red-600 p-3 rounded-full"><AlertTriangle size={24} /></div>
             <h3 className="font-bold text-gray-800 text-center"><span>Radar Fundiário</span></h3>
             <span className="text-xs text-gray-500 text-center">Monitoramento 24/7</span>
+          </Link>
+          <Link href="/dashboard/credito" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
+            <div className="bg-emerald-50 text-emerald-600 p-3 rounded-full"><Landmark size={24} /></div>
+            <h3 className="font-bold text-gray-800 text-center"><span>Crédito Rural</span></h3>
+            <span className="text-xs text-gray-500 text-center">Análise BACEN 5.081</span>
           </Link>
         </div>
 
