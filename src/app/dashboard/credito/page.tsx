@@ -417,6 +417,38 @@ function CreditoContent() {
                   </div>
                 </div>
 
+                {/* Crédito de Carbono */}
+                <div className="bg-gradient-to-r from-emerald-900 to-green-950 p-6 rounded-2xl border border-emerald-800 text-white shadow-md space-y-4 md:col-span-2">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <span className="text-[10px] bg-emerald-700 text-emerald-100 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Oportunidade ESG</span>
+                      <h4 className="font-extrabold text-base text-brand-gold flex items-center gap-1.5">
+                        🌱 Potencial de Geração de Créditos de Carbono
+                      </h4>
+                    </div>
+                    <span className="text-xs font-bold text-green-300">Mercado Voluntário</span>
+                  </div>
+
+                  <p className="text-xs text-gray-200 leading-relaxed">
+                    Estimativa baseada no estoque e sequestro anual de biomassa florestal para as áreas de Reserva Legal e APP preservadas nesta propriedade ({reserveArea.toFixed(2)} ha).
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-emerald-800/60">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-gray-300 font-bold uppercase block">Sequestro Anual</span>
+                      <p className="text-lg font-black text-white">{(reserveArea * 4.5).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} tCO2e/ano</p>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-gray-300 font-bold uppercase block">Cotação Média</span>
+                      <p className="text-lg font-black text-brand-gold">R$ 55,00 / crédito</p>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-gray-300 font-bold uppercase block">Receita Verde Estimada</span>
+                      <p className="text-lg font-black text-green-400">R$ {(reserveArea * 4.5 * 55).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/ano</p>
+                    </div>
+                  </div>
+                </div>
+
               </div>
 
               {/* Checklist de Impedimentos BACEN 5.081 */}

@@ -185,6 +185,10 @@ export async function POST(req: Request) {
             nulidades: 249.90,
             forense: 299.90,
             cruzamento: 499.90,
+            moratoria_soja: 249.90,
+            gravames_dividas: 199.90,
+            cadeia_sucessoria: 299.90,
+            credito_carbono: 149.90,
           };
           
           const selectedModules = (analysisLevel || '').split(',');
@@ -218,6 +222,18 @@ Os módulos de análise solicitados pelo usuário são:
           }
           if (selectedModules.includes('cruzamento')) {
             instructions += `\n- MÓDULO 6: CRUZAMENTO SISTÊMICO TOTAL. Cruza as informações de forma magistral: Matrículas antigas vs novas, Matrículas vs Processos judiciais, Matrículas vs Memoriais Físicos (SIGEF), Matrículas vs Posse Fática, Matrículas vs INCRA. Aponte todas as contradições entre os bancos de dados.\n`;
+          }
+          if (selectedModules.includes('moratoria_soja')) {
+            instructions += `\n- MÓDULO 7: RASTREABILIDADE E MORATÓRIA DA SOJA. Investigue minuciosamente se há evidências de desmatamento (mesmo legal) a partir do marco temporal de Dezembro de 2020 (critério EUDR para exportação para União Europeia) ou após 2008 (critério da Moratória da Soja). Avalie se a área atende aos critérios do TAC da Carne e identifique o nível de conformidade para exportação de commodities agrícolas.\n`;
+          }
+          if (selectedModules.includes('gravames_dividas')) {
+            instructions += `\n- MÓDULO 8: DOSSIÊ DE GRAVAMES E GARANTIAS (CPR). Extraia e tabele de forma estruturada todos os ônus ativos registrados na matrícula, como Hipotecas, Cédulas de Produto Rural (CPRs) e Alienações Fiduciárias. Identifique os credores, valores nominais das garantias e datas de vencimento. Faça uma estimativa do endividamento patrimonial em relação à área total.\n`;
+          }
+          if (selectedModules.includes('cadeia_sucessoria')) {
+            instructions += `\n- MÓDULO 9: CADEIA SUCESSÓRIA FORENSE. Reconstrua cronologicamente a árvore de transmissões e proprietários desde a abertura da matrícula até o proprietário atual. Analise se há indícios de quebra do princípio de trato sucessivo, saltos de registro ou indícios suspeitos de falsificação documental na cadeia registral anterior.\n`;
+          }
+          if (selectedModules.includes('credito_carbono')) {
+            instructions += `\n- MÓDULO 10: ESTIMATIVA DE CRÉDITOS DE CARBONO. Estime o estoque de Carbono e o potencial anual de geração de Créditos de Carbono (tCO2e/ano) das áreas preservadas (Reserva Legal e APP) descritas nos documentos. Faça uma estimativa realista baseada no bioma do imóvel (ex: floresta amazônica, cerrado, mata atlântica) e na área correspondente, projetando a receita anual estimada com a cotação de mercado de créditos voluntários.\n`;
           }
           
           instructions += `\nINSTRUÇÃO FINAL: Leia minuciosamente os documentos PDFs anexados com sua visão computacional avançada, extraindo as entrelinhas e as averbações manuscritas/carimbos.

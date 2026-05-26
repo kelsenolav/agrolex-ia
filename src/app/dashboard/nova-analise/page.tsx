@@ -13,6 +13,10 @@ const MODULE_PRICES: Record<string, number> = {
   nulidades: 249.90,
   forense: 299.90,
   cruzamento: 499.90,
+  moratoria_soja: 249.90,
+  gravames_dividas: 199.90,
+  cadeia_sucessoria: 299.90,
+  credito_carbono: 149.90,
 };
 
 export default function NovaAnalisePage() {
@@ -504,6 +508,58 @@ export default function NovaAnalisePage() {
                   </div>
                   <p className="text-xs text-gray-400 mt-1 mb-4 flex-grow">Cruzamento absoluto de dados: Matrículas, Processos, INCRA e ITR.</p>
                   <div className="text-xl font-black text-white mt-auto">R$ 499,90</div>
+                </div>
+
+                {/* Módulo 7: Moratória da Soja & Rastreabilidade */}
+                <div 
+                  onClick={() => toggleModule("moratoria_soja")}
+                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all flex flex-col ${selectedModules.includes('moratoria_soja') ? 'border-brand-green bg-green-50 shadow-md ring-2 ring-green-100' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="text-md font-bold text-gray-900 leading-tight">Rastreabilidade e Moratória</h3>
+                    {selectedModules.includes('moratoria_soja') ? <CheckCircle2 className="text-brand-green flex-shrink-0" size={24} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0"></div>}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 mb-4 flex-grow">Verificação de conformidade com moratória da soja, TAC da carne e EUDR (desmatamento zero).</p>
+                  <div className="text-xl font-black text-gray-800 mt-auto">R$ 249,90</div>
+                </div>
+
+                {/* Módulo 8: Gravames e Garantias */}
+                <div 
+                  onClick={() => toggleModule("gravames_dividas")}
+                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all flex flex-col ${selectedModules.includes('gravames_dividas') ? 'border-brand-green bg-green-50 shadow-md ring-2 ring-green-100' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="text-md font-bold text-gray-900 leading-tight">Gravames e Garantias (CPR)</h3>
+                    {selectedModules.includes('gravames_dividas') ? <CheckCircle2 className="text-brand-green flex-shrink-0" size={24} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0"></div>}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 mb-4 flex-grow">Rastreamento de CPRs, hipotecas, penhoras averbadas e endividamento patrimonial.</p>
+                  <div className="text-xl font-black text-gray-800 mt-auto">R$ 199,90</div>
+                </div>
+
+                {/* Módulo 9: Cadeia Sucessória Forense */}
+                <div 
+                  onClick={() => toggleModule("cadeia_sucessoria")}
+                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all flex flex-col ${selectedModules.includes('cadeia_sucessoria') ? 'border-brand-green bg-green-50 shadow-md ring-2 ring-green-100' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="text-md font-bold text-gray-900 leading-tight">Cadeia Sucessória Forense</h3>
+                    {selectedModules.includes('cadeia_sucessoria') ? <CheckCircle2 className="text-brand-green flex-shrink-0" size={24} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0"></div>}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 mb-4 flex-grow">Mapeamento cronológico sucessivo de proprietários e análise do trato registral.</p>
+                  <div className="text-xl font-black text-gray-800 mt-auto">R$ 299,90</div>
+                </div>
+
+                {/* Módulo 10: Créditos de Carbono */}
+                <div 
+                  onClick={() => toggleModule("credito_carbono")}
+                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all flex flex-col ${selectedModules.includes('credito_carbono') ? 'border-brand-green bg-green-50 shadow-md ring-2 ring-green-100' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="text-md font-bold text-gray-900 leading-tight">Viabilidade de Carbono</h3>
+                    {selectedModules.includes('credito_carbono') ? <CheckCircle2 className="text-brand-green flex-shrink-0" size={24} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0"></div>}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 mb-4 flex-grow">Estimativa de estoque de CO2 equivalente e potencial de geração de receita florestal.</p>
+                  <div className="text-xl font-black text-gray-800 mt-auto">R$ 149,90</div>
                 </div>
               </div>
             </div>
