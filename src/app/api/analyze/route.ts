@@ -43,10 +43,67 @@ export async function POST(req: Request) {
 
     // O servidor responde imediatamente ao cliente
     // E joga a tarefa pesada para o background da Vercel
+    // O servidor responde imediatamente ao cliente
+    // E joga a tarefa pesada para o background da Vercel
     waitUntil(
       (async () => {
+        const updateStep = async (stepMessage: string) => {
+          console.log(`[Analysis Progress] ${stepMessage}`);
+          await supabaseAdmin
+            .from('analyses')
+            .update({ findings: { current_step: stepMessage } })
+            .eq('id', analysisId);
+        };
+
+        // Parsers locais de arquivos geoespaciais
+        const parseKmlCoordinates = (kmlText: string): [number, number][] => {
+          const coordsList: [number, number][] = [];
+          const match = kmlText.match(/<coordinates>([\s\S]*?)<\/coordinates>/i);
+          if (match && match[1]) {
+            const rawCoords = match[1].trim();
+            const points = rawCoords.split(/\s+/);
+            for (const p of points) {
+              if (!p) continue;
+              const parts = p.split(',');
+              if (parts.length >= 2) {
+                const lng = parseFloat(parts[0]);
+                const lat = parseFloat(parts[1]);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                  coordsList.push([lat, lng]);
+                }
+              }
+            }
+          }
+          return coordsList;
+        };
+
+        const parseGpxCoordinates = (gpxText: string): [number, number][] => {
+          const coordsList: [number, number][] = [];
+          const regex = /<(?:trkpt|wpt|rtept)\s+[^>]*lat=["'](-?\d+\.\d+)["']\s+[^>]*lon=["'](-?\d+\.\d+)["']/g;
+          let match;
+          while ((match = regex.exec(gpxText)) !== null) {
+            const lat = parseFloat(match[1]);
+            const lon = parseFloat(match[2]);
+            if (!isNaN(lat) && !isNaN(lon)) {
+              coordsList.push([lat, lon]);
+            }
+          }
+          if (coordsList.length === 0) {
+            const regexAlt = /<(?:trkpt|wpt|rtept)\s+[^>]*lon=["'](-?\d+\.\d+)["']\s+[^>]*lat=["'](-?\d+\.\d+)["']/g;
+            while ((match = regexAlt.exec(gpxText)) !== null) {
+              const lon = parseFloat(match[1]);
+              const lat = parseFloat(match[2]);
+              if (!isNaN(lat) && !isNaN(lon)) {
+                coordsList.push([lat, lon]);
+              }
+            }
+          }
+          return coordsList;
+        };
+
         try {
           console.log(`[Background Job] Iniciando Análise IA para ID: ${analysisId}`);
+          await updateStep('Lendo e validando arquivos anexados no cofre...');
           
           const { data: documents, error: docError } = await supabaseAdmin
             .from('documents')
@@ -57,9 +114,11 @@ export async function POST(req: Request) {
           if (!documents || documents.length === 0) throw new Error('Nenhum documento encontrado.');
 
           let geminiParts: any[] = [];
+          let polygonCoords: [number, number][] = [];
 
           // Busca dados Governamentais MOCK se CPF/CNPJ ou CAR estiverem presentes
           if (cpfCnpj || carNumber) {
+            await updateStep('Consultando restrições e cruzamentos governamentais (IBAMA/Receita)...');
             console.log(`[Background Job] Buscando integrações GOV para CPF/CNPJ: ${cpfCnpj} e CAR: ${carNumber}`);
             try {
               const host = req.headers.get('host') || 'localhost:3000';
@@ -76,44 +135,62 @@ export async function POST(req: Request) {
             }
           }
           
+          await updateStep('Executando visão computacional e extraindo polígonos geoespaciais...');
           for (const doc of documents) {
             const { data: fileData, error: downloadError } = await supabaseAdmin.storage
               .from('documents')
               .download(doc.file_path);
               
             if (downloadError || !fileData) continue;
-            
-            const arrayBuffer = await fileData.arrayBuffer();
-            const base64Data = Buffer.from(arrayBuffer).toString('base64');
-            
-            geminiParts.push({
-              inlineData: {
-                data: base64Data,
-                mimeType: "application/pdf"
+
+            const isKml = doc.file_path.toLowerCase().endsWith('.kml') || doc.document_type === 'KML' || doc.document_type?.includes('KML');
+            const isGpx = doc.file_path.toLowerCase().endsWith('.gpx') || doc.document_type === 'GPX' || doc.document_type?.includes('GPX');
+
+            if (isKml || isGpx) {
+              try {
+                const textContent = await fileData.text();
+                const coords = isKml ? parseKmlCoordinates(textContent) : parseGpxCoordinates(textContent);
+                if (coords.length > 0) {
+                  polygonCoords = coords;
+                }
+              } catch (e) {
+                console.error("[Geo Parser] Erro ao ler arquivo KML/GPX:", e);
               }
-            });
-            geminiParts.push({
-              text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`
-            });
+            }
+            
+            if (doc.file_path.toLowerCase().endsWith('.pdf') || doc.document_type?.toLowerCase().includes('matrícula') || doc.document_type === 'Certidão Inteiro Teor' || doc.document_type === 'Matrícula') {
+              const arrayBuffer = await fileData.arrayBuffer();
+              const base64Data = Buffer.from(arrayBuffer).toString('base64');
+              
+              geminiParts.push({
+                inlineData: {
+                  data: base64Data,
+                  mimeType: "application/pdf"
+                }
+              });
+              geminiParts.push({
+                text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`
+              });
+            }
           }
 
-          if (geminiParts.length === 0) {
+          if (geminiParts.length === 0 && polygonCoords.length === 0) {
             throw new Error('Não foi possível ler os documentos visuais.');
           }
 
-    const MODULE_PRICES: Record<string, number> = {
-      titulos_incra: 99.90,
-      registros: 149.90,
-      geoespacial: 199.90,
-      nulidades: 249.90,
-      forense: 299.90,
-      cruzamento: 499.90,
-    };
-    
-    const selectedModules = (analysisLevel || '').split(',');
-    const amountPaid = selectedModules.reduce((acc: number, mod: string) => acc + (MODULE_PRICES[mod] || 0), 0);
-    
-    let instructions = `Você é um Perito Forense Fundiário Sênior e Especialista em Direito Agrário/Registral.
+          const MODULE_PRICES: Record<string, number> = {
+            titulos_incra: 99.90,
+            registros: 149.90,
+            geoespacial: 199.90,
+            nulidades: 249.90,
+            forense: 299.90,
+            cruzamento: 499.90,
+          };
+          
+          const selectedModules = (analysisLevel || '').split(',');
+          const amountPaid = selectedModules.reduce((acc: number, mod: string) => acc + (MODULE_PRICES[mod] || 0), 0);
+          
+          let instructions = `Você é um Perito Forense Fundiário Sênior e Especialista em Direito Agrário/Registral.
 Sua missão é ler atentamente os documentos extraídos anexados e gerar um Parecer Forense rigoroso no formato Markdown.
 
 INSTRUÇÕES DE FORMATAÇÃO:
@@ -124,68 +201,88 @@ INSTRUÇÕES DE FORMATAÇÃO:
 Os módulos de análise solicitados pelo usuário são:
 `;
 
-    if (selectedModules.includes('titulos_incra')) {
-      instructions += `\n- MÓDULO 1: AUDITORIA DE TÍTULOS INCRA. Verifique minuciosamente TODOS os títulos emitidos pelo INCRA na origem. Identifique Título Definitivo, Contrato de Concessão, etc. Analise pagamento (quitação, inadimplemento, quitação fraudulenta), Prazo de inalienabilidade (venda simulada, alienação antes do prazo), Exploração direta e Residência (posse fictícia), e Acúmulo irregular de lotes.\n`;
-    }
-    if (selectedModules.includes('registros')) {
-      instructions += `\n- MÓDULO 2: AUDITORIA REGISTRAL E AVERBAÇÕES. Foque na manipulação cartorária, criação de matrículas fantasmas/clonadas, quebra da unicidade matricial. Audite gravames (hipotecas sucessivas, penhoras milionárias, cancelamentos em bloco suspeitos), averbações contraditórias e falsidade ideológica processual (uso de matrícula nula).\n`;
-    }
-    if (selectedModules.includes('geoespacial')) {
-      instructions += `\n- MÓDULO 3: AUDITORIA GEOESPACIAL E SIGEF. Verifique a (in)compatibilidade cadastral. Existe CAR, CCIR, SIGEF averbado? Há expansão territorial artificial e divergência de área? Há sobreposição com assentamentos reais, APP ou terras indígenas? Há clonagem de perímetro gerando grilagem de papel?\n`;
-    }
-    if (selectedModules.includes('nulidades')) {
-      instructions += `\n- MÓDULO 4: MAPEAMENTO DE NULIDADES. Estruture o parecer apontando expressamente: Nulidade Absoluta (ex: registro duplicado), Inexistência Jurídica (fraude processual), Violação da Função Social (abandono vs posse pro labore), Nulidade Relativa (erros comunicacionais), e Violações do INCRA.\n`;
-    }
-    if (selectedModules.includes('forense')) {
-      instructions += `\n- MÓDULO 5: INVESTIGAÇÃO FORENSE (GRILAGEM). Aponte indícios de lavagem patrimonial rural, laranjas (interposição fraudulenta), apropriação de terras públicas, padrões repetitivos financeiros (hipotecas para fins especulativos) e falsidade ideológica.\n`;
-    }
-    if (selectedModules.includes('cruzamento')) {
-      instructions += `\n- MÓDULO 6: CRUZAMENTO SISTÊMICO TOTAL. Cruza as informações de forma magistral: Matrículas antigas vs novas, Matrículas vs Processos judiciais, Matrículas vs Memoriais Físicos (SIGEF), Matrículas vs Posse Fática, Matrículas vs INCRA. Aponte todas as contradições entre os bancos de dados.\n`;
-    }
-    
-    instructions += `\nINSTRUÇÃO FINAL: Leia minuciosamente os documentos PDFs anexados com sua visão computacional avançada, extraindo as entrelinhas e as averbações manuscritas/carimbos.
+          if (selectedModules.includes('titulos_incra')) {
+            instructions += `\n- MÓDULO 1: AUDITORIA DE TÍTULOS INCRA. Verifique minuciosamente TODOS os títulos emitidos pelo INCRA na origem. Identifique Título Definitivo, Contrato de Concessão, etc. Analise pagamento (quitação, inadimplemento, quitação fraudulenta), Prazo de inalienabilidade (venda simulada, alienação antes do prazo), Exploração direta e Residência (posse fictícia), e Acúmulo irregular de lotes.\n`;
+          }
+          if (selectedModules.includes('registros')) {
+            instructions += `\n- MÓDULO 2: AUDITORIA REGISTRAL E AVERBAÇÕES. Foque na manipulação cartorária, criação de matrículas fantasmas/clonadas, quebra da unicidade matricial. Audite gravames (hipotecas sucessivas, penhoras milionárias, cancelamentos em bloco suspeitos), averbações contraditórias e falsidade ideológica processual (uso de matrícula nula).\n`;
+          }
+          if (selectedModules.includes('geoespacial')) {
+            instructions += `\n- MÓDULO 3: AUDITORIA GEOESPACIAL E SIGEF. Verifique a (in)compatibilidade cadastral. Existe CAR, CCIR, SIGEF averbado? Há expansão territorial artificial e divergência de área? Há sobreposição com assentamentos reais, APP ou terras indígenas? Há clonagem de perímetro gerando grilagem de papel?\n`;
+          }
+          if (selectedModules.includes('nulidades')) {
+            instructions += `\n- MÓDULO 4: MAPEAMENTO DE NULIDADES. Estruture o parecer apontando expressamente: Nulidade Absoluta (ex: registro duplicado), Inexistência Jurídica (fraude processual), Violação da Função Social (abandono vs posse pro labore), Nulidade Relativa (erros comunicacionais), e Violações do INCRA.\n`;
+          }
+          if (selectedModules.includes('forense')) {
+            instructions += `\n- MÓDULO 5: INVESTIGAÇÃO FORENSE (GRILAGEM). Aponte indícios de lavagem patrimonial rural, laranjas (interposição fraudulenta), apropriação de terras públicas, padrões repetitivos financeiros (hipotecas para fins especulativos) e falsidade ideológica.\n`;
+          }
+          if (selectedModules.includes('cruzamento')) {
+            instructions += `\n- MÓDULO 6: CRUZAMENTO SISTÊMICO TOTAL. Cruza as informações de forma magistral: Matrículas antigas vs novas, Matrículas vs Processos judiciais, Matrículas vs Memoriais Físicos (SIGEF), Matrículas vs Posse Fática, Matrículas vs INCRA. Aponte todas as contradições entre os bancos de dados.\n`;
+          }
+          
+          instructions += `\nINSTRUÇÃO FINAL: Leia minuciosamente os documentos PDFs anexados com sua visão computacional avançada, extraindo as entrelinhas e as averbações manuscritas/carimbos.
 INSTRUÇÃO CRÍTICA GEOESPACIAL: Identifique no texto dos documentos as coordenadas geográficas (Latitude e Longitude em formato decimal) do imóvel. Se encontrar, inclua na última linha do seu laudo o marcador especial exatamente neste formato: COORDS: lat, lng (exemplo: COORDS: -17.6521, -51.0429). Se não encontrar coordenadas exatas nos documentos, identifique o município e estado do imóvel no documento (por exemplo, Tocantínia-TO) e estime coordenadas rurais verossímeis correspondentes à região deste município (por exemplo, na estrada de aparecida em Tocantínia-TO, estime coordenadas na serra do lajeado como -10.0500, -48.2000) e inclua o marcador COORDS com estes valores estimados.
 
 AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
 
-    geminiParts.unshift({ text: instructions });
+          geminiParts.unshift({ text: instructions });
 
-    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
-    const result = await model.generateContent(geminiParts);
-    const response = await result.response;
-    let markdownResponse = response.text();
+          await updateStep('Sintetizando Parecer Técnico Forense com Inteligência Artificial...');
 
-    // Remover delimitadores de markdown code block se a IA enviar
-    if (markdownResponse.startsWith('\`\`\`markdown')) {
-      markdownResponse = markdownResponse.replace(/^\`\`\`markdown\n?/, '').replace(/\n?\`\`\`$/, '');
-    } else if (markdownResponse.startsWith('\`\`\`')) {
-      markdownResponse = markdownResponse.replace(/^\`\`\`\n?/, '').replace(/\n?\`\`\`$/, '');
-    }
+          let markdownResponse = "";
+          if (geminiParts.length > 1) {
+            const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+            const result = await model.generateContent(geminiParts);
+            const response = await result.response;
+            markdownResponse = response.text();
 
-    // Extrair coordenadas da resposta da IA
-    let latitude = -17.6521;
-    let longitude = -51.0429;
-    const coordsMatch = markdownResponse.match(/COORDS:\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
-    if (coordsMatch) {
-      latitude = parseFloat(coordsMatch[1]);
-      longitude = parseFloat(coordsMatch[2]);
-      // Remove a tag do laudo final para não poluir a exibição
-      markdownResponse = markdownResponse.replace(/COORDS:\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+/i, '').trim();
-    }
+            if (markdownResponse.startsWith('\`\`\`markdown')) {
+              markdownResponse = markdownResponse.replace(/^\`\`\`markdown\n?/, '').replace(/\n?\`\`\`$/, '');
+            } else if (markdownResponse.startsWith('\`\`\`')) {
+              markdownResponse = markdownResponse.replace(/^\`\`\`\n?/, '').replace(/\n?\`\`\`$/, '');
+            }
+          } else {
+            markdownResponse = `### PARECER TÉCNICO GEOESPACIAL (APENAS GEOMETRIA KML/GPX)\n\nFoi efetuado o upload de arquivo de geometria de limites físicos e georreferenciamento em formato digital nativo. Não foram inseridas matrículas textuais em PDF para análise textual.\n\n* **Limite Físico Importado:** ${polygonCoords.length} pontos de curva detectados.\n* **Status de Integração:** Geometria disponível no visualizador de mapas 3D.`;
+          }
 
-    const resultJson = {
-      isHtmlResumo: false,
-      resumo: markdownResponse,
-      problemas: [],
-      recomendacoes: [],
-      documentosFaltantes: [],
-      linhaDoTempo: [],
-      checklist: [],
-      amountPaid: amountPaid,
-      modulesSelected: selectedModules,
-      latitude: latitude,
-      longitude: longitude
-    };
+          // Extrair coordenadas da resposta da IA ou do KML
+          let latitude = -17.6521;
+          let longitude = -51.0429;
+
+          if (polygonCoords.length > 0) {
+            let latSum = 0;
+            let lngSum = 0;
+            for (const c of polygonCoords) {
+              latSum += c[0];
+              lngSum += c[1];
+            }
+            latitude = latSum / polygonCoords.length;
+            longitude = lngSum / polygonCoords.length;
+          }
+
+          const coordsMatch = markdownResponse.match(/COORDS:\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
+          if (coordsMatch) {
+            if (polygonCoords.length === 0) {
+              latitude = parseFloat(coordsMatch[1]);
+              longitude = parseFloat(coordsMatch[2]);
+            }
+            markdownResponse = markdownResponse.replace(/COORDS:\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+/i, '').trim();
+          }
+
+          const resultJson = {
+            isHtmlResumo: false,
+            resumo: markdownResponse,
+            problemas: [],
+            recomendacoes: [],
+            documentosFaltantes: [],
+            linhaDoTempo: [],
+            checklist: [],
+            amountPaid: amountPaid,
+            modulesSelected: selectedModules,
+            latitude: latitude,
+            longitude: longitude,
+            polygon: polygonCoords.length > 0 ? polygonCoords : null
+          };
 
           const { error: dbError } = await supabaseAdmin
             .from('analyses')

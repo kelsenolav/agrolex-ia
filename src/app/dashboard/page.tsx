@@ -2,8 +2,15 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock, ChevronDown, ChevronUp, PieChart as ChartIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import dynamic from 'next/dynamic';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+
+const DashboardPortfolioMap = dynamic(
+  () => import('./DashboardPortfolioMap'),
+  { ssr: false }
+);
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -11,6 +18,7 @@ export default function DashboardPage() {
   const [analises, setAnalises] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [credits, setCredits] = useState(0);
+  const [showPortfolio, setShowPortfolio] = useState(true);
 
   useEffect(() => {
     const checkUserAndFetchData = async () => {
@@ -34,7 +42,8 @@ export default function DashboardPage() {
           id,
           status,
           risk_level,
-          properties (id, name, city, state, risk_score),
+          findings,
+          properties (id, name, city, state, risk_score, area, is_monitoring),
           documents (document_type)
         `)
         .eq('user_id', session.user.id)
@@ -45,15 +54,51 @@ export default function DashboardPage() {
           id: 'mock-1',
           status: 'completed',
           risk_level: 'medio',
-          properties: { name: 'Fazenda Boa Esperança (Amostra)', city: 'Rio Verde', state: 'GO' },
-          documents: { document_type: 'Matrícula' }
+          properties: { 
+            id: 'mock-prop-1', 
+            name: 'Fazenda Boa Esperança (Amostra)', 
+            city: 'Rio Verde', 
+            state: 'GO', 
+            risk_score: 850, 
+            area: 1405.27,
+            is_monitoring: true
+          },
+          documents: { document_type: 'Matrícula' },
+          findings: {
+            latitude: -17.7856,
+            longitude: -50.9208,
+            polygon: [
+              [-17.7856, -50.9208],
+              [-17.7800, -50.9100],
+              [-17.7900, -50.9000],
+              [-17.7950, -50.9150]
+            ]
+          }
         },
         {
           id: 'mock-2',
-          status: 'processing',
-          risk_level: null,
-          properties: { name: 'Sítio Alvorada (Amostra)', city: 'Sorriso', state: 'MT' },
-          documents: { document_type: 'Título INCRA' }
+          status: 'completed',
+          risk_level: 'baixo',
+          properties: { 
+            id: 'mock-prop-2', 
+            name: 'Sítio Alvorada (Amostra)', 
+            city: 'Sorriso', 
+            state: 'MT', 
+            risk_score: 950, 
+            area: 420.5,
+            is_monitoring: false
+          },
+          documents: { document_type: 'Título INCRA' },
+          findings: {
+            latitude: -12.5500,
+            longitude: -55.7200,
+            polygon: [
+              [-12.5500, -55.7200],
+              [-12.5400, -55.7100],
+              [-12.5600, -55.7000],
+              [-12.5700, -55.7150]
+            ]
+          }
         }
       ];
 
@@ -84,9 +129,53 @@ export default function DashboardPage() {
   const analisesEmAndamento = analises.filter(a => a.status === 'processing' || a.status === 'pending').length;
   const riscosAltos = analises.filter(a => a.risk_level?.toLowerCase() === 'alto').length;
 
+  // Preparar os dados para o mapa consolidado
+  const geoProperties = analises
+    .filter(a => a.status === 'completed' || a.status === 'processing')
+    .map(a => {
+      let lat = -10.0500;
+      let lng = -48.2000;
+      
+      if (a.findings?.latitude && a.findings?.longitude) {
+        lat = a.findings.latitude;
+        lng = a.findings.longitude;
+      } else if (a.properties?.city?.toLowerCase().includes('rio verde')) {
+        lat = -17.7856;
+        lng = -50.9208;
+      } else if (a.properties?.city?.toLowerCase().includes('sorriso')) {
+        lat = -12.5500;
+        lng = -55.7200;
+      } else if (a.properties?.city?.toLowerCase().includes('tocantínia')) {
+        lat = -9.5622;
+        lng = -48.3756;
+      }
+      
+      return {
+        id: a.properties?.id || a.id,
+        name: a.properties?.name || 'Fazenda Sem Nome',
+        lat: lat,
+        lng: lng,
+        risk: a.risk_level || 'Pendente',
+        polygon: a.findings?.polygon || undefined
+      };
+    });
+
+  const propriedadesComScore = analises.filter(a => a.properties?.risk_score !== undefined && a.properties?.risk_score !== null);
+  const scoreMedio = propriedadesComScore.length > 0
+    ? Math.round(propriedadesComScore.reduce((acc, a) => acc + (a.properties.risk_score || 0), 0) / propriedadesComScore.length)
+    : 920;
+
+  const areaTotal = analises.reduce((acc, a) => acc + (parseFloat(a.properties?.area) || 0), 0);
+
+  const riskData = [
+    { name: 'Baixo Risco', value: analises.filter(a => a.risk_level?.toLowerCase() === 'baixo').length, color: '#16a34a' },
+    { name: 'Médio Risco', value: analises.filter(a => a.risk_level?.toLowerCase() === 'medio').length, color: '#eab308' },
+    { name: 'Alto Risco', value: analises.filter(a => a.risk_level?.toLowerCase() === 'alto').length, color: '#dc2626' },
+  ].filter(d => d.value > 0);
+
   const estatisticas = [
     { label: 'Análises Concluídas', valor: analisesConcluidas, icone: <CheckCircle className="text-green-500" /> },
-    { label: 'Score Médio Portfólio', valor: '920/1000', icone: <ShieldCheck className="text-brand-gold" /> },
+    { label: 'Score Médio Portfólio', valor: `${scoreMedio}/1000`, icone: <ShieldCheck className="text-brand-gold" /> },
     { label: 'Riscos Altos Detectados', valor: riscosAltos, icone: <AlertTriangle className="text-red-500" /> },
   ];
 
@@ -134,6 +223,110 @@ export default function DashboardPage() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Visão Consolidada do Portfólio B2B */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-10">
+          <button 
+            onClick={() => setShowPortfolio(!showPortfolio)}
+            className="w-full flex justify-between items-center p-6 bg-brand-green text-white hover:bg-brand-green/95 transition-colors text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <ChartIcon className="text-brand-gold" size={24} />
+              <div>
+                <h2 className="text-xl font-bold">Visão Consolidada do Portfólio B2B</h2>
+                <p className="text-xs text-gray-205 mt-0.5">Mapa interativo com a saúde jurídica e geoespacial de suas áreas</p>
+              </div>
+            </div>
+            {showPortfolio ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+          </button>
+          
+          {showPortfolio && (
+            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Mapa do Portfólio (2/3 colunas no desktop) */}
+              <div className="lg:col-span-2 space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-semibold text-gray-700">Dispersão Geográfica das Fazendas</span>
+                  <span className="text-xs text-gray-500 font-medium">Total: {geoProperties.length} propriedades integradas</span>
+                </div>
+                <DashboardPortfolioMap properties={geoProperties} />
+              </div>
+              
+              {/* Resumos e Gráfico Recharts (1/3 colunas) */}
+              <div className="flex flex-col justify-between space-y-6">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4">Distribuição de Risco</h3>
+                  
+                  {riskData.length > 0 ? (
+                    <div className="h-44 w-full flex items-center justify-center relative">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={riskData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={50}
+                            outerRadius={70}
+                            paddingAngle={4}
+                            dataKey="value"
+                          >
+                            {riskData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ 
+                              background: '#1e293b', 
+                              border: 'none', 
+                              borderRadius: '8px', 
+                              color: '#fff',
+                              fontSize: '12px',
+                              fontWeight: 'bold'
+                            }} 
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      {/* Texto Centralizado */}
+                      <div className="absolute flex flex-col items-center justify-center">
+                        <span className="text-2xl font-bold text-gray-800">{scoreMedio}</span>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Score Médio</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-44 flex items-center justify-center text-sm text-gray-400">
+                      Sem dados de risco suficientes
+                    </div>
+                  )}
+                  
+                  {/* Legenda Customizada */}
+                  <div className="grid grid-cols-3 gap-2 mt-2 text-center">
+                    {riskData.map((d, i) => (
+                      <div key={i} className="flex flex-col items-center p-2 rounded-lg bg-gray-50 border border-gray-100">
+                        <span className="w-2.5 h-2.5 rounded-full mb-1" style={{ backgroundColor: d.color }}></span>
+                        <span className="text-[10px] font-bold text-gray-600 truncate max-w-full">{d.name}</span>
+                        <span className="text-xs font-bold text-gray-850">{d.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100 pt-4 space-y-3">
+                  <div className="flex justify-between items-center text-xs font-semibold text-gray-500">
+                    <span>Área Total Auditada:</span>
+                    <span className="text-sm font-bold text-gray-800">
+                      {areaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs font-semibold text-gray-500">
+                    <span>Radar Ativo:</span>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-green-100 text-green-700">
+                      {analises.filter(a => a.properties?.is_monitoring).length} Áreas
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <h2 className="text-xl font-bold text-gray-800 mb-4">Módulos Enterprise</h2>

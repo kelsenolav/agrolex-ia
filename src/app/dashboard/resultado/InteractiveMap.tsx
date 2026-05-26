@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, MapPin, Layers, Globe, Compass } from "lucide-react";
 
-export default function InteractiveMap({ lat = -17.6521, lng = -51.0429 }: { lat?: number; lng?: number }) {
+export default function InteractiveMap({ lat = -17.6521, lng = -51.0429, polygon }: { lat?: number; lng?: number; polygon?: [number, number][] }) {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [error, setError] = useState(false);
   const mapRef = useRef<any>(null);
@@ -51,14 +51,16 @@ export default function InteractiveMap({ lat = -17.6521, lng = -51.0429 }: { lat
           }
         ).addTo(map);
 
-        // Coordenadas da Fazenda calculadas dinamicamente baseadas no centro fornecido
-        const farmCoords: [number, number][] = [
-          [lat + 0.007, lng - 0.012],
-          [lat + 0.009, lng + 0.010],
-          [lat - 0.010, lng + 0.012],
-          [lat - 0.014, lng - 0.008],
-          [lat + 0.007, lng - 0.012],
-        ];
+        // Coordenadas da Fazenda calculadas dinamicamente baseadas no centro fornecido ou polígono KML
+        const farmCoords: [number, number][] = polygon && polygon.length > 0
+          ? polygon
+          : [
+              [lat + 0.007, lng - 0.012],
+              [lat + 0.009, lng + 0.010],
+              [lat - 0.010, lng + 0.012],
+              [lat - 0.014, lng - 0.008],
+              [lat + 0.007, lng - 0.012],
+            ];
 
         // Desenhar Fazenda em Verde/Ouro
         const farmPoly = L.polygon(farmCoords, {

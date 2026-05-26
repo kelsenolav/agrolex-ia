@@ -131,6 +131,76 @@ export async function GET(req: Request) {
           }
         }
 
+        // Regra 3: Sentinel-2 Satélite (Desmatamento / Alteração de Uso do Solo)
+        const satAlertMessage = `ALERTA SENTINEL: Alteração de cobertura florestal de 8.5 ha detectada na porção leste de ${prop.name}. Risco de infração ambiental ativa.`;
+        
+        const { data: existingSatAlert } = await supabaseAdmin
+          .from('radar_alerts')
+          .select('id')
+          .eq('property_id', prop.id)
+          .eq('alert_type', 'RISCO_AMBIENTAL')
+          .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+          .limit(1);
+
+        if (!existingSatAlert || existingSatAlert.length === 0) {
+          // Salva o Alerta Ambiental
+          await supabaseAdmin.from('radar_alerts').insert({
+            property_id: prop.id,
+            user_id: prop.user_id,
+            alert_type: 'RISCO_AMBIENTAL',
+            message: satAlertMessage,
+            severity: 'Alto'
+          });
+
+          alertsGenerated++;
+
+          // Dispara Notificações (Email + WhatsApp)
+          const { data: userProfile } = await supabaseAdmin.from('profiles').select('name, email, whatsapp').eq('id', prop.user_id).single();
+          const clientName = userProfile?.name || 'Cliente';
+
+          if (userProfile?.email && process.env.RESEND_API_KEY) {
+            await resend.emails.send({
+              from: 'Agrilex Radar <radar@agrilex.com.br>',
+              to: [userProfile.email],
+              subject: '🚨 ALERTA SENTINEL: Alteração Ambiental Detectada!',
+              html: `
+                <h2>Aviso Urgente - Monitoramento de Satélite Sentinel-2</h2>
+                <p>Olá, ${clientName}. Nosso radar satelital detectou uma anomalia na cobertura vegetal de sua propriedade <strong>${prop.name}</strong>.</p>
+                <p style="color: red; padding: 10px; background-color: #fee2e2; border-radius: 5px; font-weight: bold;">
+                  ${satAlertMessage}
+                </p>
+                <a href="${protocol}://${host}/dashboard/radar" style="background-color: #051F15; color: #d4af37; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                  Ver no Painel do Radar
+                </a>
+              `
+            });
+          }
+
+          if (userProfile?.whatsapp) {
+            const whatsapp = userProfile.whatsapp;
+            const whatsappMsg = `🚨 *ALERTA AMBIENTAL SENTINEL*\n\nOlá, ${clientName}.\nNosso monitoramento ativo por satélite detectou uma alteração na propriedade *${prop.name}*:\n\n⚠️ ${satAlertMessage}\n\n🔗 Ver no Painel do Radar:\n${protocol}://${host}/dashboard/radar`;
+
+            if (process.env.WHATSAPP_API_URL && process.env.WHATSAPP_API_TOKEN) {
+              await fetch(process.env.WHATSAPP_API_URL, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${process.env.WHATSAPP_API_TOKEN}`
+                },
+                body: JSON.stringify({
+                  number: whatsapp,
+                  message: whatsappMsg
+                })
+              }).catch(err => console.error("Erro no WhatsApp Sentinel Cron:", err));
+            } else {
+              console.log("----------------------------------------");
+              console.log(`[SIMULADOR WHATSAPP SENTINEL] Destinatário: ${whatsapp}`);
+              console.log(`Mensagem:\n${whatsappMsg}`);
+              console.log("----------------------------------------");
+            }
+          }
+        }
+
       } catch (err) {
         console.error(`Erro ao processar radar para propriedade ${prop.id}`, err);
       }

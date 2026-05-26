@@ -372,14 +372,16 @@ export default function NovaAnalisePage() {
                     <option value="CCIR">CCIR</option>
                     <option value="Título INCRA">Título do INCRA</option>
                     <option value="Certidão Inteiro Teor">Certidão de Inteiro Teor</option>
+                    <option value="KML">Polígono Geoespacial (KML)</option>
+                    <option value="GPX">Trilha/Perímetro GPX (GPX)</option>
                     <option value="Outro">Outro</option>
                   </select>
                 </div>
                 <div className="flex-1 flex items-end">
                   <label className="w-full flex items-center justify-center h-[50px] border-2 border-brand-green border-dashed rounded-lg bg-green-50 text-brand-green font-bold cursor-pointer hover:bg-green-100 transition-colors">
                     <PlusCircle size={20} className="mr-2" />
-                    Adicionar Arquivos (PDF)
-                    <input type="file" accept=".pdf" multiple className="sr-only" onChange={handleFileChange} />
+                    Adicionar Arquivos (PDF, KML, GPX)
+                    <input type="file" accept=".pdf,.kml,.gpx" multiple className="sr-only" onChange={handleFileChange} />
                   </label>
                 </div>
               </div>

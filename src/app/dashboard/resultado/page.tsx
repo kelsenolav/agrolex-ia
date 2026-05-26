@@ -63,16 +63,16 @@ function ResultadoContent() {
   // Polling para aguardar a IA (que agora roda assíncrona via waitUntil)
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (analise && analise.status === 'processing') {
+    if (analise && (analise.status === 'processing' || analise.status === 'pending')) {
       interval = setInterval(async () => {
         const { data } = await supabase.from('analyses')
           .select('*, properties(name, city, state), documents(document_type, file_path)')
           .eq('id', analise.id).single();
         
-        if (data && data.status !== 'processing') {
+        if (data) {
           setAnalise(data);
         }
-      }, 4000);
+      }, 3000);
     }
     return () => clearInterval(interval);
   }, [analise]);
@@ -152,8 +152,8 @@ function ResultadoContent() {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-brand-green" size={48} /></div>;
   }
 
-  if (analise && analise.status === 'processing') {
-    return <ScanningLoader />;
+  if (analise && (analise.status === 'processing' || analise.status === 'pending')) {
+    return <ScanningLoader currentStep={analise.findings?.current_step} />;
   }
 
   const isMock = !analise;
@@ -425,6 +425,7 @@ function ResultadoContent() {
               <InteractiveMap 
                 lat={analise?.findings?.latitude || (analise?.properties?.state === 'TO' ? -10.0500 : -17.6521)} 
                 lng={analise?.findings?.longitude || (analise?.properties?.state === 'TO' ? -48.2000 : -51.0429)} 
+                polygon={analise?.findings?.polygon}
               />
             </section>
           )}
@@ -601,7 +602,7 @@ function ResultadoContent() {
   );
 }
 
-function ScanningLoader() {
+function ScanningLoader({ currentStep }: { currentStep?: string }) {
   const scanMessages = [
     "Carregando documentos e PDFs do cofre...",
     "Executando visão computacional em averbações cartoriais...",
@@ -666,7 +667,7 @@ function ScanningLoader() {
         {/* Dynamic Messages */}
         <div className="h-12 flex items-center justify-center">
           <p className="text-emerald-400 font-medium text-sm leading-relaxed transition-all duration-500 animate-pulse text-center">
-            {scanMessages[messageIndex]}
+            {currentStep || scanMessages[messageIndex]}
           </p>
         </div>
         

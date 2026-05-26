@@ -193,20 +193,53 @@ function RadarContent() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {alerts.map(alert => (
-                      <div key={alert.id} className="flex gap-4 p-4 rounded-lg bg-red-50 border border-red-100">
-                        <div className="flex-shrink-0 mt-1">
-                          <AlertTriangle className="text-red-600" size={24} />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-red-800">{alert.properties?.name}</span>
-                            <span className="text-xs text-gray-500 flex items-center gap-1"><Clock size={12}/> {new Date(alert.created_at).toLocaleDateString()}</span>
+                    {alerts.map(alert => {
+                      const isSatellite = alert.alert_type === 'RISCO_AMBIENTAL';
+                      return (
+                        <div 
+                          key={alert.id} 
+                          className={`flex gap-4 p-5 rounded-xl border transition-all hover:shadow-md ${
+                            isSatellite 
+                              ? 'bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200 shadow-sm' 
+                              : 'bg-gradient-to-r from-red-50 to-rose-50 border-red-200 shadow-sm'
+                          }`}
+                        >
+                          <div className="flex-shrink-0 mt-1">
+                            {isSatellite ? (
+                              <div className="p-2 bg-emerald-100 rounded-lg text-emerald-700 animate-pulse">
+                                <Radar size={22} />
+                              </div>
+                            ) : (
+                              <div className="p-2 bg-red-100 rounded-lg text-red-700">
+                                <AlertTriangle size={22} />
+                              </div>
+                            )}
                           </div>
-                          <p className="text-sm text-red-900 leading-relaxed">{alert.message}</p>
+                          <div className="flex-grow">
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`font-bold ${isSatellite ? 'text-emerald-900' : 'text-red-950'}`}>
+                                  {alert.properties?.name}
+                                </span>
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                  isSatellite 
+                                    ? 'bg-emerald-200/60 text-emerald-800 border border-emerald-300/50' 
+                                    : 'bg-red-200/60 text-red-800 border border-red-300/50'
+                                }`}>
+                                  {isSatellite ? '📡 Sentinel-2 Satélite' : '⚖️ Risco Governamental'}
+                                </span>
+                              </div>
+                              <span className="text-xs text-gray-500 flex items-center gap-1">
+                                <Clock size={12}/> {new Date(alert.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className={`text-sm leading-relaxed ${isSatellite ? 'text-emerald-850' : 'text-red-900'}`}>
+                              {alert.message}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
