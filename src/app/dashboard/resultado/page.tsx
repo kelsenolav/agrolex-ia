@@ -423,8 +423,8 @@ function ResultadoContent() {
           {showMap && (
             <section className="print:hidden">
               <InteractiveMap 
-                lat={analise?.findings?.latitude || -17.6521} 
-                lng={analise?.findings?.longitude || -51.0429} 
+                lat={analise?.findings?.latitude || (analise?.properties?.state === 'TO' ? -10.0500 : -17.6521)} 
+                lng={analise?.findings?.longitude || (analise?.properties?.state === 'TO' ? -48.2000 : -51.0429)} 
               />
             </section>
           )}

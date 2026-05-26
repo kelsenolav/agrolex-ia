@@ -144,7 +144,7 @@ Os módulos de análise solicitados pelo usuário são:
     }
     
     instructions += `\nINSTRUÇÃO FINAL: Leia minuciosamente os documentos PDFs anexados com sua visão computacional avançada, extraindo as entrelinhas e as averbações manuscritas/carimbos.
-INSTRUÇÃO CRÍTICA GEOESPACIAL: Identifique no texto dos documentos as coordenadas geográficas (Latitude e Longitude em formato decimal) do imóvel. Se encontrar, inclua na última linha do seu laudo o marcador especial exatamente neste formato: COORDS: lat, lng (exemplo: COORDS: -17.6521, -51.0429). Se não encontrar coordenadas exatas nos documentos, estime coordenadas rurais verossímeis daquela região do município (Goiás ou Mato Grosso) e inclua o marcador.
+INSTRUÇÃO CRÍTICA GEOESPACIAL: Identifique no texto dos documentos as coordenadas geográficas (Latitude e Longitude em formato decimal) do imóvel. Se encontrar, inclua na última linha do seu laudo o marcador especial exatamente neste formato: COORDS: lat, lng (exemplo: COORDS: -17.6521, -51.0429). Se não encontrar coordenadas exatas nos documentos, identifique o município e estado do imóvel no documento (por exemplo, Tocantínia-TO) e estime coordenadas rurais verossímeis correspondentes à região deste município (por exemplo, na estrada de aparecida em Tocantínia-TO, estime coordenadas na serra do lajeado como -10.0500, -48.2000) e inclua o marcador COORDS com estes valores estimados.
 
 AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
 
