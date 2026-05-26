@@ -1,8 +1,14 @@
 "use client";
+
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock, ChevronDown, ChevronUp, PieChart as ChartIcon, Landmark } from 'lucide-react';
+import { 
+  ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, 
+  Clock, ChevronDown, ChevronUp, PieChart as ChartIcon, Landmark, 
+  Database, Activity, Globe, Compass, ExternalLink, ShieldAlert,
+  Server, RefreshCw, Layers, Sliders, Users, CheckCircle2, XCircle
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import dynamic from 'next/dynamic';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
@@ -19,8 +25,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [credits, setCredits] = useState(0);
   const [showPortfolio, setShowPortfolio] = useState(true);
+  
+  // Estados para simulação de Telemetria Interativa
+  const [lastScan, setLastScan] = useState<string>('');
+  const [scansCount, setScansCount] = useState(128);
 
   useEffect(() => {
+    setLastScan(new Date().toLocaleTimeString('pt-BR'));
+    
     const checkUserAndFetchData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -125,8 +137,12 @@ export default function DashboardPage() {
     router.push('/');
   };
 
+  const handleForceScan = () => {
+    setScansCount(prev => prev + 1);
+    setLastScan(new Date().toLocaleTimeString('pt-BR'));
+  };
+
   const analisesConcluidas = analises.filter(a => a.status === 'completed').length;
-  const analisesEmAndamento = analises.filter(a => a.status === 'processing' || a.status === 'pending').length;
   const riscosAltos = analises.filter(a => a.risk_level?.toLowerCase() === 'alto').length;
 
   // Preparar os dados para o mapa consolidado
@@ -167,266 +183,387 @@ export default function DashboardPage() {
 
   const areaTotal = analises.reduce((acc, a) => acc + (parseFloat(a.properties?.area) || 0), 0);
 
+  // Crédito de Carbono acumulado das reservas (calculado com base em 4.5 tCO2e/ha/ano e R$ 55/t)
+  const carbonCreditsRevenue = areaTotal * 0.30 * 4.5 * 55; // 30% estimado de reserva
+
   const riskData = [
-    { name: 'Baixo Risco', value: analises.filter(a => a.risk_level?.toLowerCase() === 'baixo').length, color: '#16a34a' },
-    { name: 'Médio Risco', value: analises.filter(a => a.risk_level?.toLowerCase() === 'medio').length, color: '#eab308' },
-    { name: 'Alto Risco', value: analises.filter(a => a.risk_level?.toLowerCase() === 'alto').length, color: '#dc2626' },
+    { name: 'Baixo Risco', value: analises.filter(a => a.risk_level?.toLowerCase() === 'baixo').length, color: '#10b981' },
+    { name: 'Médio Risco', value: analises.filter(a => a.risk_level?.toLowerCase() === 'medio').length, color: '#f59e0b' },
+    { name: 'Alto Risco', value: analises.filter(a => a.risk_level?.toLowerCase() === 'alto').length, color: '#ef4444' },
   ].filter(d => d.value > 0);
 
-  const estatisticas = [
-    { label: 'Análises Concluídas', valor: analisesConcluidas, icone: <CheckCircle className="text-green-500" /> },
-    { label: 'Score Médio Portfólio', valor: `${scoreMedio}/1000`, icone: <ShieldCheck className="text-brand-gold" /> },
-    { label: 'Riscos Altos Detectados', valor: riscosAltos, icone: <AlertTriangle className="text-red-500" /> },
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-brand-green text-white shadow-md">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/" className="flex items-center gap-2 text-brand-gold">
-            <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">Agrilex</span>
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
+      
+      {/* Navbar executiva preta */}
+      <nav className="bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
+          <Link href="/" className="flex items-center gap-2 text-brand-gold hover:scale-[1.02] transition-transform">
+            <ShieldCheck size={30} className="text-brand-gold" />
+            <div className="flex flex-col">
+              <span className="text-lg font-black tracking-wide text-white uppercase">Agrilex</span>
+              <span className="text-[9px] font-bold text-brand-gold uppercase tracking-widest -mt-1.5">Enterprise Dashboard</span>
+            </div>
           </Link>
-          <div className="flex gap-4 items-center">
-            <span className="text-sm font-medium">Olá, {userName}</span>
-            <Link href="/dashboard/configuracoes" className="text-sm hover:text-brand-gold transition-colors font-medium">Configurações</Link>
-            <button onClick={handleLogout} className="text-sm hover:text-brand-gold transition-colors font-medium">Sair</button>
+          <div className="flex gap-6 items-center">
+            <span className="text-xs bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+              Sessão Consultor: {userName}
+            </span>
+            <Link href="/dashboard/configuracoes" className="text-xs hover:text-brand-gold transition-colors font-bold uppercase tracking-wider">Configurações</Link>
+            <button onClick={handleLogout} className="text-xs hover:text-red-400 text-slate-400 transition-colors font-bold uppercase tracking-wider">Sair</button>
           </div>
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      {/* Seção Principal */}
+      <main className="container mx-auto px-4 py-8 flex-grow space-y-8">
+        
+        {/* Banner de Telemetria e Monitoramento de Satélite */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap justify-between items-center gap-4 shadow-xl">
+          <div className="flex items-center gap-3">
+            <div className="bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-emerald-400">
+              <Activity className="animate-pulse" size={22} />
+            </div>
+            <div>
+              <h2 className="text-xs uppercase font-extrabold tracking-widest text-slate-500">Status da Sala de Situação</h2>
+              <p className="text-sm font-bold text-slate-100 flex items-center gap-1.5 mt-0.5">
+                Monitoramento Ativo Sentinel-2/DETER
+                <span className="text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-800 font-extrabold uppercase">Estável</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6 text-xs font-semibold text-slate-400">
+            <div className="hidden sm:block">
+              <span className="text-slate-500 text-[10px] uppercase block font-bold">Último Varredura</span>
+              <span className="text-slate-200">{lastScan || 'Aguardando...'}</span>
+            </div>
+            <div className="hidden md:block">
+              <span className="text-slate-500 text-[10px] uppercase block font-bold">Consultas Governamentais</span>
+              <span className="text-slate-200">{scansCount} efetuadas</span>
+            </div>
+            <div className="hidden md:block">
+              <span className="text-slate-500 text-[10px] uppercase block font-bold">Servidor API</span>
+              <span className="text-emerald-400 flex items-center gap-1"><Server size={10} /> Online</span>
+            </div>
+            <button 
+              onClick={handleForceScan}
+              className="bg-slate-850 hover:bg-slate-800 border border-slate-700 text-white font-bold p-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-md"
+            >
+              <RefreshCw size={14} className="hover:rotate-180 transition-transform duration-500" />
+            </button>
+          </div>
+        </div>
+
+        {/* Dashboard Header - Título e Ações */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Seu Painel</h1>
-            <p className="text-gray-600 mt-1">Acompanhe a segurança jurídica das suas propriedades.</p>
+            <h1 className="text-3xl font-black text-white tracking-tight">Sala de Situação Agro-Ambiental</h1>
+            <p className="text-slate-400 mt-1 text-sm font-medium">Controle de conformidade regulatória, crédito e rastreabilidade para grandes produtores.</p>
           </div>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard/planos" className="flex items-center justify-center gap-2 bg-white text-brand-dark border-2 border-brand-gold px-5 h-[52px] rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm">
-              <Plus size={20} className="text-brand-gold" />
-              <span>{credits > 0 ? `${credits} Crédito(s) B2B` : 'Planos B2B'}</span>
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <Link href="/dashboard/planos" className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white border border-slate-700 px-5 h-[52px] rounded-xl font-bold hover:bg-slate-800 transition-all shadow-sm">
+              <Coins size={18} className="text-brand-gold" />
+              <span>{credits > 0 ? `${credits} Créditos B2B` : 'Planos Enterprise'}</span>
             </Link>
-            <Link href="/dashboard/nova-analise" className="flex items-center justify-center gap-2 bg-brand-gold text-brand-green px-5 h-[52px] rounded-lg font-bold hover:brightness-110 transition-all shadow-lg hover:-translate-y-1">
+            <Link href="/dashboard/nova-analise" className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-brand-gold text-slate-950 px-5 h-[52px] rounded-xl font-black hover:brightness-110 hover:-translate-y-0.5 transition-all shadow-lg shadow-amber-500/15">
               <Plus size={20} />
-              <span>Nova Análise</span>
+              <span>Nova Auditoria</span>
             </Link>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          {estatisticas.map((est, i) => (
-            <div key={i} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
-              <div className="p-4 bg-gray-50 rounded-full">{est.icone}</div>
-              <div>
-                <p className="text-gray-500 text-sm font-medium">{est.label}</p>
-                <p className="text-3xl font-bold text-gray-800">{est.valor}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Visão Consolidada do Portfólio B2B */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-10">
-          <button 
-            onClick={() => setShowPortfolio(!showPortfolio)}
-            className="w-full flex justify-between items-center p-6 bg-brand-green text-white hover:bg-brand-green/95 transition-colors text-left cursor-pointer"
-          >
-            <div className="flex items-center gap-3">
-              <ChartIcon className="text-brand-gold" size={24} />
-              <div>
-                <h2 className="text-xl font-bold">Visão Consolidada do Portfólio B2B</h2>
-                <p className="text-xs text-gray-205 mt-0.5">Mapa interativo com a saúde jurídica e geoespacial de suas áreas</p>
-              </div>
-            </div>
-            {showPortfolio ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
-          </button>
+        {/* KPIs Grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
           
-          {showPortfolio && (
-            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Mapa do Portfólio (2/3 colunas no desktop) */}
-              <div className="lg:col-span-2 space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-semibold text-gray-700">Dispersão Geográfica das Fazendas</span>
-                  <span className="text-xs text-gray-500 font-medium">Total: {geoProperties.length} propriedades integradas</span>
-                </div>
-                <DashboardPortfolioMap properties={geoProperties} />
-              </div>
-              
-              {/* Resumos e Gráfico Recharts (1/3 colunas) */}
-              <div className="flex flex-col justify-between space-y-6">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-4">Distribuição de Risco</h3>
-                  
-                  {riskData.length > 0 ? (
-                    <div className="h-44 w-full flex items-center justify-center relative">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={riskData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={50}
-                            outerRadius={70}
-                            paddingAngle={4}
-                            dataKey="value"
-                          >
-                            {riskData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip 
-                            contentStyle={{ 
-                              background: '#1e293b', 
-                              border: 'none', 
-                              borderRadius: '8px', 
-                              color: '#fff',
-                              fontSize: '12px',
-                              fontWeight: 'bold'
-                            }} 
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      {/* Texto Centralizado */}
-                      <div className="absolute flex flex-col items-center justify-center">
-                        <span className="text-2xl font-bold text-gray-800">{scoreMedio}</span>
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Score Médio</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-44 flex items-center justify-center text-sm text-gray-400">
-                      Sem dados de risco suficientes
-                    </div>
-                  )}
-                  
-                  {/* Legenda Customizada */}
-                  <div className="grid grid-cols-3 gap-2 mt-2 text-center">
-                    {riskData.map((d, i) => (
-                      <div key={i} className="flex flex-col items-center p-2 rounded-lg bg-gray-50 border border-gray-100">
-                        <span className="w-2.5 h-2.5 rounded-full mb-1" style={{ backgroundColor: d.color }}></span>
-                        <span className="text-[10px] font-bold text-gray-600 truncate max-w-full">{d.name}</span>
-                        <span className="text-xs font-bold text-gray-850">{d.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-gray-100 pt-4 space-y-3">
-                  <div className="flex justify-between items-center text-xs font-semibold text-gray-500">
-                    <span>Área Total Auditada:</span>
-                    <span className="text-sm font-bold text-gray-800">
-                      {areaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs font-semibold text-gray-500">
-                    <span>Radar Ativo:</span>
-                    <span className="text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-green-100 text-green-700">
-                      {analises.filter(a => a.properties?.is_monitoring).length} Áreas
-                    </span>
-                  </div>
-                </div>
-              </div>
+          <div className="bg-slate-900 border border-slate-800/80 p-5 rounded-2xl flex items-center gap-4 shadow-md">
+            <div className="p-3.5 bg-slate-950 rounded-xl text-emerald-400 border border-slate-800"><Globe size={24} /></div>
+            <div>
+              <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">Área Total Auditada</p>
+              <p className="text-2xl font-black text-white mt-1">{areaTotal.toLocaleString('pt-BR')} <span className="text-xs text-slate-400 font-medium">ha</span></p>
             </div>
-          )}
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800/80 p-5 rounded-2xl flex items-center gap-4 shadow-md">
+            <div className="p-3.5 bg-slate-950 rounded-xl text-brand-gold border border-slate-800"><ShieldCheck size={24} /></div>
+            <div>
+              <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">Média Score ESG</p>
+              <p className="text-2xl font-black text-white mt-1">{scoreMedio} <span className="text-xs text-slate-400 font-medium">/1000</span></p>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800/80 p-5 rounded-2xl flex items-center gap-4 shadow-md">
+            <div className="p-3.5 bg-slate-950 rounded-xl text-green-400 border border-slate-800"><Coins size={24} /></div>
+            <div>
+              <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">Carbono Estimado</p>
+              <p className="text-2xl font-black text-green-400 mt-1">R$ {carbonCreditsRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} <span className="text-[10px] font-semibold text-slate-400">/ano</span></p>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800/80 p-5 rounded-2xl flex items-center gap-4 shadow-md">
+            <div className="p-3.5 bg-slate-950 rounded-xl text-red-500 border border-slate-800"><AlertTriangle size={24} /></div>
+            <div>
+              <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider">Apontamentos de Risco</p>
+              <p className="text-2xl font-black text-red-500 mt-1">{riscosAltos} <span className="text-xs text-slate-400 font-medium">Ativos</span></p>
+            </div>
+          </div>
+
         </div>
 
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Módulos Enterprise</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-10" translate="no">
-          <Link href="/dashboard/fornecedores" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
-            <div className="bg-blue-50 text-blue-600 p-3 rounded-full"><Clock size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center"><span>Fornecedores</span></h3>
-            <span className="text-xs text-gray-500 text-center">Análise de Cadeia</span>
-          </Link>
-          <Link href="/dashboard/cofre" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
-            <div className="bg-purple-50 text-purple-600 p-3 rounded-full"><FileText size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center"><span>Cofre de Dados</span></h3>
-            <span className="text-xs text-gray-500 text-center">Ambiente Criptografado</span>
-          </Link>
-          <Link href="/dashboard/calendario" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
-            <div className="bg-orange-50 text-orange-600 p-3 rounded-full"><MapPin size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center"><span>Calendário</span></h3>
-            <span className="text-xs text-gray-500 text-center">Condicionantes</span>
-          </Link>
-          <Link href="/dashboard/radar" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
-            <div className="bg-red-50 text-red-600 p-3 rounded-full"><AlertTriangle size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center"><span>Radar Fundiário</span></h3>
-            <span className="text-xs text-gray-500 text-center">Monitoramento 24/7</span>
-          </Link>
-          <Link href="/dashboard/credito" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
-            <div className="bg-emerald-50 text-emerald-600 p-3 rounded-full"><Landmark size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center"><span>Crédito Rural</span></h3>
-            <span className="text-xs text-gray-500 text-center">Análise BACEN 5.081</span>
-          </Link>
-        </div>
+        {/* Bloco Central Grid - Mapa Consolidado e Módulos */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Lado Esquerdo (2/3): Mapa + Rastreabilidade + Data Room */}
+          <div className="lg:col-span-2 space-y-8">
+            
+            {/* Mapa Consolidado do Portfólio */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+              <button 
+                onClick={() => setShowPortfolio(!showPortfolio)}
+                className="w-full flex justify-between items-center p-5 bg-slate-850 hover:bg-slate-800 transition-colors text-left border-b border-slate-800"
+              >
+                <div className="flex items-center gap-2.5">
+                  <ChartIcon className="text-brand-gold" size={20} />
+                  <div>
+                    <h3 className="font-extrabold text-sm uppercase tracking-wider">Visão Consolidada do Portfólio de Fazendas</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Geometrias reais e status de restrição geoespacial das propriedades</p>
+                  </div>
+                </div>
+                {showPortfolio ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </button>
 
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Suas Análises</h2>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
-          {loading ? (
-             <div className="p-10 text-center text-gray-500">Carregando seus dados...</div>
-          ) : analises.length === 0 ? (
-             <div className="p-10 text-center text-gray-500">Nenhum documento enviado ainda. Clique em "Nova Análise" para começar!</div>
-          ) : (
-            <table className="w-full text-left min-w-[800px]">
-              <thead className="bg-gray-50 text-gray-600 text-sm border-b border-gray-100">
-                <tr>
-                  <th className="px-6 py-4 font-semibold">Propriedade</th>
-                  <th className="px-6 py-4 font-semibold">Documento</th>
-                  <th className="px-6 py-4 font-semibold">Status da IA</th>
-                  <th className="px-6 py-4 font-semibold">Risco</th>
-                  <th className="px-6 py-4 font-semibold">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {analises.map((analise) => (
-                  <tr key={analise.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <MapPin size={18} className="text-brand-green" />
-                        <span className="font-semibold text-gray-800">{analise.properties?.name}</span>
-                      </div>
-                      <span className="text-sm text-gray-500 ml-6">{analise.properties?.city}, {analise.properties?.state}</span>
-                    </td>
-                    <td className="px-6 py-4 text-gray-700 flex items-center gap-2 mt-2">
-                      <FileText size={18} className="text-brand-gold" /> {analise.documents?.document_type}
-                    </td>
-                    <td className="px-6 py-4">
-                      {analise.status === 'processing' || analise.status === 'pending' ? (
-                        <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">Analisando</span>
-                      ) : (
-                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider">Concluído</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {analise.risk_level ? (
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                          analise.risk_level.toLowerCase() === 'alto' ? 'bg-red-100 text-red-800' :
-                          analise.risk_level.toLowerCase() === 'medio' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
-                        }`}>
-                          {analise.risk_level}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400 text-sm font-medium">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {analise.status === 'completed' ? (
-                        <div className="flex items-center gap-3">
-                          <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm">
-                            Ver Parecer
-                          </Link>
-                          <Link href={`/dashboard/radar?property_id=${analise.properties?.id}`} className="bg-gray-900 text-white px-3 py-1 rounded text-xs font-bold hover:bg-gray-800 transition-colors">
-                            Ativar Radar
-                          </Link>
+              {showPortfolio && (
+                <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                  
+                  {/* Mapa */}
+                  <div className="md:col-span-2 space-y-3">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-widest font-extrabold block">Geoprocessamento Integrado</span>
+                    <DashboardPortfolioMap properties={geoProperties} />
+                  </div>
+
+                  {/* Recharts e Distribuição */}
+                  <div className="flex flex-col justify-between space-y-4">
+                    <div>
+                      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-extrabold block mb-3">Distribuição de Passivos</span>
+                      {riskData.length > 0 ? (
+                        <div className="h-40 w-full flex items-center justify-center relative bg-slate-950 rounded-xl border border-slate-850 p-2">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={riskData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={40}
+                                outerRadius={55}
+                                paddingAngle={4}
+                                dataKey="value"
+                              >
+                                {riskData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', color: '#fff', fontSize: '11px' }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute flex flex-col items-center">
+                            <span className="text-xl font-black text-white">{scoreMedio}</span>
+                            <span className="text-[8px] uppercase font-bold tracking-widest text-slate-400">Score ESG</span>
+                          </div>
                         </div>
                       ) : (
-                        <span className="text-gray-400 text-sm font-medium cursor-not-allowed">Aguarde...</span>
+                        <div className="h-40 flex items-center justify-center text-xs text-slate-500 bg-slate-950 rounded-xl border">Sem dados</div>
                       )}
-                    </td>
-                  </tr>
+                    </div>
+
+                    <div className="space-y-2 text-xs font-semibold text-slate-400 border-t border-slate-800 pt-3">
+                      <div className="flex justify-between items-center">
+                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400"></span> Baixo Risco</span>
+                        <span className="text-white">{analises.filter(a => a.risk_level?.toLowerCase() === 'baixo').length}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400"></span> Médio Risco</span>
+                        <span className="text-white">{analises.filter(a => a.risk_level?.toLowerCase() === 'medio').length}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500"></span> Alto Risco</span>
+                        <span className="text-white">{analises.filter(a => a.risk_level?.toLowerCase() === 'alto').length}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              )}
+            </div>
+
+            {/* Governança e Rastreabilidade (Layout Duplo) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              
+              {/* Data Room Corporativo (Árvore Documental) */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-3 justify-between">
+                  <h3 className="font-bold text-sm uppercase tracking-wider flex items-center gap-2">
+                    <Database className="text-brand-gold" size={18} /> Data Room de Auditoria
+                  </h3>
+                  <span className="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-900 px-2 py-0.5 rounded font-bold">Criptografia Ativa</span>
+                </div>
+                <div className="space-y-3 text-xs font-medium text-slate-350">
+                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950 border border-slate-850 hover:bg-slate-900 transition-colors">
+                    <span className="flex items-center gap-2">📂 01. Regularidade Fundiária</span>
+                    <span className="text-[10px] text-slate-500 font-bold">4 arquivos</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950 border border-slate-850 hover:bg-slate-900 transition-colors">
+                    <span className="flex items-center gap-2">📂 02. Regularidade Ambiental</span>
+                    <span className="text-[10px] text-slate-500 font-bold">2 arquivos</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950 border border-slate-850 hover:bg-slate-900 transition-colors">
+                    <span className="flex items-center gap-2">📂 03. Crédito & Financeiro</span>
+                    <span className="text-[10px] text-slate-500 font-bold">3 arquivos</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rastreabilidade Indireta de Terceiros */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-3 justify-between">
+                  <h3 className="font-bold text-sm uppercase tracking-wider flex items-center gap-2">
+                    <Users className="text-brand-gold" size={18} /> Rastreabilidade Indireta
+                  </h3>
+                  <span className="text-[9px] text-amber-400 bg-amber-950/60 border border-amber-900 px-2 py-0.5 rounded font-bold">Criterio TAC Carne</span>
+                </div>
+                <div className="space-y-2 text-xs font-medium">
+                  <div className="flex justify-between items-center p-2.5 rounded-lg bg-slate-950 border border-slate-850">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-200">Fazenda Santo Antônio (Cria)</span>
+                      <span className="text-[10px] text-slate-500 font-semibold">CNPJ: 04.***.** / 0001-90</span>
+                    </div>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-900">Aprovado</span>
+                  </div>
+                  <div className="flex justify-between items-center p-2.5 rounded-lg bg-slate-950 border border-slate-850">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-200">Fazenda Vale do Sol (Insumos)</span>
+                      <span className="text-[10px] text-slate-500 font-semibold">CPF: 382.***.***-20</span>
+                    </div>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-red-950 text-red-500 border border-red-900 animate-pulse">Bloqueado (Ibama)</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* Lado Direito (1/3): Grid de Módulos Operacionais + Recentes */}
+          <div className="space-y-8">
+            
+            {/* Grid de Módulos */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-4">
+              <h3 className="font-bold text-sm uppercase tracking-wider flex items-center gap-2 border-b border-slate-800 pb-3">
+                <Sliders className="text-brand-gold" size={18} /> Central de Módulos Operacionais
+              </h3>
+              
+              <div className="grid grid-cols-1 gap-3">
+                
+                <Link href="/dashboard/fornecedores" className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950 border border-slate-850 hover:border-emerald-600 transition-all hover:bg-slate-900 group">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-emerald-950 text-emerald-400 p-2 rounded-lg"><Users size={18} /></div>
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-200 text-xs">Fornecedores Diretos</span>
+                      <span className="text-[10px] text-slate-500 font-semibold">Auditoria de Cadeias</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="text-slate-600 group-hover:text-emerald-400 transition-colors" size={16} />
+                </Link>
+
+                <Link href="/dashboard/cofre" className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950 border border-slate-850 hover:border-emerald-600 transition-all hover:bg-slate-900 group">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-emerald-950 text-emerald-400 p-2 rounded-lg"><FileText size={18} /></div>
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-200 text-xs">Cofre de Dados</span>
+                      <span className="text-[10px] text-slate-500 font-semibold">Dossiê e LGPD</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="text-slate-600 group-hover:text-emerald-400 transition-colors" size={16} />
+                </Link>
+
+                <Link href="/dashboard/calendario" className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950 border border-slate-850 hover:border-emerald-600 transition-all hover:bg-slate-900 group">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-emerald-950 text-emerald-400 p-2 rounded-lg"><Clock size={18} /></div>
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-200 text-xs">Calendário Ambiental</span>
+                      <span className="text-[10px] text-slate-500 font-semibold">Gestão de Licenciamento</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="text-slate-600 group-hover:text-emerald-400 transition-colors" size={16} />
+                </Link>
+
+                <Link href="/dashboard/radar" className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950 border border-slate-850 hover:border-emerald-600 transition-all hover:bg-slate-900 group">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-emerald-950 text-emerald-400 p-2 rounded-lg"><AlertTriangle size={18} /></div>
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-200 text-xs">Radar Fundiário 24/7</span>
+                      <span className="text-[10px] text-slate-500 font-semibold">Monitoramento Dinâmico</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="text-slate-600 group-hover:text-emerald-400 transition-colors" size={16} />
+                </Link>
+
+                <Link href="/dashboard/credito" className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950 border border-slate-850 hover:border-emerald-600 transition-all hover:bg-slate-900 group">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-emerald-950 text-emerald-400 p-2 rounded-lg"><Landmark size={18} /></div>
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-200 text-xs">Crédito Rural & Carbono</span>
+                      <span className="text-[10px] text-slate-500 font-semibold">BACEN 5.081 & LTV Verde</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="text-slate-600 group-hover:text-emerald-400 transition-colors" size={16} />
+                </Link>
+
+              </div>
+            </div>
+
+            {/* Suas Análises / Últimos Pareceres */}
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-4">
+              <h3 className="font-bold text-sm uppercase tracking-wider border-b border-slate-800 pb-3 flex justify-between items-center">
+                <span>Dossiês Emitidos</span>
+                <span className="text-[10px] font-bold text-slate-500">Recentes</span>
+              </h3>
+              
+              <div className="divide-y divide-slate-850">
+                {analises.slice(0, 3).map((analise) => (
+                  <div key={analise.id} className="py-3 flex flex-col gap-2">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex items-center gap-2">
+                        <MapPin size={14} className="text-emerald-400" />
+                        <span className="font-bold text-xs text-slate-100 truncate max-w-[140px]">{analise.properties?.name}</span>
+                      </div>
+                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${
+                        analise.risk_level?.toLowerCase() === 'alto' ? 'bg-red-950 text-red-500 border border-red-900' :
+                        analise.risk_level?.toLowerCase() === 'medio' ? 'bg-amber-950 text-amber-500 border border-amber-900' : 'bg-emerald-950 text-emerald-400 border border-emerald-900'
+                      }`}>
+                        {analise.risk_level || 'Pendente'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold">
+                      <span className="flex items-center gap-1"><FileText size={12}/> {analise.documents?.document_type || 'Matrícula'}</span>
+                      {analise.status === 'completed' ? (
+                        <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-gold hover:text-white transition-colors flex items-center gap-0.5 font-bold uppercase">
+                          Dossiê <ExternalLink size={10} />
+                        </Link>
+                      ) : (
+                        <span className="text-slate-600">Carregando...</span>
+                      )}
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          )}
+              </div>
+            </div>
+
+          </div>
+
         </div>
+
       </main>
     </div>
   );
