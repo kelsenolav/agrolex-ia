@@ -341,7 +341,21 @@ function ResultadoContent() {
               <h1 className="text-3xl font-extrabold text-gray-800">Auditoria Forense IA</h1>
               <span className="px-4 py-1.5 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm print:shadow-none">Concluído</span>
             </div>
-            <p className="text-gray-500 font-medium text-lg">{propName} • {propLocation}</p>
+            <p className="text-gray-500 font-medium text-lg mb-3">{propName} • {propLocation}</p>
+            <div className="flex items-center gap-2 text-xs font-mono bg-gray-50 border px-3 py-1.5 rounded-lg w-fit text-gray-500 print:bg-white print:border-none">
+              <span className="font-bold text-gray-400">ID DE VALIDAÇÃO:</span>
+              <span className="text-gray-700 select-all">{searchParams.get('id') || 'MOCK-DEMO-SAMPLE'}</span>
+              <button 
+                onClick={() => {
+                  const id = searchParams.get('id') || 'MOCK-DEMO-SAMPLE';
+                  navigator.clipboard.writeText(id);
+                  alert('Código de validação copiado!');
+                }}
+                className="ml-2 text-brand-green hover:text-brand-gold font-bold print:hidden cursor-pointer"
+              >
+                Copiar
+              </button>
+            </div>
           </div>
           <div className={`text-center ${styles.bg} p-5 rounded-xl border ${styles.border} shadow-sm print:shadow-none print:border`}>
             <p className={`text-xs font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
