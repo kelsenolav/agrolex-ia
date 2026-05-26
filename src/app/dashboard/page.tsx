@@ -7,7 +7,8 @@ import {
   ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, 
   Clock, ChevronDown, ChevronUp, PieChart as ChartIcon, Landmark, 
   Database, Activity, Globe, Compass, ExternalLink, ShieldAlert,
-  Server, RefreshCw, Layers, Sliders, Users, CheckCircle2, XCircle
+  Server, RefreshCw, Layers, Sliders, Users, CheckCircle2, XCircle,
+  Coins, ChevronRight
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import dynamic from 'next/dynamic';
