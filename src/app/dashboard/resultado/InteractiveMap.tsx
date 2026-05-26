@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, MapPin, Layers, Globe, Compass } from "lucide-react";
 
-export default function InteractiveMap({ lat = -17.785, lng = -50.92 }: { lat?: number; lng?: number }) {
+export default function InteractiveMap({ lat = -17.6521, lng = -51.0429 }: { lat?: number; lng?: number }) {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [error, setError] = useState(false);
   const mapRef = useRef<any>(null);

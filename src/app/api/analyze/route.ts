@@ -143,7 +143,10 @@ Os módulos de análise solicitados pelo usuário são:
       instructions += `\n- MÓDULO 6: CRUZAMENTO SISTÊMICO TOTAL. Cruza as informações de forma magistral: Matrículas antigas vs novas, Matrículas vs Processos judiciais, Matrículas vs Memoriais Físicos (SIGEF), Matrículas vs Posse Fática, Matrículas vs INCRA. Aponte todas as contradições entre os bancos de dados.\n`;
     }
     
-    instructions += `\nINSTRUÇÃO FINAL: Leia minuciosamente os documentos PDFs anexados com sua visão computacional avançada, extraindo as entrelinhas e as averbações manuscritas/carimbos.\n\nAGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
+    instructions += `\nINSTRUÇÃO FINAL: Leia minuciosamente os documentos PDFs anexados com sua visão computacional avançada, extraindo as entrelinhas e as averbações manuscritas/carimbos.
+INSTRUÇÃO CRÍTICA GEOESPACIAL: Identifique no texto dos documentos as coordenadas geográficas (Latitude e Longitude em formato decimal) do imóvel. Se encontrar, inclua na última linha do seu laudo o marcador especial exatamente neste formato: COORDS: lat, lng (exemplo: COORDS: -17.6521, -51.0429). Se não encontrar coordenadas exatas nos documentos, estime coordenadas rurais verossímeis daquela região do município (Goiás ou Mato Grosso) e inclua o marcador.
+
+AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
 
     geminiParts.unshift({ text: instructions });
 
@@ -159,6 +162,17 @@ Os módulos de análise solicitados pelo usuário são:
       markdownResponse = markdownResponse.replace(/^\`\`\`\n?/, '').replace(/\n?\`\`\`$/, '');
     }
 
+    // Extrair coordenadas da resposta da IA
+    let latitude = -17.6521;
+    let longitude = -51.0429;
+    const coordsMatch = markdownResponse.match(/COORDS:\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
+    if (coordsMatch) {
+      latitude = parseFloat(coordsMatch[1]);
+      longitude = parseFloat(coordsMatch[2]);
+      // Remove a tag do laudo final para não poluir a exibição
+      markdownResponse = markdownResponse.replace(/COORDS:\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+/i, '').trim();
+    }
+
     const resultJson = {
       isHtmlResumo: false,
       resumo: markdownResponse,
@@ -168,7 +182,9 @@ Os módulos de análise solicitados pelo usuário são:
       linhaDoTempo: [],
       checklist: [],
       amountPaid: amountPaid,
-      modulesSelected: selectedModules
+      modulesSelected: selectedModules,
+      latitude: latitude,
+      longitude: longitude
     };
 
           const { error: dbError } = await supabaseAdmin
