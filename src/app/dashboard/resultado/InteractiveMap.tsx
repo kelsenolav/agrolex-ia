@@ -209,27 +209,37 @@ export default function InteractiveMap({ lat = -17.6521, lng = -51.0429 }: { lat
         </div>
       </div>
 
-      {/* Botão Google Earth 3D */}
+      {/* Botão Google Earth 3D e Google Maps Satélite */}
       <div className="bg-gradient-to-r from-blue-950/5 to-emerald-950/5 border border-gray-200/50 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-3">
           <div className="bg-blue-500/10 p-2.5 rounded-xl text-blue-600 border border-blue-500/20">
             <Globe className="animate-pulse" size={24} />
           </div>
           <div>
-            <h4 className="font-bold text-gray-800 text-sm">Navegação Google Earth 3D</h4>
+            <h4 className="font-bold text-gray-800 text-sm">Visualização Geoespacial 3D e Satélite</h4>
             <p className="text-gray-500 text-xs mt-0.5 leading-relaxed">
-              Explore o relevo, hidrografia e vegetação em 3D real usando o Google Earth direto nas coordenadas desta matrícula.
+              Explore o relevo em 3D no Google Earth ou acesse a imagem de satélite mais atual disponível no Google Maps.
             </p>
           </div>
         </div>
-        <a
-          href={`https://earth.google.com/web/@${lat},${lng},0a,8000d`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-2 shadow-md cursor-pointer text-center"
-        >
-          <Compass size={14} /> Abrir no Google Earth
-        </a>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <a
+            href={`https://www.google.com/maps/@${lat},${lng},15z/data=!3m1!1e3`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-2 shadow-md cursor-pointer text-center"
+          >
+            <Layers size={14} /> Imagem Satélite Mais Atual (Maps)
+          </a>
+          <a
+            href={`https://earth.google.com/web/@${lat},${lng},0a,8000d`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-2 shadow-md cursor-pointer text-center"
+          >
+            <Compass size={14} /> Abrir no Google Earth 3D
+          </a>
+        </div>
       </div>
     </div>
   );
