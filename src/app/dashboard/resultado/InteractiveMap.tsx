@@ -223,7 +223,7 @@ export default function InteractiveMap({ lat = -17.785, lng = -50.92 }: { lat?: 
           </div>
         </div>
         <a
-          href={`https://earth.google.com/web/search/${lat},${lng}`}
+          href={`https://earth.google.com/web/@${lat},${lng},0a,8000d`}
           target="_blank"
           rel="noopener noreferrer"
           className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-2 shadow-md cursor-pointer text-center"
