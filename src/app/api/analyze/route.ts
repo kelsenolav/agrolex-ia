@@ -208,18 +208,21 @@ Os módulos de análise solicitados pelo usuário são:
 
           // [NOVO] Disparar Webhook para o N8N / WhatsApp
           const webhookUrl = process.env.N8N_WEBHOOK_URL;
-          if (webhookUrl) {
-            try {
-              let whatsapp = '';
-              let clientName = 'Cliente';
-              if (user) {
-                const { data: profile } = await supabaseAdmin.from('profiles').select('*').eq('id', user.id).single();
-                if (profile) {
-                  whatsapp = profile.whatsapp || '';
-                  clientName = profile.name || 'Cliente';
-                }
+          try {
+            let whatsapp = '';
+            let clientName = 'Cliente';
+            let userWebhookUrl = '';
+            if (user) {
+              const { data: profile } = await supabaseAdmin.from('profiles').select('*').eq('id', user.id).single();
+              if (profile) {
+                whatsapp = profile.whatsapp || '';
+                clientName = profile.name || 'Cliente';
+                userWebhookUrl = profile.webhook_url || '';
               }
+            }
 
+            // 1. Webhook N8N Global
+            if (webhookUrl) {
               await fetch(webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -234,9 +237,52 @@ Os módulos de análise solicitados pelo usuário são:
                   message: `Aviso do Agrilex IA: Nova análise concluída. Risco detectado: Alto.`
                 })
               });
-            } catch (webhookErr) {
-              console.error("Erro ao notificar N8N:", webhookErr);
             }
+
+            // 2. Webhook Customizado do Usuário
+            if (userWebhookUrl) {
+              console.log(`[Webhook Custom] Disparando para: ${userWebhookUrl}`);
+              await fetch(userWebhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  event: 'analysis.completed',
+                  analysisId,
+                  propertyId,
+                  riskLevel: 'Alto',
+                  clientName,
+                  amountPaid,
+                  findings: resultJson
+                })
+              }).catch(err => console.error("Erro no Webhook Custom:", err));
+            }
+
+            // 3. Notificação no WhatsApp
+            if (whatsapp) {
+              const whatsappMsg = `Olá, ${clientName}! A auditoria forense da sua propriedade no Agrolex IA foi concluída com sucesso.\n\n📋 *Laudo:* ID #${analysisId}\n⚠️ *Grau de Risco:* ALTO\n\n🔗 Acesse o parecer completo online:\n${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard/resultado?id=${analysisId}`;
+
+              if (process.env.WHATSAPP_API_URL && process.env.WHATSAPP_API_TOKEN) {
+                console.log(`[WhatsApp API] Enviando real para: ${whatsapp}`);
+                await fetch(process.env.WHATSAPP_API_URL, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.WHATSAPP_API_TOKEN}`
+                  },
+                  body: JSON.stringify({
+                    number: whatsapp,
+                    message: whatsappMsg
+                  })
+                }).catch(err => console.error("Erro no Gateway WhatsApp:", err));
+              } else {
+                console.log("----------------------------------------");
+                console.log(`[SIMULADOR WHATSAPP] Destinatário: ${whatsapp}`);
+                console.log(`Mensagem:\n${whatsappMsg}`);
+                console.log("----------------------------------------");
+              }
+            }
+          } catch (webhookErr) {
+            console.error("Erro ao processar notificações pós-análise:", webhookErr);
           }
 
           console.log(`[Background Job] Análise ${analysisId} finalizada 100%.`);

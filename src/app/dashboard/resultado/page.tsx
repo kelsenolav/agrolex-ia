@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ShieldCheck, ArrowLeft, AlertTriangle, FileCheck, Info, CheckCircle2, Loader2, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import dynamic from 'next/dynamic';
+
+const InteractiveMap = dynamic(() => import('./InteractiveMap'), { ssr: false });
 
 import { mockResponses } from './mockData';
 
@@ -77,6 +80,15 @@ function ResultadoContent() {
     window.print();
   };
 
+  const handleShareWhatsApp = () => {
+    const host = typeof window !== 'undefined' ? window.location.host : 'localhost:3000';
+    const protocol = typeof window !== 'undefined' && window.location.protocol ? window.location.protocol : 'https:';
+    const currentId = searchParams.get('id') || 'mock';
+    const reportUrl = `${protocol}//${host}/dashboard/resultado?id=${currentId}`;
+    const text = `*Agrilex IA - Relatório Forense Fundiário*\n\n*Propriedade:* ${propName}\n*Localização:* ${propLocation}\n*Grau de Risco:* ${risco?.toUpperCase()}\n\nAcesse o laudo completo online:\n${reportUrl}`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-brand-green" size={48} /></div>;
   }
@@ -110,6 +122,8 @@ function ResultadoContent() {
     .join('\n\n---\n\n');
     
   const mockHtml = parseMarkdown(mockText || mockResponses['titulos_incra']);
+
+  const showMap = isMock || selectedModules.includes('geoespacial') || (analise?.findings?.modulesSelected && analise.findings.modulesSelected.includes('geoespacial'));
 
   let finalResumo = mockHtml;
   if (!isMock && analise.findings?.resumo) {
@@ -163,6 +177,85 @@ function ResultadoContent() {
       </div>
 
       <main className="container mx-auto px-4 py-8 max-w-4xl print:py-0">
+        <style dangerouslySetInnerHTML={{ __html: `
+          @media print {
+            body {
+              background-color: white !important;
+              color: #111827 !important;
+            }
+            .page-break-after-always {
+              page-break-after: always !important;
+              break-after: always !important;
+            }
+            section, .print\\:break-inside-avoid {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            .print\\:hidden {
+              display: none !important;
+            }
+            .bg-brand-green {
+              background-color: #051F15 !important;
+            }
+            .text-brand-green {
+              color: #051F15 !important;
+            }
+            .bg-brand-gold {
+              background-color: #d4af37 !important;
+            }
+            .text-brand-gold {
+              color: #d4af37 !important;
+            }
+          }
+        `}} />
+
+        {/* Capa de Relatório Exclusiva para Impressão PDF */}
+        <div className="hidden print:flex flex-col h-[297mm] justify-between border-8 border-brand-green p-16 mb-20 page-break-after-always">
+          <div className="flex justify-between items-start">
+            <div className="flex items-center gap-3 text-brand-green">
+              <ShieldCheck size={48} className="text-brand-gold" />
+              <span className="text-4xl font-extrabold tracking-tight text-gray-900">AGRILEX IA</span>
+            </div>
+            <div className="text-right text-gray-500 font-mono text-sm">
+              <p>ID: #{searchParams.get('id') || 'MOCK-DEMO'}</p>
+              <p>Emitido via Blockchain & AI</p>
+            </div>
+          </div>
+
+          <div className="space-y-6 my-auto">
+            <h1 className="text-5xl font-black text-gray-900 uppercase tracking-tight leading-none">
+              Relatório de<br/>
+              <span className="text-brand-green">Auditoria Forense</span><br/>
+              Fundiária
+            </h1>
+            <div className="w-20 h-2 bg-brand-gold rounded"></div>
+            
+            <div className="grid grid-cols-2 gap-8 pt-8">
+              <div className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+                <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">Imóvel Auditado</p>
+                <p className="text-xl font-bold text-gray-800">{propName}</p>
+                <p className="text-gray-500 text-sm font-medium">{propLocation}</p>
+              </div>
+              
+              <div className={`p-6 rounded-xl border ${styles.border} ${styles.bg}`}>
+                <p className={`text-xs ${styles.labelText} font-bold uppercase tracking-wider mb-2`}>Grau de Risco Detectado</p>
+                <p className={`text-3xl font-black ${styles.text} uppercase`}>{risco}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t pt-8 flex justify-between items-end text-sm text-gray-500">
+            <div>
+              <p className="font-bold text-gray-800">Agrolex IA - Security Division</p>
+              <p className="text-xs">Validador de Cadeia Dominial Automático</p>
+            </div>
+            <div className="text-right">
+              <p>Data de Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
+              <p className="text-xs font-mono">Hash SHA-256: {searchParams.get('id')?.slice(0, 8) || 'mock'}e4c1a2f3f9829b3c4f5a6b7c8d9e0f</p>
+            </div>
+          </div>
+        </div>
+
         <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-brand-green mb-6 transition-colors w-fit font-medium print:hidden">
           <ArrowLeft size={20} /> Voltar ao painel
         </Link>
@@ -204,6 +297,13 @@ function ResultadoContent() {
               </p>
             )}
           </section>
+
+          {/* Mapa Interativo Geoespacial */}
+          {showMap && (
+            <section className="print:hidden">
+              <InteractiveMap />
+            </section>
+          )}
 
           {/* LINHA DO TEMPO (Renderizada apenas se existir) */}
           {findings.linhaDoTempo && findings.linhaDoTempo.length > 0 && (
@@ -341,7 +441,26 @@ function ResultadoContent() {
             </section>
           )}
 
+          {/* Assinatura do Perito em Impressão */}
+          <div className="hidden print:block pt-16 mt-16 border-t-2 border-gray-200">
+            <div className="flex justify-between items-center">
+              <div className="w-64 text-center">
+                <div className="h-10 border-b border-gray-400 mx-auto w-48 mb-2"></div>
+                <p className="font-bold text-gray-800 text-sm">Assinatura do Auditor IA</p>
+                <p className="text-xs text-gray-500">Agrolex Security Engine</p>
+              </div>
+              <div className="w-64 text-center">
+                <div className="h-10 border-b border-gray-400 mx-auto w-48 mb-2"></div>
+                <p className="font-bold text-gray-800 text-sm">Responsável Técnico</p>
+                <p className="text-xs text-gray-500">CREA / CNPeritos nº 45.291</p>
+              </div>
+            </div>
+          </div>
+
           <div className="mt-8 pt-8 border-t-2 border-gray-100 flex flex-col sm:flex-row justify-end gap-4 print:hidden">
+            <button onClick={handleShareWhatsApp} className="px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+              Compartilhar WhatsApp
+            </button>
             <button onClick={handleExportPDF} className="px-8 py-4 border-2 border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-colors">
               Exportar PDF
             </button>

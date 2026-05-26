@@ -100,6 +100,7 @@ export default function DashboardPage() {
           </Link>
           <div className="flex gap-4 items-center">
             <span className="text-sm font-medium">Olá, {userName}</span>
+            <Link href="/dashboard/configuracoes" className="text-sm hover:text-brand-gold transition-colors font-medium">Configurações</Link>
             <button onClick={handleLogout} className="text-sm hover:text-brand-gold transition-colors font-medium">Sair</button>
           </div>
         </div>

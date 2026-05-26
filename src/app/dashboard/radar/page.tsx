@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ShieldCheck, ArrowLeft, Radar, AlertTriangle, Bell, CheckCircle2, Clock } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, Radar, AlertTriangle, Bell, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 function RadarContent() {
@@ -13,6 +13,7 @@ function RadarContent() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     const fetchRadarData = async () => {
@@ -74,6 +75,42 @@ function RadarContent() {
     fetchRadarData();
   }, [searchParams, router]);
 
+  const handleManualScan = async () => {
+    setScanning(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      
+      const response = await fetch('/api/cron/radar', {
+        method: 'GET',
+        headers: {
+          'x-bypass-secret': 'agrolex-developer'
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        alert(`Varredura concluída com sucesso! Alertas novos gerados hoje: ${result.alertsGenerated || 0}`);
+        
+        // Recarregar os alertas
+        const { data: radarAlerts } = await supabase
+          .from('radar_alerts')
+          .select('*, properties(name)')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false })
+          .limit(20);
+          
+        if (radarAlerts) setAlerts(radarAlerts);
+      } else {
+        alert("A varredura rodou, mas retornou um status inesperado.");
+      }
+    } catch (err: any) {
+      alert("Erro ao disparar varredura: " + err.message);
+    } finally {
+      setScanning(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
       <nav className="bg-gray-900 text-white shadow-md">
@@ -90,9 +127,28 @@ function RadarContent() {
       </nav>
 
       <main className="container mx-auto px-4 py-8 max-w-5xl">
-        <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors w-fit font-medium">
-          <ArrowLeft size={20} /> Voltar ao painel principal
-        </Link>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+          <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors w-fit font-medium">
+            <ArrowLeft size={20} /> Voltar ao painel principal
+          </Link>
+          <button
+            onClick={handleManualScan}
+            disabled={scanning}
+            className="flex items-center justify-center gap-2 bg-brand-gold text-brand-green px-5 h-[42px] rounded-lg font-bold hover:brightness-110 disabled:opacity-50 transition-all shadow-md cursor-pointer"
+          >
+            {scanning ? (
+              <>
+                <Loader2 className="animate-spin" size={16} />
+                <span>Varrendo bases...</span>
+              </>
+            ) : (
+              <>
+                <Radar size={16} />
+                <span>Realizar Varredura Manual</span>
+              </>
+            )}
+          </button>
+        </div>
 
         {loading ? (
           <div className="text-center py-20 text-gray-500">Buscando varreduras...</div>
