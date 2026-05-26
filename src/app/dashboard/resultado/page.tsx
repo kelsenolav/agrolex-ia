@@ -422,7 +422,10 @@ function ResultadoContent() {
           {/* Mapa Interativo Geoespacial */}
           {showMap && (
             <section className="print:hidden">
-              <InteractiveMap />
+              <InteractiveMap 
+                lat={analise?.findings?.latitude || -17.7850} 
+                lng={analise?.findings?.longitude || -50.9220} 
+              />
             </section>
           )}
 

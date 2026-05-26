@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, MapPin, Layers } from "lucide-react";
+import { AlertTriangle, MapPin, Layers, Globe, Compass } from "lucide-react";
 
-export default function InteractiveMap() {
+export default function InteractiveMap({ lat = -17.785, lng = -50.92 }: { lat?: number; lng?: number }) {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [error, setError] = useState(false);
   const mapRef = useRef<any>(null);
@@ -32,7 +32,7 @@ export default function InteractiveMap() {
 
       // Criar mapa
       try {
-        const centerCoords: [number, number] = [-17.785, -50.92];
+        const centerCoords: [number, number] = [lat, lng];
         const map = L.map(containerId).setView(centerCoords, 13);
         mapRef.current = map;
 
@@ -45,13 +45,13 @@ export default function InteractiveMap() {
           }
         ).addTo(map);
 
-        // Coordenadas da Fazenda (Rio Verde - GO)
+        // Coordenadas da Fazenda calculadas dinamicamente baseadas no centro fornecido
         const farmCoords: [number, number][] = [
-          [-17.778, -50.932],
-          [-17.776, -50.910],
-          [-17.795, -50.908],
-          [-17.799, -50.928],
-          [-17.778, -50.932],
+          [lat + 0.007, lng - 0.012],
+          [lat + 0.009, lng + 0.010],
+          [lat - 0.010, lng + 0.012],
+          [lat - 0.014, lng - 0.008],
+          [lat + 0.007, lng - 0.012],
         ];
 
         // Desenhar Fazenda em Verde/Ouro
@@ -64,18 +64,18 @@ export default function InteractiveMap() {
         
         farmPoly.bindPopup(`
           <div style="font-family: sans-serif; padding: 4px;">
-            <strong style="color: #051F15;">Fazenda Boa Esperança</strong><br/>
+            <strong style="color: #051F15;">Perímetro da Propriedade</strong><br/>
             <span>Área Total: 420,5 ha</span><br/>
             <span style="color: #16a34a; font-weight: bold;">Status SIGEF: Homologado</span>
           </div>
         `);
 
-        // Coordenadas da Área de Sobreposição (Área indígena ou APP)
+        // Coordenadas da Área de Sobreposição calculadas dinamicamente
         const overlapCoords: [number, number][] = [
-          [-17.790, -50.918],
-          [-17.796, -50.908],
-          [-17.801, -50.920],
-          [-17.790, -50.918],
+          [lat - 0.005, lng - 0.006],
+          [lat - 0.011, lng + 0.008],
+          [lat - 0.016, lng],
+          [lat - 0.005, lng - 0.006],
         ];
 
         // Desenhar Área de Risco em Vermelho
@@ -90,7 +90,7 @@ export default function InteractiveMap() {
         overlapPoly.bindPopup(`
           <div style="font-family: sans-serif; padding: 4px; color: #991b1b;">
             <strong style="display: flex; align-items: center; gap: 4px;">🚨 ALERTA CRÍTICO</strong>
-            <span>Sobreposição com Reserva Indígena Kadiwéu</span><br/>
+            <span>Sobreposição Detectada</span><br/>
             <strong>Área Afetada: 59,6 ha (14,2%)</strong>
           </div>
         `);
@@ -150,20 +150,20 @@ export default function InteractiveMap() {
         } catch (e) {}
       }
     };
-  }, []);
+  }, [lat, lng]);
 
   if (error) {
     return (
       <div className="h-96 w-full rounded-xl bg-red-50 border border-red-200 flex flex-col items-center justify-center text-red-700 p-6">
         <AlertTriangle size={48} className="mb-4" />
         <p className="font-bold text-lg">Erro ao carregar o mapa satélite</p>
-        <p className="text-sm text-red-500 text-center mt-1">Verifique sua conexão de rede ou as credenciais.</p>
+        <p className="text-sm text-red-500 text-center mt-1">Verifique sua conexão de rede.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-4 print:hidden">
+    <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-5 print:hidden">
       <div className="flex justify-between items-center">
         <h3 className="font-bold text-gray-800 flex items-center gap-2 text-lg">
           <Layers className="text-brand-green" size={22} /> Monitoramento Geoespacial Ativo (SIGEF/CAR)
@@ -188,7 +188,7 @@ export default function InteractiveMap() {
       </div>
 
       {/* Legenda do Mapa */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-2 text-xs font-semibold text-gray-600">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs font-semibold text-gray-600">
         <div className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
           <span className="w-4 h-4 bg-[#051F15]/30 border-2 border-brand-gold rounded"></span>
           <span>Fazenda: 420.5ha</span>
@@ -199,8 +199,31 @@ export default function InteractiveMap() {
         </div>
         <div className="col-span-2 md:col-span-1 flex items-center gap-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
           <MapPin className="text-brand-gold" size={16} />
-          <span>Rio Verde, GO (SIGEF)</span>
+          <span>Coord: {lat.toFixed(4)}, {lng.toFixed(4)}</span>
         </div>
+      </div>
+
+      {/* Botão Google Earth 3D */}
+      <div className="bg-gradient-to-r from-blue-950/5 to-emerald-950/5 border border-gray-200/50 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-blue-500/10 p-2.5 rounded-xl text-blue-600 border border-blue-500/20">
+            <Globe className="animate-pulse" size={24} />
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-800 text-sm">Navegação Google Earth 3D</h4>
+            <p className="text-gray-500 text-xs mt-0.5 leading-relaxed">
+              Explore o relevo, hidrografia e vegetação em 3D real usando o Google Earth direto nas coordenadas desta matrícula.
+            </p>
+          </div>
+        </div>
+        <a
+          href={`https://earth.google.com/web/search/${lat},${lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-2 shadow-md cursor-pointer text-center"
+        >
+          <Compass size={14} /> Abrir no Google Earth
+        </a>
       </div>
     </div>
   );
