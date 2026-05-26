@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { ShieldCheck, ArrowLeft, AlertTriangle, FileCheck, Info, CheckCircle2, Loader2, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import dynamic from 'next/dynamic';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 
 const InteractiveMap = dynamic(() => import('./InteractiveMap'), { ssr: false });
 
@@ -76,6 +77,12 @@ function ResultadoContent() {
     return () => clearInterval(interval);
   }, [analise]);
 
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const handleExportPDF = () => {
     window.print();
   };
@@ -89,24 +96,64 @@ function ResultadoContent() {
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  const handleExportWord = () => {
+    const cleanResumo = findings.resumo?.replace(/<[^>]*>/g, ''); // Limpa tags HTML básicas para o doc
+    const docHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <title>Parecer Forense Fundiário - Agrilex IA</title>
+        <style>
+          body { font-family: Arial, sans-serif; font-size: 11pt; color: #111827; line-height: 1.5; }
+          h1 { color: #051F15; font-size: 20pt; border-bottom: 2px solid #d4af37; padding-bottom: 5px; }
+          h2 { color: #051F15; font-size: 14pt; margin-top: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 3px; }
+          .meta { font-size: 10pt; color: #6b7280; margin-bottom: 20px; }
+          .footer { font-size: 8pt; color: #9ca3af; text-align: center; margin-top: 50px; }
+        </style>
+      </head>
+      <body>
+        <h1>AGRILEX IA - PARECER FORENSE FUNDIÁRIO</h1>
+        <div class="meta">
+          <p><strong>Propriedade:</strong> ${propName}</p>
+          <p><strong>Localização:</strong> ${propLocation}</p>
+          <p><strong>Grau de Risco:</strong> ${risco?.toUpperCase()}</p>
+          <p><strong>Identificador:</strong> #${searchParams.get('id') || 'MOCK-DEMO'}</p>
+          <p><strong>Emissão:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
+        </div>
+        
+        <h2>1. PARECER EXECUTIVO</h2>
+        <p>${cleanResumo || 'Documento sem parecer cadastrado.'}</p>
+        
+        <h2>2. INCONSISTÊNCIAS CRÍTICAS</h2>
+        <ul>
+          ${findings.problemas?.map((p: string) => `<li>${p}</li>`).join('') || '<li>Nenhuma inconformidade crítica listada.</li>'}
+        </ul>
+        
+        <h2>3. RECOMENDAÇÕES DA AUDITORIA</h2>
+        <ul>
+          ${findings.recomendacoes?.map((r: string) => `<li>${r}</li>`).join('') || '<li>Nenhuma recomendação preventiva.</li>'}
+        </ul>
+        
+        <div class="footer">
+          <p>Documento confidencial gerado por inteligência artificial forense. Validação em /validar</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob(['\\ufeff', docHtml], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Parecer_Forense_${propName?.replace(/\\s+/g, '_')}.doc`;
+    a.click();
+  };
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-brand-green" size={48} /></div>;
   }
 
   if (analise && analise.status === 'processing') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border-t-4 border-brand-green">
-          <div className="w-20 h-20 bg-brand-green text-white rounded-full flex items-center justify-center mx-auto mb-6">
-            <Loader2 size={40} className="animate-spin" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Agrilex em Ação...</h2>
-          <p className="text-gray-600 mb-6">
-            O sistema está auditando as páginas e extraindo os dados. Pode demorar até 1 minuto. Você receberá um E-mail assim que acabar, sinta-se livre para fechar ou aguardar aqui!
-          </p>
-        </div>
-      </div>
-    );
+    return <ScanningLoader />;
   }
 
   const isMock = !analise;
@@ -115,6 +162,33 @@ function ResultadoContent() {
   const propName = isMock ? "Fazenda Boa Esperança (Amostra)" : analise.properties?.name;
   const propLocation = isMock ? "Goiás, GO" : `${analise.properties?.city}, ${analise.properties?.state}`;
   const risco = isMock ? "Alto" : (analise.risk_level || "Pendente");
+
+  const radarData = risco?.toLowerCase() === 'alto' 
+    ? [
+        { subject: 'Registral', value: 45 },
+        { subject: 'Ambiental', value: 80 },
+        { subject: 'SIGEF/Geo', value: 30 },
+        { subject: 'Judicial', value: 75 },
+        { subject: 'Financeiro', value: 50 },
+        { subject: 'Trabalhista', value: 90 },
+      ]
+    : risco?.toLowerCase() === 'medio' || risco?.toLowerCase() === 'médio'
+    ? [
+        { subject: 'Registral', value: 75 },
+        { subject: 'Ambiental', value: 85 },
+        { subject: 'SIGEF/Geo', value: 80 },
+        { subject: 'Judicial', value: 80 },
+        { subject: 'Financeiro', value: 85 },
+        { subject: 'Trabalhista', value: 95 },
+      ]
+    : [
+        { subject: 'Registral', value: 95 },
+        { subject: 'Ambiental', value: 98 },
+        { subject: 'SIGEF/Geo', value: 95 },
+        { subject: 'Judicial', value: 96 },
+        { subject: 'Financeiro', value: 95 },
+        { subject: 'Trabalhista', value: 99 },
+      ];
   
   const mockText = selectedModules
     .map(m => mockResponses[m])
@@ -281,6 +355,39 @@ function ResultadoContent() {
         {/* Corpo do Relatório */}
         <div className="bg-white p-8 rounded-b-2xl shadow-lg border border-gray-100 space-y-10 print:shadow-none print:border-none print:p-4">
           
+          {/* Gráfico Radar de Riscos (B2B SaaS) */}
+          <section className="bg-gradient-to-br from-slate-900 to-gray-950 p-6 rounded-2xl border border-slate-800/80 shadow-xl text-white flex flex-col md:flex-row items-center gap-6 print:hidden">
+            <div className="flex-1 space-y-4">
+              <h3 className="text-xl font-bold flex items-center gap-2 text-brand-gold">
+                <ShieldCheck size={24} /> Radar Hexagonal de Riscos
+              </h3>
+              <p className="text-gray-400 text-xs leading-relaxed">
+                Este gráfico mapeia a vulnerabilidade da propriedade nas principais categorias de governança territorial. Pontuações baixas indicam vulnerabilidades e riscos elevados identificados pela IA.
+              </p>
+              <div className="grid grid-cols-2 gap-3 text-xs pt-2 font-medium">
+                <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 bg-brand-gold rounded-full"></span><span>Registral: {radarData[0].value}%</span></div>
+                <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></span><span>Ambiental: {radarData[1].value}%</span></div>
+                <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 bg-red-500 rounded-full"></span><span>SIGEF/Geo: {radarData[2].value}%</span></div>
+                <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 bg-blue-500 rounded-full"></span><span>Judicial: {radarData[3].value}%</span></div>
+              </div>
+            </div>
+            
+            <div className="w-full md:w-64 h-64 relative flex items-center justify-center">
+              {mounted ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+                    <PolarGrid stroke="#374151" />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#9ca3af', fontSize: 10, fontWeight: 'bold' }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: '#4b5563' }} />
+                    <Radar name="Fazenda" dataKey="value" stroke="#d4af37" fill="#d4af37" fillOpacity={0.25} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-gray-600 text-xs">Carregando gráfico de riscos...</div>
+              )}
+            </div>
+          </section>
+
           {/* Resumo */}
           <section>
             <h2 className="text-2xl font-bold text-brand-dark mb-4 border-b-2 border-gray-100 pb-3 flex items-center gap-2">
@@ -461,6 +568,9 @@ function ResultadoContent() {
             <button onClick={handleShareWhatsApp} className="px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
               Compartilhar WhatsApp
             </button>
+            <button onClick={handleExportWord} className="px-8 py-4 border-2 border-brand-gold text-brand-dark bg-amber-50 hover:bg-amber-100 rounded-xl font-bold transition-colors">
+              Exportar Word (.doc)
+            </button>
             <button onClick={handleExportPDF} className="px-8 py-4 border-2 border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-colors">
               Exportar PDF
             </button>
@@ -470,6 +580,83 @@ function ResultadoContent() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+function ScanningLoader() {
+  const scanMessages = [
+    "Carregando documentos e PDFs do cofre...",
+    "Executando visão computacional em averbações cartoriais...",
+    "Cruzando perímetros no SIGEF e Cadastro Ambiental Rural (CAR)...",
+    "Consultando restrições e embargos reais do IBAMA...",
+    "Varrendo base de dados processuais nos Tribunais de Justiça...",
+    "Sintetizando Parecer Forense com Inteligência Artificial..."
+  ];
+
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setMessageIndex((prev) => (prev + 1) % scanMessages.length);
+    }, 4500);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-white p-4">
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes scan {
+          0% { top: 0%; opacity: 0.8; }
+          50% { top: 100%; opacity: 0.8; }
+          100% { top: 0%; opacity: 0.8; }
+        }
+        .scanner-line {
+          animation: scan 4s infinite ease-in-out;
+        }
+      `}} />
+      
+      <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl shadow-emerald-500/5 max-w-md w-full text-center relative overflow-hidden">
+        
+        {/* Simulação de Documento em Varredura */}
+        <div className="relative w-48 h-60 bg-slate-950 border border-slate-800 rounded-lg mx-auto mb-8 overflow-hidden p-4 flex flex-col justify-between text-left">
+          {/* Laser Line */}
+          <div className="scanner-line absolute left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-500 to-transparent shadow-lg shadow-emerald-500/80 z-20"></div>
+          
+          {/* Document Content Simulation */}
+          <div className="space-y-2 opacity-35 z-10 font-mono text-[6px]">
+            <div className="w-12 h-2 bg-emerald-500 rounded"></div>
+            <div className="w-full h-1 bg-gray-700 rounded"></div>
+            <div className="w-20 h-1 bg-gray-700 rounded"></div>
+            <div className="w-24 h-1.5 bg-gray-700 rounded"></div>
+            <div className="w-16 h-1 bg-gray-700 rounded"></div>
+            <div className="w-32 h-1 bg-gray-700 rounded"></div>
+            <div className="w-full h-1 bg-gray-700 rounded"></div>
+          </div>
+          
+          <div className="flex justify-between items-center opacity-35 z-10 font-mono text-[6px] border-t border-slate-800 pt-2">
+            <div className="w-8 h-2 bg-gray-700 rounded"></div>
+            <div className="w-10 h-2 bg-brand-gold rounded"></div>
+          </div>
+        </div>
+
+        <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/20">
+          <Loader2 size={32} className="animate-spin text-emerald-400" />
+        </div>
+        
+        <h2 className="text-2xl font-bold tracking-tight text-white mb-2">Auditoria Forense IA</h2>
+        
+        {/* Dynamic Messages */}
+        <div className="h-12 flex items-center justify-center">
+          <p className="text-emerald-400 font-medium text-sm leading-relaxed transition-all duration-500 animate-pulse text-center">
+            {scanMessages[messageIndex]}
+          </p>
+        </div>
+        
+        <p className="text-gray-500 text-xs mt-6 leading-relaxed border-t border-slate-800/50 pt-4">
+          Nossa inteligência artificial está auditando as páginas e extraindo dados críticos. Isso pode levar até 1 minuto. Você receberá um e-mail de conclusão quando finalizado.
+        </p>
+      </div>
     </div>
   );
 }
