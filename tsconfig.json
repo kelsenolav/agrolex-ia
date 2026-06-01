@@ -30,5 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "_BACKUP_AGROLEX_ANTES_ROLLBACK_SPRINT2", "_BACKUP_AGROLEX_ANTES_ROLLBACK_TOTAL_PRE_SPRINTS", "_BACKUP_PRE_ROLLBACK_AGROLEX"]
 }

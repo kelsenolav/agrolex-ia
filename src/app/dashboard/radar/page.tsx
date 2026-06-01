@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ShieldCheck, ArrowLeft, Radar, AlertTriangle, Bell, CheckCircle2, Clock, Loader2 } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, Radar, AlertTriangle, Bell, CheckCircle2, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 function RadarContent() {
@@ -13,7 +13,6 @@ function RadarContent() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activatingId, setActivatingId] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     const fetchRadarData = async () => {
@@ -75,42 +74,6 @@ function RadarContent() {
     fetchRadarData();
   }, [searchParams, router]);
 
-  const handleManualScan = async () => {
-    setScanning(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      
-      const response = await fetch('/api/cron/radar', {
-        method: 'GET',
-        headers: {
-          'x-bypass-secret': 'agrolex-developer'
-        }
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        alert(`Varredura concluída com sucesso! Alertas novos gerados hoje: ${result.alertsGenerated || 0}`);
-        
-        // Recarregar os alertas
-        const { data: radarAlerts } = await supabase
-          .from('radar_alerts')
-          .select('*, properties(name)')
-          .eq('user_id', session.user.id)
-          .order('created_at', { ascending: false })
-          .limit(20);
-          
-        if (radarAlerts) setAlerts(radarAlerts);
-      } else {
-        alert("A varredura rodou, mas retornou um status inesperado.");
-      }
-    } catch (err: any) {
-      alert("Erro ao disparar varredura: " + err.message);
-    } finally {
-      setScanning(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
       <nav className="bg-gray-900 text-white shadow-md">
@@ -127,28 +90,9 @@ function RadarContent() {
       </nav>
 
       <main className="container mx-auto px-4 py-8 max-w-5xl">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-          <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors w-fit font-medium">
-            <ArrowLeft size={20} /> Voltar ao painel principal
-          </Link>
-          <button
-            onClick={handleManualScan}
-            disabled={scanning}
-            className="flex items-center justify-center gap-2 bg-brand-gold text-brand-green px-5 h-[42px] rounded-lg font-bold hover:brightness-110 disabled:opacity-50 transition-all shadow-md cursor-pointer"
-          >
-            {scanning ? (
-              <>
-                <Loader2 className="animate-spin" size={16} />
-                <span>Varrendo bases...</span>
-              </>
-            ) : (
-              <>
-                <Radar size={16} />
-                <span>Realizar Varredura Manual</span>
-              </>
-            )}
-          </button>
-        </div>
+        <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors w-fit font-medium">
+          <ArrowLeft size={20} /> Voltar ao painel principal
+        </Link>
 
         {loading ? (
           <div className="text-center py-20 text-gray-500">Buscando varreduras...</div>
@@ -193,53 +137,20 @@ function RadarContent() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {alerts.map(alert => {
-                      const isSatellite = alert.alert_type === 'RISCO_AMBIENTAL';
-                      return (
-                        <div 
-                          key={alert.id} 
-                          className={`flex gap-4 p-5 rounded-xl border transition-all hover:shadow-md ${
-                            isSatellite 
-                              ? 'bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200 shadow-sm' 
-                              : 'bg-gradient-to-r from-red-50 to-rose-50 border-red-200 shadow-sm'
-                          }`}
-                        >
-                          <div className="flex-shrink-0 mt-1">
-                            {isSatellite ? (
-                              <div className="p-2 bg-emerald-100 rounded-lg text-emerald-700 animate-pulse">
-                                <Radar size={22} />
-                              </div>
-                            ) : (
-                              <div className="p-2 bg-red-100 rounded-lg text-red-700">
-                                <AlertTriangle size={22} />
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-grow">
-                            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                              <div className="flex items-center gap-2">
-                                <span className={`font-bold ${isSatellite ? 'text-emerald-900' : 'text-red-950'}`}>
-                                  {alert.properties?.name}
-                                </span>
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                                  isSatellite 
-                                    ? 'bg-emerald-200/60 text-emerald-800 border border-emerald-300/50' 
-                                    : 'bg-red-200/60 text-red-800 border border-red-300/50'
-                                }`}>
-                                  {isSatellite ? '📡 Sentinel-2 Satélite' : '⚖️ Risco Governamental'}
-                                </span>
-                              </div>
-                              <span className="text-xs text-gray-500 flex items-center gap-1">
-                                <Clock size={12}/> {new Date(alert.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                            <p className={`text-sm leading-relaxed ${isSatellite ? 'text-emerald-850' : 'text-red-900'}`}>
-                              {alert.message}
-                            </p>
-                          </div>
+                    {alerts.map(alert => (
+                      <div key={alert.id} className="flex gap-4 p-4 rounded-lg bg-red-50 border border-red-100">
+                        <div className="flex-shrink-0 mt-1">
+                          <AlertTriangle className="text-red-600" size={24} />
                         </div>
-                      );
-                    })}
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold text-red-800">{alert.properties?.name}</span>
+                            <span className="text-xs text-gray-500 flex items-center gap-1"><Clock size={12}/> {new Date(alert.created_at).toLocaleDateString()}</span>
+                          </div>
+                          <p className="text-sm text-red-900 leading-relaxed">{alert.message}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -254,7 +165,7 @@ function RadarContent() {
 
 export default function RadarPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50 text-brand-green">Carregando Radar...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-500">Carregando Radar...</div>}>
       <RadarContent />
     </Suspense>
   );
