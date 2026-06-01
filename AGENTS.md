@@ -29,7 +29,14 @@
 - **Resultados de validação**: `npm run build`, `npm run lint` e `npm test` aprovados com 100% de sucesso.
 - **Deploy**: Efetuado com `vercel --prod --yes`.
 - **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
-- **Problemas restantes**: Revalidar Sprint 1 e Sprint 2 e planejar reimplantação controlada do Sprint 3.
+- **Data**: 01/06/2026
+- **Arquivos alterados**: `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/dashboard/page.tsx`, `src/app/dashboard/planos/page.tsx`, `src/app/dashboard/cofre/page.tsx`, `src/app/dashboard/nova-analise/page.tsx`, `src/app/dashboard/radar/page.tsx`, `src/app/dashboard/resultado/page.tsx`, `src/app/(auth)/cadastro/page.tsx`, `src/app/(auth)/login/page.tsx`, `src/app/api/analyze/route.ts`, `src/app/api/webhook/mercadopago/route.ts`, `src/app/cofre/view/[id]/page.tsx`, `src/lib/supabase.ts`, `package.json`, `package-lock.json`, `tsconfig.json`, `eslint.config.mjs`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Rotas afetadas**: `/`, `/dashboard`, `/dashboard/planos`, `/dashboard/cofre`, `/dashboard/nova-analise`, `/dashboard/radar`, `/dashboard/resultado`, `/login`, `/cadastro`
+- **Botões corrigidos**: Restaurada interface simplificada padrão pré-sprint 1 com redirecionamento de mock em localStorage e sem módulos proibidos.
+- **Resultados de validação**: `npm run build` e `npm run lint` aprovados com 100% de sucesso.
+- **Deploy**: Efetuado com sucesso via `vercel --prod --yes`.
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
+- **Problemas restantes**: Aguardar homologação do usuário pós-rollback total para reimplantação progressiva.
 
 
 
