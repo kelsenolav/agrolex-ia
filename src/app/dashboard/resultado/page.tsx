@@ -277,12 +277,21 @@ function ResultadoContent() {
                 <AlertTriangle className="text-red-500" size={24} /> Problemas / Divergências
               </h2>
               <ul className="space-y-4">
-                {findings.problemas?.map((prob: string, i: number) => (
-                  <li key={i} className="flex items-start gap-4 bg-red-50 p-4 rounded-xl border border-red-100 shadow-sm print:shadow-none print:bg-white">
-                    <div className="mt-0.5 bg-red-200 rounded-full p-1.5"><AlertTriangle size={16} className="text-red-700" /></div>
-                    <span className="text-red-900 font-medium">{prob}</span>
-                  </li>
-                ))}
+                {(Array.isArray(findings.problemas) ? findings.problemas : []).map((prob: any, i: number) => {
+                  const titulo = typeof prob === 'string' ? prob : prob.titulo || prob.descricao || 'Problema identificado';
+                  const descricao = typeof prob === 'string' ? null : prob.descricao;
+                  return (
+                    <li key={i} className="flex flex-col gap-3 bg-red-50 p-4 rounded-xl border border-red-100 shadow-sm print:shadow-none print:bg-white">
+                      <div className="flex items-start gap-4">
+                        <div className="mt-0.5 bg-red-200 rounded-full p-1.5"><AlertTriangle size={16} className="text-red-700" /></div>
+                        <div>
+                          <span className="text-red-900 font-semibold">{titulo}</span>
+                          {descricao && <p className="text-red-700 mt-2">{descricao}</p>}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
 

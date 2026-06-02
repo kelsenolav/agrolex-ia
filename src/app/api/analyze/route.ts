@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { buildLegalAuditPrompt } from '@/lib/auditPromptBuilder';
+import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRecommendationsFromReport } from '@/lib/reportExtractors';
 
 export const maxDuration = 60;
 
@@ -399,6 +400,10 @@ export async function POST(req: Request) {
       const riskLevel = derivedRisk.level;
       const riskLevelSource = derivedRisk.source;
 
+      const parsedProblemas = extractProblemsFromReport(markdownResponse);
+      const parsedDocumentosFaltantes = extractMissingDocumentsFromReport(markdownResponse);
+      const parsedRecomendacoes = extractRecommendationsFromReport(markdownResponse);
+
       let latitude: number | null = null;
       let longitude: number | null = null;
 
@@ -426,9 +431,9 @@ export async function POST(req: Request) {
         ...updatedFindings,
         isHtmlResumo: false,
         resumo: markdownResponse,
-        problemas: [],
-        recomendacoes: [],
-        documentosFaltantes: [],
+        problemas: parsedProblemas,
+        recomendacoes: parsedRecomendacoes,
+        documentosFaltantes: parsedDocumentosFaltantes,
         linhaDoTempo: [],
         checklist: [],
         amountPaid: amountPaid,
@@ -439,6 +444,8 @@ export async function POST(req: Request) {
         current_step: "Parecer técnico concluído.",
         completed_at: new Date().toISOString(),
         risk_level_source: riskLevelSource,
+        structured_extract_source: 'local_parser',
+        structured_extract_at: new Date().toISOString(),
         ...(riskLevelSource === 'ai_section' ? { risk_level_detected_at: new Date().toISOString() } : {})
       };
 
