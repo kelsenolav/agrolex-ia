@@ -115,3 +115,13 @@
 - **URL validada**: Painel de Nova Análise validado localmente.
 - **Problemas restantes**: Realizar o mapeamento no motor da IA no próximo sub-bloco para processamento.
 
+- **Data**: 02/06/2026
+- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `AGENTS.md`
+- **Rotas afetadas**: `/api/analyze`
+- **Botões corrigidos**: Mapeamento do processamento da API do motor de IA para normalizar novos e antigos IDs de módulos fundiários de forma transparente e compatível. Introduzidas no prompt a seção obrigatória de 'Limitação do Escopo da Análise' e a estrutura padronizada de Achados (Achado -> Base -> Risco -> Criticidade -> Documento necessário -> Recomendação).
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
+- **Deploy**: Não aplicável (sem deploy neste bloco).
+- **URL validada**: Processamento validado em compilação de produção.
+- **Problemas restantes**: Implementar lógica de desabilitação e avisos de compatibilidade na interface de intake baseada em arquivos anexados (Bloco 7.2).
+
+
