@@ -16,12 +16,24 @@ function normalizeText(value: string): string {
     .trim();
 }
 
+function normalizeSectionText(value: string): string {
+  return value
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\t/g, ' ')
+    .replace(/\u00A0/g, ' ')
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .join('\n')
+    .trim();
+}
+
 function stripSectionHeading(text: string, headingRegex: RegExp): string {
   return text.replace(headingRegex, '').trim();
 }
 
 function extractSection(text: string, headingRegex: RegExp): string | null {
-  const normalized = normalizeText(text);
+  const normalized = normalizeSectionText(text);
   const match = normalized.match(headingRegex);
   if (!match || match.index === undefined) {
     return null;
@@ -30,15 +42,15 @@ function extractSection(text: string, headingRegex: RegExp): string | null {
   const startIndex = match.index;
   const remaining = normalized.slice(startIndex);
 
-  const nextSectionRegex = /(^\s*(?:\d+\.\s*)?(?:1\.\s*IDENTIFICAÇÃO DA ANÁLISE|2\.\s*LIMITAÇÃO DO ESCOPO DA ANÁLISE|3\.\s*DOCUMENTOS ANALISADOS|4\.\s*DADOS EXTRAÍDOS DOS DOCUMENTOS|5\.\s*LINHA DO TEMPO REGISTRAL|6\.\s*ACHADOS TÉCNICOS|7\.\s*DOCUMENTOS FALTANTES|8\.\s*CLASSIFICAÇÃO DE RISCO|9\.\s*RECOMENDAÇÕES|10\.\s*CONCLUSÃO|IDENTIFICAÇÃO DA ANÁLISE|LIMITAÇÃO DO ESCOPO DA ANÁLISE|DOCUMENTOS ANALISADOS|DADOS EXTRAÍDOS DOS DOCUMENTOS|LINHA DO TEMPO REGISTRAL|ACHADOS TÉCNICOS|DOCUMENTOS FALTANTES|CLASSIFICAÇÃO DE RISCO|RECOMENDAÇÕES|CONCLUSÃO)\b)/gmi;
+  const nextSectionRegex = /(^\s*(?:\d+\.\s*)?(?:1\.\s*IDENTIFICAÇÃO DA ANÁLISE|1\.\s*IDENTIFICAÇÃO DA MATRÍCULA|2\.\s*LIMITAÇÃO DO ESCOPO DA ANÁLISE|2\.\s*LIMITAÇÃO DO ESCOPO|3\.\s*DOCUMENTOS ANALISADOS|4\.\s*DADOS EXTRAÍDOS DOS DOCUMENTOS|4\.\s*RESUMO DA CADEIA DOMINIAL|5\.\s*LINHA DO TEMPO REGISTRAL|5\.\s*LINHA DO TEMPO REGISTRAL ESSENCIAL|6\.\s*ACHADOS TÉCNICOS|6\.\s*ACHADOS DOMINIAIS|7\.\s*DOCUMENTOS FALTANTES|8\.\s*CLASSIFICAÇÃO DE RISCO|9\.\s*RECOMENDAÇÕES|10\.\s*CONCLUSÃO|10\.\s*CONCLUSÃO OBJETIVA|IDENTIFICAÇÃO DA ANÁLISE|IDENTIFICAÇÃO DA MATRÍCULA|LIMITAÇÃO DO ESCOPO DA ANÁLISE|LIMITAÇÃO DO ESCOPO|DOCUMENTOS ANALISADOS|DADOS EXTRAÍDOS DOS DOCUMENTOS|RESUMO DA CADEIA DOMINIAL|LINHA DO TEMPO REGISTRAL|LINHA DO TEMPO REGISTRAL ESSENCIAL|ACHADOS TÉCNICOS|ACHADOS DOMINIAIS|DOCUMENTOS FALTANTES|CLASSIFICAÇÃO DE RISCO|RECOMENDAÇÕES|CONCLUSÃO|CONCLUSÃO OBJETIVA)\b)/gmi;
   const remainderAfterFirstChar = remaining.slice(1);
   const nextMatch = remainderAfterFirstChar.search(nextSectionRegex);
 
   if (nextMatch >= 0) {
-    return normalizeText(remaining.slice(0, nextMatch + 1));
+    return normalizeSectionText(remaining.slice(0, nextMatch + 1));
   }
 
-  return normalizeText(remaining);
+  return normalizeSectionText(remaining);
 }
 
 function extractField(text: string, label: string, terminators: string[]): string | null {
@@ -130,14 +142,14 @@ function normalizeRecommendationItem(item: string): string {
 
 export function extractReportSections(resumo: string) {
   return {
-    problemasSection: extractSection(resumo, /(?:\d+\.\s*)?ACHADOS\s+TÉCNICOS/i),
+    problemasSection: extractSection(resumo, /(?:\d+\.\s*)?ACHADOS\s+(?:TÉCNICOS|DOMINIAIS)/i),
     missingDocumentsSection: extractSection(resumo, /(?:\d+\.\s*)?DOCUMENTOS\s+FALTANTES/i),
     recommendationsSection: extractSection(resumo, /(?:\d+\.\s*)?RECOMENDAÇÕES/i)
   };
 }
 
 export function extractProblemsFromReport(resumo: string): ReportProblem[] {
-  const section = extractSection(resumo, /(?:\d+\.\s*)?ACHADOS\s+TÉCNICOS/i);
+  const section = extractSection(resumo, /(?:\d+\.\s*)?ACHADOS\s+(?:TÉCNICOS|DOMINIAIS)/i);
   if (!section) return [];
 
   const blocks = section.split(/ACHADO\s+IDENTIFICADO\s*:/i).slice(1);

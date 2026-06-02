@@ -34,7 +34,11 @@ Não afirme sobreposição geoespacial sem memorial, planta, CAR, SIGEF, coorden
 
   cadeia_dominial: `
 MÓDULO: CADEIA DOMINIAL REGISTRAL
-Analise a cadeia dominial registral. Verifique: origem da matrícula; matrícula anterior; sequência de transmissões; continuidade entre transmitente e adquirente; desmembramentos; unificações; retificações; averbações relevantes; interrupções na cadeia; lacunas documentais; vícios aparentes de continuidade; necessidade de certidões anteriores.
+Foque exclusivamente na cadeia dominial registral: matrícula de origem; matrícula-mãe; atos de transmissão; sequência de proprietários; continuidade entre transmitente e adquirente; desmembramentos; unificações; cancelamentos relevantes; ônus ou gravames que afetem a cadeia; hiatos temporais; rupturas de titularidade; inconsistências de continuidade; documentos faltantes para confirmar a cadeia.
+Não aprofunde análise geoespacial, CAR/SIGEF, origem pública completa, nulidades/fraudes em profundidade, processos judiciais, posse, meio ambiente ou avaliação econômica. Quando esses temas surgirem, escreva apenas: Tema identificado fora do escopo da Cadeia Dominial. Recomenda-se módulo complementar específico.
+Se a cadeia dominial for longa, sintetize os atos intermediários e destaque apenas os eventos juridicamente relevantes. Não transcreva todos os atos em sequência. Agrupe eventos repetitivos por período.
+Limite a resposta deste módulo: linha do tempo com no máximo 12 eventos essenciais; até 5 achados dominiais; documentos faltantes em até 8 itens; recomendações em até 6 itens; conclusão objetiva sem repetir achados.
+Módulos complementares sugeridos, sem aprofundar: origem pública/INCRA/Estado/União -> Auditoria de Origem Pública / Título Fundiário; CAR/SIGEF/memorial/coordenadas/APP/sobreposição -> Auditoria Geoespacial; fraude/grilagem/nulidade estrutural -> Mapeamento de Nulidades e Indícios de Fraude; ação judicial/penhora/litígio -> Auditoria Processual / Litígios.
 Não presuma cadeia dominial completa se os documentos anexados não contiverem todos os atos anteriores.`,
 
   origem_publica: `
@@ -73,6 +77,53 @@ Como foi apresentada apenas uma matrícula, a análise deve se limitar aos eleme
     .filter(Boolean)
     .join('\n');
 
+  const isChainOfTitleOnly = normalizedModules.length === 1 && normalizedModules[0] === 'cadeia_dominial';
+
+  const missingDocumentsInstruction = isChainOfTitleOnly
+    ? `DOCUMENTOS FALTANTES
+Liste somente documentos faltantes necessários para confirmar a cadeia dominial registral, em até 8 itens. Priorize: certidão de inteiro teor atualizada; certidões de inteiro teor das matrículas anteriores; certidão de ônus reais; títulos causais dos atos de transmissão; escrituras públicas; formais de partilha; mandados ou cartas de adjudicação/arrematação; documentos de cancelamento, desmembramento ou unificação. Se o documento faltar apenas para tema fora do escopo, indique em uma frase curta como módulo complementar.`
+    : `DOCUMENTOS FALTANTES
+Liste somente documentos faltantes relevantes ao caso. Considere, quando aplicável: certidão de inteiro teor atualizada; certidão de ônus reais; certidão de ações reais e reipersecutórias; título originário; processo administrativo do órgão fundiário; escritura pública; pacto antenupcial; memorial descritivo; planta; CAR; CCIR; ITR; SIGEF; georreferenciamento; documentos de pagamento ou quitação; laudo ou vistoria de ocupação; certidões pessoais dos proprietários.`;
+
+  const reportFormatInstruction = isChainOfTitleOnly
+    ? `FORMATO DO PARECER
+Produza texto estruturado, com títulos em caixa alta e listas simples. Não use tabelas complexas. Não use Markdown excessivo, caracteres soltos como #, **, \`\`\` ou excesso de asteriscos. Não transcreva a matrícula e não crie narrativa longa.
+Use esta estrutura curta:
+PARECER TÉCNICO DE CADEIA DOMINIAL REGISTRAL
+1. IDENTIFICAÇÃO DA MATRÍCULA
+2. LIMITAÇÃO DO ESCOPO
+3. DOCUMENTOS ANALISADOS
+4. RESUMO DA CADEIA DOMINIAL
+5. LINHA DO TEMPO REGISTRAL ESSENCIAL
+6. ACHADOS DOMINIAIS
+7. DOCUMENTOS FALTANTES
+8. CLASSIFICAÇÃO DE RISCO
+9. RECOMENDAÇÕES
+10. CONCLUSÃO OBJETIVA
+
+LIMITES DE SAÍDA PARA CADEIA DOMINIAL
+Linha do tempo: no máximo 12 eventos essenciais.
+Achados dominiais: no máximo 5, sempre com base documental.
+Documentos faltantes: no máximo 8 itens.
+Recomendações: no máximo 6 itens práticos.
+Conclusão: objetiva, sem repetir os achados.
+Evite repetir o mesmo fato em várias seções. Agrupe atos repetitivos por período e destaque continuidade, rupturas e riscos dominiais.
+Este módulo não substitui auditoria geoespacial, auditoria de origem pública, auditoria processual ou mapeamento aprofundado de nulidades. Quando esses temas surgirem, apenas indique a necessidade de módulo complementar.`
+    : `FORMATO DO PARECER
+Produza texto estruturado, com títulos em caixa alta e listas simples. Evite caracteres soltos de Markdown como #, **, \`\`\` ou excesso de asteriscos. Não use tabelas complexas.
+Use esta estrutura:
+PARECER TÉCNICO FORENSE DE AUDITORIA FUNDIÁRIA
+1. IDENTIFICAÇÃO DA ANÁLISE
+2. LIMITAÇÃO DO ESCOPO DA ANÁLISE
+3. DOCUMENTOS ANALISADOS
+4. DADOS EXTRAÍDOS DOS DOCUMENTOS
+5. LINHA DO TEMPO REGISTRAL, SE APLICÁVEL
+6. ACHADOS TÉCNICOS
+7. DOCUMENTOS FALTANTES
+8. CLASSIFICAÇÃO DE RISCO
+9. RECOMENDAÇÕES
+10. CONCLUSÃO`;
+
   return `Você é um Perito Forense Fundiário Sênior e especialista em Direito Agrário, Direito Registral e regularização fundiária.
 Leia exclusivamente os documentos anexados e produza um parecer técnico prudente, auditável e útil para advogado, produtor rural e cliente final.
 
@@ -100,8 +151,7 @@ RECOMENDAÇÃO:
 MÓDULOS SOLICITADOS
 ${selectedModuleInstructions || 'Nenhum módulo reconhecido foi informado. Declare a limitação do escopo e não produza conclusões categóricas.'}
 
-DOCUMENTOS FALTANTES
-Liste somente documentos faltantes relevantes ao caso. Considere, quando aplicável: certidão de inteiro teor atualizada; certidão de ônus reais; certidão de ações reais e reipersecutórias; título originário; processo administrativo do órgão fundiário; escritura pública; pacto antenupcial; memorial descritivo; planta; CAR; CCIR; ITR; SIGEF; georreferenciamento; documentos de pagamento ou quitação; laudo ou vistoria de ocupação; certidões pessoais dos proprietários.
+${missingDocumentsInstruction}
 
 CLASSIFICAÇÃO DE RISCO
 Classifique e justifique o risco como:
@@ -110,20 +160,7 @@ Médio: lacunas documentais relevantes, sem indício grave.
 Alto: indícios relevantes de vício, omissão, origem pública mal documentada, inconsistência registral ou risco jurídico concreto.
 Crítico: indícios fortes de fraude, nulidade estrutural, duplicidade registral, sobreposição grave, origem pública irregular ou risco iminente de litígio ou indisponibilidade.
 
-FORMATO DO PARECER
-Produza texto estruturado, com títulos em caixa alta e listas simples. Evite caracteres soltos de Markdown como #, **, \`\`\` ou excesso de asteriscos. Não use tabelas complexas.
-Use esta estrutura:
-PARECER TÉCNICO FORENSE DE AUDITORIA FUNDIÁRIA
-1. IDENTIFICAÇÃO DA ANÁLISE
-2. LIMITAÇÃO DO ESCOPO DA ANÁLISE
-3. DOCUMENTOS ANALISADOS
-4. DADOS EXTRAÍDOS DOS DOCUMENTOS
-5. LINHA DO TEMPO REGISTRAL, SE APLICÁVEL
-6. ACHADOS TÉCNICOS
-7. DOCUMENTOS FALTANTES
-8. CLASSIFICAÇÃO DE RISCO
-9. RECOMENDAÇÕES
-10. CONCLUSÃO
+${reportFormatInstruction}
 
 INSTRUÇÃO SOBRE COORDENADAS
 Somente inclua, na última linha, o marcador COORDS: lat, lng se coordenadas exatas constarem dos documentos anexados. Não estime coordenadas e não invente localização.
