@@ -16,63 +16,114 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
 }
 
 type RiskLevel = 'Baixo' | 'Médio' | 'Alto' | 'Crítico';
+type RiskLevelSource = 'ai_section' | 'ai_text' | 'fallback';
 
-const riskLevelPatterns: Array<{ level: RiskLevel; terms: RegExp[] }> = [
-  {
-    level: 'Crítico',
-    terms: [
-      /\bclassificacao\s+de\s+risco\s*(?::|-|\n)\s*critico\b/,
-      /\brisco\s*:\s*critico\b/,
-      /\brisco\s+critico\b/,
-      /\bclassificacao\s*:\s*critico\b/
-    ]
-  },
-  {
-    level: 'Alto',
-    terms: [
-      /\bclassificacao\s+de\s+risco\s*(?::|-|\n)\s*alto\b/,
-      /\brisco\s*:\s*alto\b/,
-      /\brisco\s+alto\b/,
-      /\bclassificacao\s*:\s*alto\b/
-    ]
-  },
-  {
-    level: 'Médio',
-    terms: [
-      /\bclassificacao\s+de\s+risco\s*(?::|-|\n)\s*medio\b/,
-      /\brisco\s*:\s*medio\b/,
-      /\brisco\s+medio\b/,
-      /\bclassificacao\s*:\s*medio\b/
-    ]
-  },
-  {
-    level: 'Baixo',
-    terms: [
-      /\bclassificacao\s+de\s+risco\s*(?::|-|\n)\s*baixo\b/,
-      /\brisco\s*:\s*baixo\b/,
-      /\brisco\s+baixo\b/,
-      /\bclassificacao\s*:\s*baixo\b/
-    ]
+interface DerivedRiskLevel {
+  level: RiskLevel;
+  source: RiskLevelSource;
+}
+
+/**
+ * Extrai a seção de "CLASSIFICAÇÃO DE RISCO" do parecer
+ * Retorna um trecho de até 1000 caracteres a partir do início da seção
+ */
+function extractRiskClassificationSection(resumo: string): string | null {
+  // Normalizar para busca: minúsculas + remover acentos
+  const normalized = resumo
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  
+  // Possíveis títulos de seção (ordem: mais específicos primeiro)
+  const sectionTitles = [
+    /\d+\.\s*classificacao\s+de\s+risco/,
+    /classificacao\s+de\s+risco\s*[:)\-\n]/,  // com separador após
+    /classificacao\s+de\s+risco\b/,           // como palavra completa
+    /grau\s+de\s+risco\s*[:)\-\n]/,
+    /grau\s+de\s+risco\b/,
+    /risco\s+final\s*[:)\-\n]/,
+    /risco\s+final\b/
+  ];
+  
+  for (const titleRegex of sectionTitles) {
+    const match = normalized.match(titleRegex);
+    if (match) {
+      // Começar do match e pegar até 1000 caracteres
+      const startIdx = match.index || 0;
+      const section = resumo.substring(startIdx, startIdx + 1000);
+      return section;
+    }
   }
-];
+  
+  return null;
+}
 
-function findExplicitRiskLevelFromResumo(resumo: string): RiskLevel | null {
-  const normalizedResumo = resumo
+/**
+ * Procura um nível de risco em um trecho de texto normalizado
+ * Prioridade: Crítico > Alto > Médio > Baixo
+ * Usa busca simples (indexOf) para máxima compatibilidade
+ */
+function findRiskLevelInText(normalizedText: string): RiskLevel | null {
+  // Ordem de prioridade: Crítico > Alto > Médio > Baixo
+  const patterns = [
+    { level: 'Crítico' as RiskLevel, keywords: ['critico', 'crítico'] },
+    { level: 'Alto' as RiskLevel, keywords: ['alto'] },
+    { level: 'Médio' as RiskLevel, keywords: ['medio', 'médio'] },
+    { level: 'Baixo' as RiskLevel, keywords: ['baixo'] }
+  ];
+  
+  for (const { level, keywords } of patterns) {
+    for (const keyword of keywords) {
+      if (normalizedText.includes(keyword)) {
+        return level;
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Deriva o risk level com prioridade: seção explícita > busca genérica > fallback
+ * Retorna tanto o nível quanto a fonte (ai_section | ai_text | fallback)
+ */
+function deriveRiskLevelFromResumo(resumo: string): DerivedRiskLevel {
+  const normalizedFull = resumo
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-  for (const { level, terms } of riskLevelPatterns) {
-    if (terms.some((term) => term.test(normalizedResumo))) {
-      return level;
+  // ESTRATÉGIA 1: Procurar seção explícita de classificação de risco
+  const classificationSection = extractRiskClassificationSection(resumo);
+  if (classificationSection) {
+    const normalizedSection = classificationSection
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    
+    const sectionRiskLevel = findRiskLevelInText(normalizedSection);
+    if (sectionRiskLevel) {
+      return {
+        level: sectionRiskLevel,
+        source: 'ai_section'
+      };
     }
   }
 
-  return null;
-}
+  // ESTRATÉGIA 2: Busca genérica em todo o texto (fallback)
+  const genericRiskLevel = findRiskLevelInText(normalizedFull);
+  if (genericRiskLevel) {
+    return {
+      level: genericRiskLevel,
+      source: 'ai_text'
+    };
+  }
 
-function deriveRiskLevelFromResumo(resumo: string): RiskLevel {
-  return findExplicitRiskLevelFromResumo(resumo) || 'Alto';
+  // ESTRATÉGIA 3: Fallback padrão
+  return {
+    level: 'Alto',
+    source: 'fallback'
+  };
 }
 
 // Parsers locais de arquivos geoespaciais
@@ -344,9 +395,9 @@ export async function POST(req: Request) {
         throw new Error("A IA gerou um laudo incompleto ou muito curto.");
       }
 
-      const explicitRiskLevel = findExplicitRiskLevelFromResumo(markdownResponse);
-      const riskLevel = deriveRiskLevelFromResumo(markdownResponse);
-      const riskLevelSource = explicitRiskLevel ? 'ai_text' : 'fallback';
+      const derivedRisk = deriveRiskLevelFromResumo(markdownResponse);
+      const riskLevel = derivedRisk.level;
+      const riskLevelSource = derivedRisk.source;
 
       let latitude: number | null = null;
       let longitude: number | null = null;
@@ -388,7 +439,7 @@ export async function POST(req: Request) {
         current_step: "Parecer técnico concluído.",
         completed_at: new Date().toISOString(),
         risk_level_source: riskLevelSource,
-        ...(explicitRiskLevel ? { risk_level_detected_at: new Date().toISOString() } : {})
+        ...(riskLevelSource === 'ai_section' ? { risk_level_detected_at: new Date().toISOString() } : {})
       };
 
       const { error: dbError } = await supabaseAdmin
