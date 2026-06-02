@@ -79,37 +79,58 @@ Como foi apresentada apenas uma matrícula, a análise deve se limitar aos eleme
 
   const isChainOfTitleOnly = normalizedModules.length === 1 && normalizedModules[0] === 'cadeia_dominial';
 
-  const missingDocumentsInstruction = isChainOfTitleOnly
-    ? `DOCUMENTOS FALTANTES
-Liste somente documentos faltantes necessários para confirmar a cadeia dominial registral, em até 8 itens. Priorize: certidão de inteiro teor atualizada; certidões de inteiro teor das matrículas anteriores; certidão de ônus reais; títulos causais dos atos de transmissão; escrituras públicas; formais de partilha; mandados ou cartas de adjudicação/arrematação; documentos de cancelamento, desmembramento ou unificação. Se o documento faltar apenas para tema fora do escopo, indique em uma frase curta como módulo complementar.`
-    : `DOCUMENTOS FALTANTES
+  if (isChainOfTitleOnly) {
+    return `Você é um Perito Forense Fundiário Sênior especializado em cadeia dominial registral.
+Leia exclusivamente os documentos anexados e produza uma resposta objetiva, sintética e auditável.
+
+MODO RÁPIDO: CADEIA DOMINIAL REGISTRAL
+Responda de forma objetiva e sintética. Priorize conclusão útil dentro do escopo da cadeia dominial. Não escreva parecer extenso. Não ultrapasse aproximadamente 1.200 palavras.
+Se não conseguir concluir todos os detalhes, escreva: A cadeia dominial exige análise complementar aprofundada, mas os principais eventos identificáveis são...
+
+ESCOPO EXCLUSIVO
+Analise somente: matrícula de origem; matrícula-mãe; atos de transmissão; sequência de proprietários; continuidade entre transmitente e adquirente; desmembramentos; unificações; cancelamentos relevantes; ônus ou gravames que afetem a cadeia; hiatos temporais; rupturas de titularidade; inconsistências de continuidade; documentos faltantes para confirmar a cadeia.
+Não faça análise geoespacial. Não aprofunde origem pública. Não aprofunde nulidades/fraudes. Não aprofunde processos judiciais. Não transcreva todos os atos. Não repita fatos em várias seções.${singleMatriculaNotice}
+
+LIMITES OBRIGATÓRIOS
+- Até 8 eventos registrais relevantes.
+- Até 3 achados dominiais.
+- Até 6 documentos faltantes.
+- Até 5 recomendações.
+- Conclusão de até 2 parágrafos.
+- Agrupe atos repetitivos por período.
+
+MÓDULOS COMPLEMENTARES RECOMENDADOS
+Se identificar temas fora do escopo, apenas cite em lista curta quando aplicável:
+- Origem Pública / Título Fundiário;
+- Auditoria Geoespacial;
+- Nulidades e Indícios de Fraude;
+- Auditoria Processual / Litígios.
+Não aprofunde esses temas.
+
+LINGUAGEM JURÍDICA SEGURA
+Use termos como indício, risco, hipótese a confirmar e não é possível concluir apenas com os documentos apresentados. Não invente fatos nem presuma documentos não anexados.
+
+FORMATO OBRIGATÓRIO
+PARECER SINTÉTICO DE CADEIA DOMINIAL REGISTRAL
+1. IDENTIFICAÇÃO DA MATRÍCULA
+2. CADEIA DOMINIAL ESSENCIAL
+3. EVENTOS REGISTRAIS RELEVANTES
+4. ACHADOS DOMINIAIS
+5. DOCUMENTOS FALTANTES
+6. CLASSIFICAÇÃO DE RISCO
+7. RECOMENDAÇÕES OBJETIVAS
+8. CONCLUSÃO
+
+INSTRUÇÃO SOBRE COORDENADAS
+Somente inclua, na última linha, o marcador COORDS: lat, lng se coordenadas exatas constarem dos documentos anexados. Não estime coordenadas e não invente localização.
+
+AGORA, GERE O PARECER SINTÉTICO.`;
+  }
+
+  const missingDocumentsInstruction = `DOCUMENTOS FALTANTES
 Liste somente documentos faltantes relevantes ao caso. Considere, quando aplicável: certidão de inteiro teor atualizada; certidão de ônus reais; certidão de ações reais e reipersecutórias; título originário; processo administrativo do órgão fundiário; escritura pública; pacto antenupcial; memorial descritivo; planta; CAR; CCIR; ITR; SIGEF; georreferenciamento; documentos de pagamento ou quitação; laudo ou vistoria de ocupação; certidões pessoais dos proprietários.`;
 
-  const reportFormatInstruction = isChainOfTitleOnly
-    ? `FORMATO DO PARECER
-Produza texto estruturado, com títulos em caixa alta e listas simples. Não use tabelas complexas. Não use Markdown excessivo, caracteres soltos como #, **, \`\`\` ou excesso de asteriscos. Não transcreva a matrícula e não crie narrativa longa.
-Use esta estrutura curta:
-PARECER TÉCNICO DE CADEIA DOMINIAL REGISTRAL
-1. IDENTIFICAÇÃO DA MATRÍCULA
-2. LIMITAÇÃO DO ESCOPO
-3. DOCUMENTOS ANALISADOS
-4. RESUMO DA CADEIA DOMINIAL
-5. LINHA DO TEMPO REGISTRAL ESSENCIAL
-6. ACHADOS DOMINIAIS
-7. DOCUMENTOS FALTANTES
-8. CLASSIFICAÇÃO DE RISCO
-9. RECOMENDAÇÕES
-10. CONCLUSÃO OBJETIVA
-
-LIMITES DE SAÍDA PARA CADEIA DOMINIAL
-Linha do tempo: no máximo 12 eventos essenciais.
-Achados dominiais: no máximo 5, sempre com base documental.
-Documentos faltantes: no máximo 8 itens.
-Recomendações: no máximo 6 itens práticos.
-Conclusão: objetiva, sem repetir os achados.
-Evite repetir o mesmo fato em várias seções. Agrupe atos repetitivos por período e destaque continuidade, rupturas e riscos dominiais.
-Este módulo não substitui auditoria geoespacial, auditoria de origem pública, auditoria processual ou mapeamento aprofundado de nulidades. Quando esses temas surgirem, apenas indique a necessidade de módulo complementar.`
-    : `FORMATO DO PARECER
+  const reportFormatInstruction = `FORMATO DO PARECER
 Produza texto estruturado, com títulos em caixa alta e listas simples. Evite caracteres soltos de Markdown como #, **, \`\`\` ou excesso de asteriscos. Não use tabelas complexas.
 Use esta estrutura:
 PARECER TÉCNICO FORENSE DE AUDITORIA FUNDIÁRIA

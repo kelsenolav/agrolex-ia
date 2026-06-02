@@ -360,6 +360,7 @@ export async function POST(req: Request) {
         if (m === "cruzamento") return "cruzamento_total";
         return m;
       })));
+      const isFastChainOfTitleOnly = normalizedModules.length === 1 && normalizedModules[0] === "cadeia_dominial";
       
       const instructions = buildLegalAuditPrompt(normalizedModules, documents);
 
@@ -375,7 +376,10 @@ export async function POST(req: Request) {
 
         const genAI = new GoogleGenerativeAI(geminiKey);
         const modelName = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-        const model = genAI.getGenerativeModel({ model: modelName });
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          ...(isFastChainOfTitleOnly ? { generationConfig: { maxOutputTokens: 2048 } } : {})
+        });
 
         const genStartAt = Date.now();
         const aiPromise = model.generateContent(geminiParts).then(async (result) => {
