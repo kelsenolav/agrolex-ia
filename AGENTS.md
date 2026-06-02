@@ -3,6 +3,11 @@
 ## Agent Rules for AgroLex Project
 
 - **Read** `PROJECT_CONTEXT_AGROLEX.md` **before any task**.
+- **Read** `STABLE_BASELINE_AGROLEX.md` **before changing files**.
+- **Critical files**: do not modify files listed in the stable baseline without diagnosis, risk, tests, and a rollback plan.
+- **Deploy authorization**: do not deploy without explicit user authorization.
+- **Secrets**: never commit secrets or `.env.local`.
+- **Validate** `npm run build`, `npm run lint`, and `npx tsc --noEmit` after changes.
 - **Obey scope**: do not modify APIs, databases, migrations, schemas, or services unless explicitly authorized.
 - **Never re‑introduce** legacy terms (ESG, carbono, EUDR, Carteira B2B, fornecedores, compliance, rastreabilidade, etc.) in main routes.
 - **All visible buttons must have an action** (navigation, scroll, modal, or external link).
