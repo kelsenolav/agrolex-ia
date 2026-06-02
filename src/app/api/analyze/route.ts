@@ -227,9 +227,24 @@ export async function POST(req: Request) {
         gravames_dividas: 199.90,
         cadeia_sucessoria: 299.90,
         credito_carbono: 149.90,
+        matricula_individual: 99.90,
+        cruzamento_matriculas: 149.90,
+        cadeia_dominial: 199.90,
+        origem_publica: 199.90,
+        nulidades_fraudes: 249.90,
+        cruzamento_total: 499.90
       };
       
       const amountPaid = selectedModules.reduce((acc: number, mod: string) => acc + (MODULE_PRICES[mod] || 0), 0);
+
+      // Normalização em memória para montagem do prompt
+      const normalizedModules = Array.from(new Set(selectedModules.map((m: string) => {
+        if (m === "titulos_incra") return "origem_publica";
+        if (m === "registros") return "cadeia_dominial";
+        if (m === "nulidades" || m === "forense") return "nulidades_fraudes";
+        if (m === "cruzamento") return "cruzamento_total";
+        return m;
+      })));
       
       let instructions = `Você é um Perito Forense Fundiário Sênior e Especialista em Direito Agrário/Registral.
 Sua missão é ler atentamente os documentos extraídos anexados e gerar um Parecer Forense rigoroso no formato Markdown.
@@ -239,38 +254,57 @@ INSTRUÇÕES DE FORMATAÇÃO:
 2. Use formatação rica: **negrito** para alertas, listas com bullet points, títulos (###).
 3. Seja profundo, cite os números das matrículas, datas, hectares exatos e embasamento legal.
 
+SEÇÃO OBRIGATÓRIA DE LIMITAÇÃO DO ESCOPO DA ANÁLISE:
+O parecer DEVE conter obrigatoriamente uma seção chamada 'Limitação do Escopo da Análise'. 
+Nela, informe de forma visível que a análise foi realizada exclusivamente com base nos documentos anexados pelo usuário. 
+Caso o usuário tenha anexado apenas matrícula(s), declare explicitamente que os achados são indícios técnicos preliminares sujeitos à confirmação por meio de certidões atualizadas, títulos originários, processos administrativos, memoriais descritivos, CAR, CCIR e SIGEF.
+
+ESTRUTURA DE ACHADOS / CONFORMIDADE:
+Para cada achado relevante identificado nos módulos abaixo, aplique a seguinte estrutura de exposição:
+- **Achado identificado**: Descrição clara da inconformidade ou ponto de atenção.
+- **Base documental**: Páginas ou trechos da matrícula/documento de onde a informação foi extraída.
+- **Risco jurídico/fundiário**: Consequência prática, risco de nulidade, cancelamento ou litígio.
+- **Grau de criticidade**: Baixo, Médio ou Alto.
+- **Documento necessário para confirmação**: Documento complementar ou certidão que deve ser exigida.
+- **Recomendação**: Ação sugerida para sanar ou mitigar o risco.
+
 Os módulos de análise solicitados pelo usuário são:
 `;
 
-      if (selectedModules.includes('titulos_incra')) {
-        instructions += `\n- MÓDULO 1: AUDITORIA DE TÍTULOS INCRA. Verifique minuciosamente TODOS os títulos emitidos pelo INCRA na origem. Identifique Título Definitivo, Contrato de Concessão, etc. Analise pagamento (quitação, inadimplemento, quitação fraudulenta), Prazo de inalienabilidade (venda simulada, alienação antes do prazo), Exploração direta e Residência (posse fictícia), e Acúmulo irregular de lotes.\n`;
+      if (normalizedModules.includes('matricula_individual')) {
+        instructions += `\n- MÓDULO: ANÁLISE DE MATRÍCULA INDIVIDUAL. Verifique identificação do imóvel, número da matrícula, CNM, cartório, comarca, data de abertura, área, localização, proprietários, origem, atos de registro, averbações, ônus, restrições, condições, continuidade registral, inconsistências internas, documentos faltantes e riscos aparentes. Declare expressamente que a análise se limita aos documentos anexados e que, havendo apenas matrícula, as conclusões são indícios técnicos preliminares sujeitos à confirmação documental.\n`;
       }
-      if (selectedModules.includes('registros')) {
-        instructions += `\n- MÓDULO 2: AUDITORIA REGISTRAL E AVERBAÇÕES. Foque na manipulação cartorária, criação de matrículas fantasmas/clonadas, quebra da unicidade matricial. Audite gravames (hipotecas sucessivas, penhoras milionárias, cancelamentos em bloco suspeitos), averbações contraditórias e falsidade ideológica processual (uso de matrícula nula).\n`;
+      if (normalizedModules.includes('cruzamento_matriculas')) {
+        instructions += `\n- MÓDULO: CRUZAMENTO DE MATRÍCULAS. Realize cruzamento entre as matrículas anexadas. Compare áreas, confrontações, origem, relação matrícula mãe/filha, proprietários, datas, transmissões, averbações, continuidade registral, possíveis duplicidades e conflitos de sobreposição narrativa. Se não houver duas ou mais matrículas, declare a limitação e recomende a anexação de matrícula complementar.\n`;
       }
-      if (selectedModules.includes('geoespacial')) {
-        instructions += `\n- MÓDULO 3: AUDITORIA GEOESPACIAL E SIGEF. Verifique a (in)compatibilidade cadastral. Existe CAR, CCIR, SIGEF averbado? Há expansão territorial artificial e divergência de área? Há sobreposição com assentamentos reais, APP ou terras indígenas? Há clonagem de perímetro gerando grilagem de papel?\n`;
+      if (normalizedModules.includes('cadeia_dominial')) {
+        instructions += `\n- MÓDULO: CADEIA DOMINIAL REGISTRAL. Analise a cadeia dominial registral, a cronologia e a continuidade das transmissões, matrícula de origem, desmembramentos, registros, averbações, possíveis quebras de continuidade registral e documentos necessários para confirmação de legitimidade.\n`;
       }
-      if (selectedModules.includes('nulidades')) {
-        instructions += `\n- MÓDULO 4: MAPEAMENTO DE NULIDADES. Estruture o parecer apontando expressamente: Nulidade Absoluta (ex: registro duplicado), Inexistência Jurídica (fraude processual), Violação da Função Social (abandono vs posse pro labore), Nulidade Relativa (erros comunicacionais), e Violações do INCRA.\n`;
+      if (normalizedModules.includes('origem_publica')) {
+        instructions += `\n- MÓDULO: AUDITORIA DE ORIGEM PÚBLICA / TÍTULO FUNDIÁRIO. Analise indícios de origem pública ou título fundiário originário, incluindo emissões pelo INCRA, ITERTINS ou outros órgãos estaduais/federais. Verifique cláusulas resolutivas, inalienabilidade, adimplemento, posse, exploração e necessidade de processo administrativo. Use linguagem prudente: declare indícios, hipóteses a confirmar e documentos pendentes.\n`;
       }
-      if (selectedModules.includes('forense')) {
-        instructions += `\n- MÓDULO 5: INVESTIGAÇÃO FORENSE (GRILAGEM). Aponte indícios de lavagem patrimonial rural, laranjas (interposição fraudulenta), apropriação de terras públicas, padrões repetitivos financeiros (hipotecas para fins especulativos) e falsidade ideológica.\n`;
+      if (normalizedModules.includes('geoespacial')) {
+        instructions += `\n- MÓDULO: AUDITORIA GEOESPACIAL. Verifique a compatibilidade cadastral com memorial descritivo, CAR, CCIR e SIGEF. Identifique sobreposições de perímetros com assentamentos, unidades de conservação, terras indígenas ou imóveis limítrofes, divergências entre área declarada e área registrada, e expansão artificial de polígonos.\n`;
       }
-      if (selectedModules.includes('cruzamento')) {
-        instructions += `\n- MÓDULO 6: CRUZAMENTO SISTÊMICO TOTAL. Cruza as informações de forma magistral: Matrículas antigas vs novas, Matrículas vs Processos judiciais, Matrículas vs Memoriais Físicos (SIGEF), Matrículas vs Posse Fática, Matrículas vs INCRA. Aponte todas as contradições entre os bancos de dados.\n`;
+      if (normalizedModules.includes('nulidades_fraudes')) {
+        instructions += `\n- MÓDULO: MAPEAMENTO DE NULIDADES E INDÍCIOS DE FRAUDE. Identifique vícios registrais, nulidades absolutas (ex: registros duplicados ou sem base), inexistência jurídica (fraudes processuais), simulação, grilagem de papel, falsidade ideológica ou documental, e pontos de potencial impugnação administrativa/judicial.\n`;
       }
-      if (selectedModules.includes('moratoria_soja')) {
-        instructions += `\n- MÓDULO 7: RASTREABILIDADE E MORATÓRIA DA SOJA. Investigue minuciosamente se há evidências de desmatamento (mesmo legal) a partir do marco temporal de Dezembro de 2020 (critério EUDR para exportação para União Europeia) ou após 2008 (critério da Moratória da Soja). Avalie se a área atende aos critérios do TAC da Carne e identifique o nível de conformidade para exportação de commodities agrícolas.\n`;
+      if (normalizedModules.includes('cruzamento_total')) {
+        instructions += `\n- MÓDULO: CRUZAMENTO TOTAL. Realize uma análise ampla, sistêmica e integrada de todos os documentos anexados. Cruza as informações de forma magistral: Matrículas antigas vs novas, Matrículas vs Processos judiciais, Matrículas vs Memoriais Físicos (SIGEF), Matrículas vs Posse Fática, Matrículas vs INCRA. Aponte todas as contradições entre os bancos de dados.\n`;
       }
-      if (selectedModules.includes('gravames_dividas')) {
-        instructions += `\n- MÓDULO 8: DOSSIÊ DE GRAVAMES E GARANTIAS (CPR). Extraia e tabele de forma estruturada todos os ônus ativos registrados na matrícula, como Hipotecas, Cédulas de Produto Rural (CPRs) e Alienações Fiduciárias. Identifique os credores, valores nominais das garantias e datas de vencimento. Faça uma estimativa do endividamento patrimonial em relação à área total.\n`;
+
+      // Módulos adicionais
+      if (normalizedModules.includes('moratoria_soja')) {
+        instructions += `\n- MÓDULO ADICIONAL: RASTREABILIDADE E MORATÓRIA DA SOJA. Investigue desmatamento a partir de Dezembro de 2020 (EUDR) ou após 2008 (Moratória da Soja).\n`;
       }
-      if (selectedModules.includes('cadeia_sucessoria')) {
-        instructions += `\n- MÓDULO 9: CADEIA SUCESSÓRIA FORENSE. Reconstrua cronologicamente a árvore de transmissões e proprietários desde a abertura da matrícula até o proprietário atual. Analise se há indícios de quebra do princípio de trato sucessivo, saltos de registro ou indícios suspeitos de falsificação documental na cadeia registral anterior.\n`;
+      if (normalizedModules.includes('gravames_dividas')) {
+        instructions += `\n- MÓDULO ADICIONAL: DOSSIÊ DE GRAVAMES E GARANTIAS (CPR). Extraia e tabele hipotecas, Cédulas de Produto Rural e alienações fiduciárias.\n`;
       }
-      if (selectedModules.includes('credito_carbono')) {
-        instructions += `\n- MÓDULO 10: ESTIMATIVA DE CRÉDITOS DE CARBONO. Estime o estoque de Carbono e o potencial anual de geração de Créditos de Carbono (tCO2e/ano) das áreas preservadas (Reserva Legal e APP) descritas nos documentos. Faça uma estimativa realista baseada no bioma do imóvel (ex: floresta amazônica, cerrado, mata atlântica) e na área correspondente, projetando a receita anual estimada com a cotação de mercado de créditos voluntários.\n`;
+      if (normalizedModules.includes('cadeia_sucessoria')) {
+        instructions += `\n- MÓDULO ADICIONAL: CADEIA SUCESSÓRIA FORENSE. Reconstrua cronologicamente a árvore de transmissões e proprietários.\n`;
+      }
+      if (normalizedModules.includes('credito_carbono')) {
+        instructions += `\n- MÓDULO ADICIONAL: ESTIMATIVA DE CRÉDITOS DE CARBONO. Estime potencial de geração de Créditos de Carbono.\n`;
       }
 
       instructions += `\nINSTRUÇÃO FINAL: Leia minuciosamente os documentos PDFs anexados com sua visão computacional avançada, extraindo as entrelinhas e as averbações manuscritas/carimbos.
