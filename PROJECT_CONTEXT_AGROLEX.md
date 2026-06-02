@@ -269,8 +269,17 @@ Entregar informações de arquivos alterados, resultados e pendências.
 - **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
 - **Pendências**: Homologação do usuário e planejamento controlado de reimplantação.
 
-
-
-
-
-
+- **Data**: 02/06/2026
+- **Tarefa**: Bloco 2.1 — Restaurar Dashboard Mínimo Confiável Sem Mocks ou Overrides
+- **Arquivos alterados**: `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Removidos completamente os dados mockados da tabela e cards do Dashboard (Fazenda Boa Esperança, Sítio Alvorada).
+  - Implementada a busca de análises reais do Supabase, incluindo os dados em `findings` para validação do parecer.
+  - Implementadas regras estritas de normalização e exibição de status: pending/payment_pending como "Pendente", processing/analisando como "Analisando", completed/done/concluido como "Concluído", e error/failed como "Falha".
+  - Implementadas regras seguras para o botão "Ver Parecer": somente é exibido se o status for concluído e existir `findings.resumo` não vazio. Caso seja concluído mas sem o resumo, exibe "Anomalia: parecer não localizado".
+  - Removido qualquer override visual de simulação que marcava status temporários como concluídos.
+- **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados com 100% de sucesso.
+- **Commit**: `feat: restore reliable dashboard summary` na branch `stable/rebuild-beta-01-laudo-compartilhavel`.
+- **Deploy**: Não efetuado (conforme orientações de governança do bloco).
+- **URL validada localmente**: `/dashboard`
+- **Próximos Passos Recomendados**: Bloco 3 — Restauração controlada do formulário de Nova Análise com as novas validações.

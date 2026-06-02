@@ -43,6 +43,11 @@
 - **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
 - **Problemas restantes**: Aguardar homologação do usuário pós-rollback total para reimplantação progressiva.
 
-
-
-
+- **Data**: 02/06/2026
+- **Arquivos alterados**: `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Rotas afetadas**: `/dashboard`
+- **Botões corrigidos**: Botão "Ver Parecer" condicionado a ter status concluído e findings.resumo preenchido.
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
+- **Deploy**: Não aplicável (sem deploy neste bloco).
+- **URL validada**: Painel validado localmente.
+- **Problemas restantes**: Iniciar o Bloco 3 para restaurar de forma controlada o formulário de Nova Análise.
