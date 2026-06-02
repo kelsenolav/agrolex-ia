@@ -33,7 +33,7 @@ export default function NovaAnalisePage() {
     ];
 
     if (docProfile.hasMatricula) {
-      messages.push("Recomendamos Análise de Matrícula Individual e Cadeia Dominial.");
+      messages.push("Recomendamos Análise de Matrícula Individual.");
     }
     if (!docProfile.hasMultipleMatriculas) {
       messages.push("Cruzamento de Matrículas exige duas ou mais matrículas.");
@@ -77,9 +77,9 @@ export default function NovaAnalisePage() {
   };
 
   const selectAll = () => {
-    // Selecionar somente módulos habilitados para o perfil atual de documentos.
-    const enabledModules = AUDIT_MODULES.filter(m => getModuleCompatibility(m.id, docProfile).enabled).map(m => m.id);
-    setSelectedModules(enabledModules);
+    // Selecionar apenas os módulos recomendados (não todos os habilitados).
+    const recommendedModules = AUDIT_MODULES.filter(m => getModuleCompatibility(m.id, docProfile).recommended).map(m => m.id);
+    setSelectedModules(recommendedModules);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -376,7 +376,7 @@ export default function NovaAnalisePage() {
                   className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-lg transition-colors border border-gray-300 text-sm flex items-center gap-2"
                 >
                   <CheckCircle2 size={16} /> 
-                  Selecionar módulos compatíveis
+                  Selecionar recomendados
                 </button>
               </div>
               

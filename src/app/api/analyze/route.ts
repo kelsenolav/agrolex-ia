@@ -463,17 +463,40 @@ export async function POST(req: Request) {
     } catch (innerError: any) {
       console.error("[Synchronous AI Process] Erro no processamento interno:", innerError);
 
-      const isTimeout = innerError.message?.includes("Timeout:");
-      const technicalErrorType = isTimeout ? "ai_timeout" : "processing_failed";
-      const technicalErrorMessage = innerError.message || "Unknown error";
-      const userMessage = isTimeout
-        ? "Tempo limite excedido na geração do parecer da IA. Tente novamente."
-        : "Não foi possível concluir o parecer técnico neste momento. Tente novamente ou contate o suporte.";
+      const rawMessage = (innerError && (innerError.message || innerError.toString())) || '';
+      const messageLower = rawMessage.toLowerCase();
+      const isTimeout = messageLower.includes("timeout:");
+
+      const aiUnavailableIndicators = [
+        '503',
+        'service unavailable',
+        'high demand',
+        'model is currently experiencing high demand'
+      ];
+
+      const isAiUnavailable = aiUnavailableIndicators.some(p => messageLower.includes(p));
+
+      let technicalErrorType = 'processing_failed';
+      let userMessage = 'Não foi possível concluir o parecer técnico neste momento. Tente novamente ou contate o suporte.';
+      let findingsCurrentStep = 'Falha no processamento do parecer técnico.';
+
+      if (isTimeout) {
+        technicalErrorType = 'ai_timeout';
+        userMessage = 'Tempo limite excedido na geração do parecer da IA. Tente novamente.';
+      } else if (isAiUnavailable) {
+        technicalErrorType = 'ai_unavailable';
+        // Mensagem de etapa salva de forma amigável
+        findingsCurrentStep = 'IA temporariamente indisponível. Tente novamente em alguns minutos.';
+        userMessage = 'A IA está temporariamente indisponível. Tente reprocessar em alguns minutos.';
+      }
+
+      // Sanitize any URLs to avoid leaking endpoints
+      const sanitizedMessage = rawMessage.replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
 
       const failedFindings = {
         ...updatedFindings,
-        current_step: "Falha no processamento do parecer técnico.",
-        error_message: technicalErrorMessage,
+        current_step: findingsCurrentStep,
+        error_message: sanitizedMessage || 'Erro no processamento interno',
         technical_error_type: technicalErrorType,
         failed_at: new Date().toISOString()
       };
@@ -486,7 +509,8 @@ export async function POST(req: Request) {
         })
         .eq('id', analysisId);
 
-      return NextResponse.json({ error: userMessage, type: technicalErrorType }, { status: 500 });
+      const statusCode = isAiUnavailable ? 503 : 500;
+      return NextResponse.json({ error: userMessage, type: technicalErrorType }, { status: statusCode });
     }
 
   } catch (error: any) {

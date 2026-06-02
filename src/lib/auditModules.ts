@@ -194,7 +194,8 @@ export function getModuleCompatibility(moduleId: string, profile: DocumentProfil
     case "cadeia_dominial":
       return {
         enabled: profile.hasMatricula,
-        recommended: profile.hasMatricula,
+        // Recomendar cadeia dominial apenas quando houver múltiplas matrículas
+        recommended: profile.hasMultipleMatriculas,
         reason: "Recomendado anexar matrícula ou certidão de inteiro teor."
       };
       
@@ -217,7 +218,9 @@ export function getModuleCompatibility(moduleId: string, profile: DocumentProfil
     case "nulidades_fraudes":
       return {
         enabled: profile.totalDocuments >= 1,
-        recommended: profile.totalDocuments >= 1,
+        // Não recomendar automaticamente para apenas 1 documento/matrícula;
+        // recomendar apenas quando houver mais de um documento para análise mais rica.
+        recommended: profile.totalDocuments >= 2,
         reason: "Anexe ao menos um documento.",
         warning: profile.totalDocuments === 1 && profile.totalMatriculas === 1
           ? "A análise será limitada a indícios internos da matrícula." 
