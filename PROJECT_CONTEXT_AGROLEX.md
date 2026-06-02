@@ -298,3 +298,17 @@ Entregar informações de arquivos alterados, resultados e pendências.
 - **Deploy**: Não efetuado (conforme orientações de governança do bloco).
 - **URL validada localmente**: `/dashboard/resultado`
 - **Próximos Passos Recomendados**: Bloco 4 — Restauração controlada do fluxo de Nova Análise.
+
+- **Data**: 02/06/2026
+- **Tarefa**: Bloco 4 — Restaurar Formulário de Nova Análise com Upload Real e Registros Reais
+- **Arquivos alterados**: `src/app/dashboard/nova-analise/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Ajustado o formulário de Nova Análise para envio de dados reais com seleção múltipla de focos/módulos de auditoria e cálculo de preço estimado.
+  - O upload de múltiplos documentos em PDF foi re-homologado e direcionado para o Supabase Storage real (bucket `documents`) sob o contexto da conta do usuário autenticado.
+  - A criação de novos registros no banco de dados para `properties`, `documents` e `analyses` foi totalmente integrada baseada em dados reais enviados.
+  - Implementada a marcação inicial segura de status para a análise criada como `payment_pending`.
+  - Normalizado o nome da marca para usar estritamente "AgroLex" na navegação e nos formulários.
+- **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados com 100% de sucesso.
+- **Deploy**: Não efetuado (conforme orientações de governança do bloco).
+- **URL validada localmente**: `/dashboard/nova-analise`
+- **Próximos Passos Recomendados**: Bloco 5 — Restauração controlada do processamento de laudos via IA em background.
