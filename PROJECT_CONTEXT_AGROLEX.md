@@ -310,5 +310,18 @@ Entregar informações de arquivos alterados, resultados e pendências.
   - Normalizado o nome da marca para usar estritamente "AgroLex" na navegação e nos formulários.
 - **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados com 100% de sucesso.
 - **Deploy**: Não efetuado (conforme orientações de governança do bloco).
-- **URL validada localmente**: `/dashboard/nova-analise`
+- **URL validada locais**: `/dashboard/nova-analise`
 - **Próximos Passos Recomendados**: Bloco 5 — Restauração controlada do processamento de laudos via IA em background.
+
+- **Data**: 02/06/2026
+- **Tarefa**: Bloco 4.1 — Desacoplar Nova Análise de Checkout, Crédito e Processing
+- **Arquivos alterados**: `src/app/dashboard/nova-analise/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Transformada a página `/dashboard/nova-analise` em fluxo puro de intake, sem opções de pagamento (Pix, Cartão, Crédito) ou botão de iniciar parecer/IA.
+  - Removidas as referências de estado obsoletas (`paymentMethod`, `paymentStatus`, `userCredits`, `handleStartAnalysis`, `isAnalyzing`).
+  - Adicionada mensagem informativa indicando que a análise foi criada como pendente e a liberação de processamento será restaurada em bloco posterior.
+  - Mantidas a criação de propriedade, documentos e análise com status inicial `payment_pending` e findings estruturados.
+- **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados com 100% de sucesso.
+- **Deploy**: Não efetuado (conforme orientações de governança do bloco).
+- **URL validada localmente**: `/dashboard/nova-analise`
+- **Pendências**: Restabelecer o processamento de laudos via IA em background de forma controlada (Bloco 5).
