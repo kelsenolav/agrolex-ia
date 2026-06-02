@@ -1,96 +1,102 @@
 import { NextResponse } from 'next/server';
-import { MercadoPagoConfig, Preference } from 'mercadopago';
-
-// Pegar token do env
-const ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || 'TEST-6058098319690333-052014-a9d592c30089ffb5e9f8028be5104fb6-1820614051';
-const client = new MercadoPagoConfig({ accessToken: ACCESS_TOKEN, options: { timeout: 5000 } });
+import { createClient } from '@supabase/supabase-js';
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { amountPaid, analysisId, propertyId, userEmail, userName } = body;
-
-    if (!amountPaid) {
-      return NextResponse.json({ error: 'Valor não informado' }, { status: 400 });
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Cabeçalho de autorização ausente' }, { status: 401 });
     }
 
-    const preference = new Preference(client);
-    
-    const host = req.headers.get('host') || 'localhost:3000';
-    const protocol = host.includes('localhost') ? 'http' : 'https';
-    
-    let checkoutUrl = '';
-    let preferenceId = '';
-    let sandboxInitPoint = '';
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-    try {
-      // Gera o link de pagamento do Mercado Pago
-      const response = await preference.create({
-        body: {
-          items: [
-            {
-              id: analysisId || `AGRILEX-${Date.now()}`,
-              title: 'Auditoria Forense Agrilex',
-              description: 'Processamento de análise de risco e extração de dados com IA',
-              quantity: 1,
-              unit_price: Number(amountPaid),
-              currency_id: 'BRL',
-            }
-          ],
-          payer: {
-            email: userEmail || 'comprador@teste.com',
-            name: userName || 'Cliente Agrilex',
-          },
-          back_urls: {
-            success: `${protocol}://${host}/dashboard?payment_status=success&analysisId=${analysisId}`,
-            failure: `${protocol}://${host}/dashboard?payment_status=failure`,
-            pending: `${protocol}://${host}/dashboard?payment_status=pending`,
-          },
-          auto_return: 'approved',
-          statement_descriptor: 'AGRILEX',
-          external_reference: analysisId || 'NO-REF',
-        }
-      });
-      checkoutUrl = response.init_point!;
-      preferenceId = response.id!;
-      sandboxInitPoint = response.sandbox_init_point!;
-    } catch (mpError: any) {
-      if (mpError.message?.toLowerCase().includes('token') || mpError.message?.toLowerCase().includes('unauthorized')) {
-        console.warn('⚠️ Token do Mercado Pago inválido. Simulando aprovação de pagamento para ambiente local...');
-        
-        // Simula o comportamento do Webhook (atualiza para processing)
-        const { createClient } = require('@supabase/supabase-js');
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
-        await supabaseAdmin.from('analyses').update({ status: 'processing' }).eq('id', analysisId);
-        
-        // [CORREÇÃO] Dispara a IA em background para o teste local não travar!
-        fetch(`${protocol}://${host}/api/analyze`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': req.headers.get('authorization') || ''
-          },
-          body: JSON.stringify({ propertyId, analysisId })
-        }).catch(err => console.error("Erro ao disparar IA no mock do checkout:", err));
-
-        checkoutUrl = `${protocol}://${host}/dashboard/resultado?id=${analysisId}`;
-        preferenceId = 'SIMULATED';
-        sandboxInitPoint = checkoutUrl;
-      } else {
-        throw mpError;
-      }
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+      return NextResponse.json({ error: 'Configuração do Supabase incompleta no servidor' }, { status: 500 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      checkoutUrl, 
-      sandboxInitPoint,
-      preferenceId 
+    // Cliente com token do usuário para validar autenticação
+    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false },
+      global: { headers: { Authorization: authHeader } }
     });
+
+    const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Sessão inválida ou expirada' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { analysisId } = body;
+
+    if (!analysisId) {
+      return NextResponse.json({ error: 'analysisId não informado' }, { status: 400 });
+    }
+
+    // Cliente admin para consultar e atualizar com segurança
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false }
+    });
+
+    const { data: analysis, error: fetchError } = await supabaseAdmin
+      .from('analyses')
+      .select('id, user_id, status, findings')
+      .eq('id', analysisId)
+      .single();
+
+    if (fetchError || !analysis) {
+      return NextResponse.json({ error: 'Análise não encontrada' }, { status: 404 });
+    }
+
+    // Validação de ownership
+    if (analysis.user_id !== user.id) {
+      return NextResponse.json({ error: 'Acesso negado: a análise não pertence ao usuário' }, { status: 403 });
+    }
+
+    // Validação de status atual
+    const currentStatus = (analysis.status || '').toLowerCase().trim();
+    if (currentStatus !== 'payment_pending' && currentStatus !== 'pending') {
+      return NextResponse.json({ error: 'Status atual inválido para liberação de processamento' }, { status: 400 });
+    }
+
+    // Validação de selected_modules em findings
+    const findings = analysis.findings || {};
+    const selectedModules = findings.selected_modules;
+    if (!selectedModules || !Array.isArray(selectedModules) || selectedModules.length === 0) {
+      return NextResponse.json({ error: 'A análise não possui módulos de auditoria válidos' }, { status: 400 });
+    }
+
+    // Atualização simulada (sem Mercado Pago, sem IA iniciada)
+    const updatedFindings = {
+      ...findings,
+      payment_mode: "simulated",
+      payment_status: "approved",
+      current_step: "Análise liberada para processamento. Aguardando início da IA.",
+      ready_for_processing_at: new Date().toISOString()
+    };
+
+    const { error: updateError } = await supabaseAdmin
+      .from('analyses')
+      .update({
+        status: 'ready_for_processing',
+        findings: updatedFindings
+      })
+      .eq('id', analysisId);
+
+    if (updateError) {
+      return NextResponse.json({ error: 'Erro ao atualizar a análise: ' + updateError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      mode: "simulated",
+      status: "approved",
+      analysisStatus: "ready_for_processing",
+      analysisId: analysis.id
+    });
+
   } catch (error: any) {
-    console.error('Erro no checkout:', error);
-    return NextResponse.json({ error: error.message || 'Erro ao gerar pagamento' }, { status: 500 });
+    console.error('Erro no checkout de simulação:', error);
+    return NextResponse.json({ error: error.message || 'Erro interno do servidor' }, { status: 500 });
   }
 }

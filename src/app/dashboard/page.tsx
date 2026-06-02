@@ -59,8 +59,39 @@ export default function DashboardPage() {
     router.refresh();
   };
 
+  const handleReleaseProcessing = async (analysisId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert("Sua sessão expirou, faça login novamente.");
+        router.push('/login');
+        return;
+      }
+
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ analysisId })
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || 'Erro ao liberar análise');
+      }
+
+      alert("Análise liberada com sucesso para processamento!");
+      window.location.reload();
+    } catch (err: any) {
+      console.error(err);
+      alert("Erro ao liberar processamento: " + err.message);
+    }
+  };
+
   const analisesConcluidas = analises.filter(a => a.status === 'completed').length;
-  const analisesEmAndamento = analises.filter(a => a.status === 'processing' || a.status === 'pending').length;
+  const analisesEmAndamento = analises.filter(a => a.status === 'processing' || a.status === 'pending' || a.status === 'payment_pending' || a.status === 'ready_for_processing').length;
   const riscosAltos = analises.filter(a => a.risk_level?.toLowerCase() === 'alto').length;
 
   const estatisticas = [
@@ -168,6 +199,10 @@ export default function DashboardPage() {
                     statusText = 'Pendente';
                     statusColorClass = 'bg-amber-100 text-amber-700';
                     statusType = 'pending';
+                  } else if (rawStatus === 'ready_for_processing') {
+                    statusText = 'Liberada';
+                    statusColorClass = 'bg-purple-100 text-purple-700';
+                    statusType = 'ready_for_processing';
                   } else if (rawStatus === 'processing' || rawStatus === 'analisando') {
                     statusText = 'Analisando';
                     statusColorClass = 'bg-blue-100 text-blue-700 animate-pulse';
@@ -230,8 +265,17 @@ export default function DashboardPage() {
                           )
                         ) : statusType === 'processing' ? (
                           <span className="text-gray-400 text-sm font-medium">Aguarde...</span>
+                        ) : statusType === 'ready_for_processing' ? (
+                          <span className="text-purple-600 text-xs font-semibold">Aguardando início da IA</span>
                         ) : statusType === 'error' ? (
                           <span className="text-red-600 text-xs font-semibold">Falha / Reprocessamento necessário</span>
+                        ) : statusType === 'pending' ? (
+                          <button
+                            onClick={() => handleReleaseProcessing(analise.id)}
+                            className="bg-brand-gold text-brand-green px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow"
+                          >
+                            Liberar processamento
+                          </button>
                         ) : (
                           <span className="text-gray-400 text-sm font-medium">-</span>
                         )}
