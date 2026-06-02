@@ -543,7 +543,19 @@ Entregar informações de arquivos alterados, resultados e pendências.
   - Configurados timeouts explícitos de download (10s por arquivo) e chamada global da IA (35s) usando promessas competitivas com `AbortController` e rejeição de timeout.
   - Adicionado tratamento de erro para persistir status `error` no banco de dados e retornar resposta adequada no caso de falhas ou timeouts.
   - Adicionado botão "Iniciar parecer" no dashboard para análises no estado "Liberada", redirecionando o usuário para o laudo pericial após a conclusão com sucesso.
-- **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados com 100% de sucesso.
+- **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados with 100% de sucesso.
 - **Deploy**: Não efetuado (conforme orientações de governança do bloco).
 - **URL validada localmente**: `/dashboard`
 - **Pendências**: Homologação geral do fluxo completo.
+
+- **Data**: 02/06/2026
+- **Tarefa**: Hotfix — Corrigir modelo Gemini e não expor erro técnico no alert
+- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Removido modelo hardcoded da rota `/api/analyze` e adicionada leitura dinâmica de `process.env.GEMINI_MODEL` com fallback seguro para `gemini-3.5-flash`.
+  - Corrigido o retorno de erro da API `/api/analyze` para enviar ao frontend apenas a mensagem de erro segura ao invés do erro técnico bruto da Google.
+  - Ajustado o alert/catch no dashboard para exibir apenas a mensagem amigável sem expor segredos, nomes técnicos de modelo ou URLs de conexão.
+- **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados com 100% de sucesso.
+- **Deploy**: Não efetuado (conforme orientações de governança do bloco).
+- **URL validada localmente**: `/dashboard`
+- **Pendências**: Homologação geral em ambiente real de produção.

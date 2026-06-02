@@ -96,3 +96,12 @@
 - **Deploy**: Não aplicável (sem deploy neste bloco).
 - **URL validada**: Painel do dashboard e resultado validado localmente.
 - **Problemas restantes**: Homologação geral do fluxo completo.
+
+- **Data**: 02/06/2026
+- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Rotas afetadas**: `/dashboard`, `/api/analyze`
+- **Botões corrigidos**: Ajustados alertas/mensagens no frontend e retornos de erro no backend para mascarar erros técnicos de conexão/modelos e exibir apenas mensagens amigáveis seguras aos usuários.
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
+- **Deploy**: Não aplicável (sem deploy neste bloco).
+- **URL validada**: Painel do dashboard e visualização de resultados validados localmente.
+- **Problemas restantes**: Homologação geral em ambiente real de produção.
