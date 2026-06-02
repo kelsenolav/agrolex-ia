@@ -87,3 +87,12 @@
 - **Deploy**: Não aplicável (sem deploy neste bloco).
 - **URL validada**: Painel do dashboard validado localmente.
 - **Problemas restantes**: Restabelecer o processamento de laudos via IA em background de forma controlada (Bloco 5 - execução da IA).
+
+- **Data**: 02/06/2026
+- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Rotas afetadas**: `/dashboard`, `/api/analyze`
+- **Botões corrigidos**: Adicionado botão "Iniciar parecer" no Dashboard para análises com status liberado.
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
+- **Deploy**: Não aplicável (sem deploy neste bloco).
+- **URL validada**: Painel do dashboard e resultado validado localmente.
+- **Problemas restantes**: Homologação geral do fluxo completo.
