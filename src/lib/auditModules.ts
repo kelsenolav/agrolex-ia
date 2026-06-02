@@ -115,33 +115,45 @@ export interface ModuleCompatibility {
   reason?: string;
 }
 
+function normalizeSearchText(value?: string): string {
+  return (value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 export function buildDocumentProfile(files: { name?: string, type: string }[]): DocumentProfile {
   const totalDocuments = files.length;
   
-  const matriculasList = files.filter(f => 
-    f.type === "Matrícula" || 
-    f.type === "Certidão Inteiro Teor"
+  const matriculasList = files.filter(f =>
+    f.type === "Matrícula" || normalizeSearchText(f.name).includes("matricula")
   );
   const totalMatriculas = matriculasList.length;
   
   const hasMatricula = totalMatriculas > 0;
   const hasMultipleMatriculas = totalMatriculas >= 2;
   
-  const hasTituloPublico = files.some(f => 
-    f.type === "Título INCRA" || 
-    (f.name && f.name.toLowerCase().includes("titulo"))
+  const hasTituloPublico = files.some(f =>
+    f.type === "Título INCRA" ||
+    normalizeSearchText(f.name).includes("titulo")
   );
   
-  const hasCar = files.some(f => f.type === "CAR");
-  const hasSigef = files.some(f => f.type === "SIGEF" || (f.name && f.name.toLowerCase().includes("sigef")));
-  const hasMemorial = files.some(f => f.type === "Memorial" || (f.name && f.name.toLowerCase().includes("memorial")));
-  const hasCcir = files.some(f => f.type === "CCIR");
+  const hasCar = files.some(f => f.type === "CAR" || /(^|[^a-z])car([^a-z]|$)/.test(normalizeSearchText(f.name)));
+  const hasSigef = files.some(f => f.type === "SIGEF" || normalizeSearchText(f.name).includes("sigef"));
+  const hasMemorial = files.some(f => f.type === "Memorial" || normalizeSearchText(f.name).includes("memorial"));
+  const hasCcir = files.some(f => f.type === "CCIR" || normalizeSearchText(f.name).includes("ccir"));
   
-  // Qualquer arquivo KML, GPX, CAR, ou que contenha no nome indica dado geoespacial
+  // Tipos declarados ou nomes de arquivo podem indicar dado geoespacial.
   const hasGeospatialDocument = hasCar || hasSigef || hasMemorial || files.some(f => {
-    if (!f.name) return false;
-    const nameLower = f.name.toLowerCase();
-    return nameLower.endsWith(".kml") || nameLower.endsWith(".gpx") || nameLower.includes("geo");
+    const nameLower = normalizeSearchText(f.name);
+    return f.type === "Planta" ||
+      f.type === "Coordenadas" ||
+      f.type === "Documento Geoespacial" ||
+      nameLower.endsWith(".kml") ||
+      nameLower.endsWith(".gpx") ||
+      nameLower.includes("geo") ||
+      nameLower.includes("planta") ||
+      nameLower.includes("coordenad");
   });
 
   return {
@@ -159,19 +171,16 @@ export function buildDocumentProfile(files: { name?: string, type: string }[]): 
 }
 
 export function getModuleCompatibility(moduleId: string, profile: DocumentProfile): ModuleCompatibility {
-  // Se não houver documento algum anexado, apenas matrícula_individual e cadeia_dominial ficam habilitados (pendendo documentos)
   if (profile.totalDocuments === 0) {
-    if (moduleId === "matricula_individual" || moduleId === "cadeia_dominial") {
-      return { enabled: true, recommended: false, warning: "Anexe a matrícula da área." };
-    }
     return { enabled: false, recommended: false, reason: "Anexe ao menos um documento." };
   }
 
   switch (moduleId) {
     case "matricula_individual":
       return { 
-        enabled: true, 
+        enabled: profile.totalDocuments >= 1,
         recommended: profile.totalMatriculas === 1,
+        reason: "Anexe ao menos um documento.",
         warning: !profile.hasMatricula ? "Recomendado anexar uma Matrícula." : undefined
       };
       
@@ -186,7 +195,7 @@ export function getModuleCompatibility(moduleId: string, profile: DocumentProfil
       return {
         enabled: profile.hasMatricula,
         recommended: profile.hasMatricula,
-        reason: "Exige pelo menos uma matrícula."
+        reason: "Recomendado anexar matrícula ou certidão de inteiro teor."
       };
       
     case "origem_publica":
@@ -194,7 +203,7 @@ export function getModuleCompatibility(moduleId: string, profile: DocumentProfil
         enabled: true,
         recommended: profile.hasTituloPublico,
         warning: !profile.hasTituloPublico 
-          ? "Com os documentos atuais, a análise será preliminar e limitada ao teor da matrícula." 
+          ? "Com os documentos atuais, a análise de origem pública será preliminar e limitada aos elementos constantes da matrícula."
           : undefined
       };
       
@@ -202,14 +211,15 @@ export function getModuleCompatibility(moduleId: string, profile: DocumentProfil
       return {
         enabled: profile.hasGeospatialDocument,
         recommended: profile.hasGeospatialDocument,
-        reason: "Exige CAR, SIGEF, memorial ou coordenadas."
+        reason: "Exige CAR, SIGEF, memorial, planta ou coordenadas."
       };
       
     case "nulidades_fraudes":
       return {
-        enabled: true,
-        recommended: true,
-        warning: profile.totalMatriculas === 1 
+        enabled: profile.totalDocuments >= 1,
+        recommended: profile.totalDocuments >= 1,
+        reason: "Anexe ao menos um documento.",
+        warning: profile.totalDocuments === 1 && profile.totalMatriculas === 1
           ? "A análise será limitada a indícios internos da matrícula." 
           : undefined
       };
@@ -225,4 +235,3 @@ export function getModuleCompatibility(moduleId: string, profile: DocumentProfil
       return { enabled: true, recommended: false };
   }
 }
-

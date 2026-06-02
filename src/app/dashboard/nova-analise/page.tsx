@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from 'next/link';
 import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Layers, CheckCircle2, AlertCircle, Info, ShieldAlert } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -12,7 +12,7 @@ export default function NovaAnalisePage() {
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<{file: File, type: string}[]>([]);
   const [currentDocType, setCurrentDocType] = useState("");
-  const [selectedModules, setSelectedModules] = useState<string[]>(['matricula_individual']);
+  const [selectedModules, setSelectedModules] = useState<string[]>([]);
   
   // Estados para Integrações GOV
   const [cpfCnpj, setCpfCnpj] = useState("");
@@ -23,24 +23,32 @@ export default function NovaAnalisePage() {
   // Computar perfil documental e compatibilidade de módulos
   const fileItemsForProfile = files.map(f => ({ name: f.file.name, type: f.type }));
   const docProfile = buildDocumentProfile(fileItemsForProfile);
+  const compatibilitySummary = (() => {
+    if (docProfile.totalDocuments === 0) {
+      return "Nenhum documento anexado. Anexe documentos para habilitar os módulos compatíveis.";
+    }
 
-  // Filtrar e remover módulos que ficaram incompatíveis caso os arquivos mudem
-  useEffect(() => {
-    setSelectedModules(prev => {
-      const filtered = prev.filter(modId => {
-        const comp = getModuleCompatibility(modId, docProfile);
-        return comp.enabled;
-      });
-      // Se ficou vazio, selecionar matricula_individual como recomendação se habilitado
-      if (filtered.length === 0) {
-        const individualComp = getModuleCompatibility("matricula_individual", docProfile);
-        if (individualComp.enabled) {
-          return ["matricula_individual"];
-        }
-      }
-      return filtered;
-    });
-  }, [files]);
+    const messages = [
+      `Detectamos ${docProfile.totalDocuments} documento(s) anexado(s), incluindo ${docProfile.totalMatriculas} matrícula(s).`
+    ];
+
+    if (docProfile.hasMatricula) {
+      messages.push("Recomendamos Análise de Matrícula Individual e Cadeia Dominial.");
+    }
+    if (!docProfile.hasMultipleMatriculas) {
+      messages.push("Cruzamento de Matrículas exige duas ou mais matrículas.");
+    }
+    if (!docProfile.hasGeospatialDocument) {
+      messages.push("Auditoria Geoespacial exige CAR, SIGEF, memorial, planta ou coordenadas.");
+    }
+
+    return messages.join(" ");
+  })();
+
+  const retainCompatibleModules = (modules: string[], nextFiles: { file: File, type: string }[]) => {
+    const nextProfile = buildDocumentProfile(nextFiles.map(f => ({ name: f.file.name, type: f.type })));
+    return modules.filter(modId => getModuleCompatibility(modId, nextProfile).enabled);
+  };
 
   // Regra de preço estimada com teto de 499.90
   const calculateTotalPrice = (modules: string[]) => {
@@ -69,15 +77,9 @@ export default function NovaAnalisePage() {
   };
 
   const selectAll = () => {
-    // Apenas selecionar módulos que estão habilitados para o perfil atual de documentos
+    // Selecionar somente módulos habilitados para o perfil atual de documentos.
     const enabledModules = AUDIT_MODULES.filter(m => getModuleCompatibility(m.id, docProfile).enabled).map(m => m.id);
-    
-    const allEnabledSelected = enabledModules.every(id => selectedModules.includes(id));
-    if (allEnabledSelected) {
-      setSelectedModules([]);
-    } else {
-      setSelectedModules(enabledModules);
-    }
+    setSelectedModules(enabledModules);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,7 +90,9 @@ export default function NovaAnalisePage() {
       }
       
       const newFiles = Array.from(e.target.files).map(f => ({ file: f, type: currentDocType }));
-      setFiles([...files, ...newFiles]);
+      const nextFiles = [...files, ...newFiles];
+      setFiles(nextFiles);
+      setSelectedModules(prev => retainCompatibleModules(prev, nextFiles));
       
       // Reset doc type for next
       setCurrentDocType("");
@@ -100,6 +104,7 @@ export default function NovaAnalisePage() {
     const newFiles = [...files];
     newFiles.splice(index, 1);
     setFiles(newFiles);
+    setSelectedModules(prev => retainCompatibleModules(prev, newFiles));
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -242,9 +247,9 @@ export default function NovaAnalisePage() {
             <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Info size={16} className="text-brand-gold"/> Compatibilidade Documental</h3>
             <p className="text-xs text-gray-600">
               {files.length === 0 ? (
-                "Nenhum documento anexado. Anexe a matrícula para habilitar a auditoria completa."
+                compatibilitySummary
               ) : (
-                `Detectamos ${docProfile.totalDocuments} documento(s) anexado(s) (${docProfile.totalMatriculas} matrícula(s)). Módulos recomendados foram destacados em verde. Itens incompatíveis com a documentação foram suspensos.`
+                `${compatibilitySummary} Módulos recomendados foram destacados em verde. Itens incompatíveis com a documentação foram suspensos.`
               )}
             </p>
           </div>
@@ -317,6 +322,11 @@ export default function NovaAnalisePage() {
                     <option value="Matrícula">Matrícula (Atual ou Antiga)</option>
                     <option value="CAR">CAR</option>
                     <option value="CCIR">CCIR</option>
+                    <option value="SIGEF">SIGEF</option>
+                    <option value="Memorial">Memorial Descritivo</option>
+                    <option value="Planta">Planta</option>
+                    <option value="Coordenadas">Coordenadas</option>
+                    <option value="Documento Geoespacial">Documento Geoespacial</option>
                     <option value="Título INCRA">Título do INCRA</option>
                     <option value="Certidão Inteiro Teor">Certidão de Inteiro Teor</option>
                     <option value="Outro">Outro</option>
