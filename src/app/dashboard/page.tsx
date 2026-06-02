@@ -77,7 +77,9 @@ export default function DashboardPage() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push('/');
+    await fetch('/api/auth/session', { method: 'DELETE' });
+    router.push('/login');
+    router.refresh();
   };
 
   const analisesConcluidas = analises.filter(a => a.status === 'completed').length;

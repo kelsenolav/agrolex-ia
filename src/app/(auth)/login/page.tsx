@@ -19,7 +19,7 @@ export default function LoginPage() {
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -28,7 +28,26 @@ export default function LoginPage() {
       setError('E-mail ou senha incorretos.');
       setLoading(false);
     } else {
-      router.push('/dashboard');
+      const response = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: data.session.access_token,
+          refreshToken: data.session.refresh_token
+        })
+      });
+
+      if (!response.ok) {
+        await supabase.auth.signOut();
+        setError('Nao foi possivel iniciar sua sessao com seguranca.');
+        setLoading(false);
+        return;
+      }
+
+      const next = new URLSearchParams(window.location.search).get('next');
+      const safeNext = next?.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
+      router.push(safeNext);
+      router.refresh();
     }
   };
 
