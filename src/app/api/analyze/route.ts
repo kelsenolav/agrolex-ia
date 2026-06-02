@@ -278,6 +278,8 @@ export async function POST(req: Request) {
 
     // Bloco de processamento principal síncrono
     try {
+      const startedAt = Date.now();
+      let geminiMs = 0;
       let geminiParts: any[] = [];
       let polygonCoords: [number, number][] = [];
 
@@ -375,12 +377,14 @@ export async function POST(req: Request) {
         const modelName = process.env.GEMINI_MODEL || "gemini-3.5-flash";
         const model = genAI.getGenerativeModel({ model: modelName });
 
+        const genStartAt = Date.now();
         const aiPromise = model.generateContent(geminiParts).then(async (result) => {
           const response = await result.response;
           return response.text();
         });
 
         markdownResponse = await withTimeout(aiPromise, 50000, "gemini_generation");
+        geminiMs = Date.now() - genStartAt;
 
         if (markdownResponse.startsWith('\`\`\`markdown')) {
           markdownResponse = markdownResponse.replace(/^\`\`\`markdown\n?/, '').replace(/\n?\`\`\`$/, '');
@@ -399,10 +403,6 @@ export async function POST(req: Request) {
       const derivedRisk = deriveRiskLevelFromResumo(markdownResponse);
       const riskLevel = derivedRisk.level;
       const riskLevelSource = derivedRisk.source;
-
-      const parsedProblemas = extractProblemsFromReport(markdownResponse);
-      const parsedDocumentosFaltantes = extractMissingDocumentsFromReport(markdownResponse);
-      const parsedRecomendacoes = extractRecommendationsFromReport(markdownResponse);
 
       let latitude: number | null = null;
       let longitude: number | null = null;
@@ -427,26 +427,30 @@ export async function POST(req: Request) {
         markdownResponse = markdownResponse.replace(/COORDS:\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+/i, '').trim();
       }
 
+      const completedAt = new Date().toISOString();
+      const postprocessStartAt = Date.now();
       const resultJson = {
         ...updatedFindings,
         isHtmlResumo: false,
         resumo: markdownResponse,
-        problemas: parsedProblemas,
-        recomendacoes: parsedRecomendacoes,
-        documentosFaltantes: parsedDocumentosFaltantes,
+        problemas: [],
+        recomendacoes: [],
+        documentosFaltantes: [],
         linhaDoTempo: [],
         checklist: [],
         amountPaid: amountPaid,
         modulesSelected: selectedModules,
-        latitude: latitude,
-        longitude: longitude,
+        latitude,
+        longitude,
         polygon: polygonCoords.length > 0 ? polygonCoords : null,
         current_step: "Parecer técnico concluído.",
-        completed_at: new Date().toISOString(),
+        completed_at: completedAt,
         risk_level_source: riskLevelSource,
-        structured_extract_source: 'local_parser',
-        structured_extract_at: new Date().toISOString(),
-        ...(riskLevelSource === 'ai_section' ? { risk_level_detected_at: new Date().toISOString() } : {})
+        ...(riskLevelSource === 'ai_section' ? { risk_level_detected_at: completedAt } : {}),
+        processing_metrics: {
+          gemini_ms: geminiMs,
+          total_ms: Date.now() - startedAt
+        }
       };
 
       const { error: dbError } = await supabaseAdmin
@@ -459,6 +463,70 @@ export async function POST(req: Request) {
         .eq('id', analysisId);
 
       if (dbError) throw new Error("Erro ao salvar resultado final: " + dbError.message);
+
+      try {
+        const parsedProblemas = extractProblemsFromReport(markdownResponse);
+        const parsedDocumentosFaltantes = extractMissingDocumentsFromReport(markdownResponse);
+        const parsedRecomendacoes = extractRecommendationsFromReport(markdownResponse);
+        const postprocessMs = Date.now() - postprocessStartAt;
+        const totalMs = Date.now() - startedAt;
+
+        const patchedFindings = {
+          ...resultJson,
+          problemas: parsedProblemas,
+          recomendacoes: parsedRecomendacoes,
+          documentosFaltantes: parsedDocumentosFaltantes,
+          structured_extract_source: 'local_parser',
+          structured_extract_at: new Date().toISOString(),
+          processing_metrics: {
+            gemini_ms: geminiMs,
+            postprocess_ms: postprocessMs,
+            total_ms: totalMs
+          }
+        };
+
+        const { error: patchError } = await supabaseAdmin
+          .from('analyses')
+          .update({ findings: patchedFindings })
+          .eq('id', analysisId);
+
+        if (patchError) {
+          console.error('[Postprocess] Falha ao salvar extração estruturada:', patchError.message);
+        }
+      } catch (postprocessError: any) {
+        const postprocessMs = Date.now() - postprocessStartAt;
+        const totalMs = Date.now() - startedAt;
+        const structuredError = (postprocessError && (postprocessError.message || postprocessError.toString())) || 'Erro desconhecido na extração estruturada';
+        console.error('[Postprocess] Erro na extração estruturada:', structuredError);
+
+        const failedFindings = {
+          ...resultJson,
+          structured_extract_source: 'local_parser',
+          structured_extract_at: new Date().toISOString(),
+          structured_extract_error: structuredError.replace(/https?:\/\/\S+/gi, '[REDACTED_URL]'),
+          processing_metrics: {
+            gemini_ms: geminiMs,
+            postprocess_ms: postprocessMs,
+            total_ms: totalMs
+          }
+        };
+
+        const { error: patchError } = await supabaseAdmin
+          .from('analyses')
+          .update({ findings: failedFindings })
+          .eq('id', analysisId);
+
+        if (patchError) {
+          console.error('[Postprocess] Falha ao salvar erro de extração estruturada:', patchError.message);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        simulador: false,
+        analysisId: analysisId,
+        status: 'completed'
+      });
 
       return NextResponse.json({
         success: true,
@@ -489,7 +557,8 @@ export async function POST(req: Request) {
 
       if (isTimeout) {
         technicalErrorType = 'ai_timeout';
-        userMessage = 'Tempo limite excedido na geração do parecer da IA. Tente novamente.';
+        findingsCurrentStep = 'O processamento da IA excedeu o tempo limite. Tente novamente com menos documentos ou em alguns minutos.';
+        userMessage = 'O processamento da IA excedeu o tempo limite. Tente novamente com menos documentos ou em alguns minutos.';
       } else if (isAiUnavailable) {
         technicalErrorType = 'ai_unavailable';
         // Mensagem de etapa salva de forma amigável
