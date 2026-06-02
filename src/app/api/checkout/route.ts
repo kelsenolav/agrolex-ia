@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { calculateAuditModulesTotal, MODULE_PRICES } from '@/lib/auditModules';
 
 export async function POST(req: Request) {
   try {
@@ -67,9 +68,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'A análise não possui módulos de auditoria válidos' }, { status: 400 });
     }
 
+    // Validar que todos os módulos selecionados existem e têm preço válido
+    for (const moduleId of selectedModules) {
+      if (typeof moduleId !== 'string' || !moduleId.trim()) {
+        return NextResponse.json({ error: 'Módulo de auditoria inválido ou vazio' }, { status: 400 });
+      }
+      if (MODULE_PRICES[moduleId.trim()] === undefined) {
+        return NextResponse.json({ error: `Módulo de auditoria desconhecido: ${moduleId}` }, { status: 400 });
+      }
+    }
+
+    // Recalcular o preço no servidor (fonte da verdade)
+    const serverEstimatedTotal = calculateAuditModulesTotal(selectedModules);
+    
+    // Capturar o preço enviado pelo cliente para auditoria/comparação
+    const clientEstimatedTotal = typeof findings.estimated_total === 'number' ? findings.estimated_total : null;
+
     // Atualização simulada (sem Mercado Pago, sem IA iniciada)
     const updatedFindings = {
       ...findings,
+      // Preço recalculado e rastreado no servidor
+      estimated_total: serverEstimatedTotal,
+      client_estimated_total: clientEstimatedTotal,
+      price_source: "server",
+      price_checked_at: new Date().toISOString(),
+      // Status e fluxo de liberação
       payment_mode: "simulated",
       payment_status: "approved",
       current_step: "Análise liberada para processamento. Aguardando início da IA.",
@@ -92,7 +115,9 @@ export async function POST(req: Request) {
       mode: "simulated",
       status: "approved",
       analysisStatus: "ready_for_processing",
-      analysisId: analysis.id
+      analysisId: analysis.id,
+      serverEstimatedTotal: serverEstimatedTotal,
+      clientEstimatedTotal: clientEstimatedTotal
     });
 
   } catch (error: any) {
