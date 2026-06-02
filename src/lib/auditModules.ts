@@ -95,6 +95,33 @@ export function getModulePrice(id: string): number {
   return MODULE_PRICES[normId] || 0;
 }
 
+/**
+ * Calcula o preço total de uma auditoria baseado nos módulos selecionados.
+ * Regra principal:
+ * - Se 'cruzamento_total' está selecionado: retorna R$ 499,90 (módulo é exclusivo).
+ * - Caso contrário: soma todos os módulos individuais SEM aplicar teto automático.
+ * 
+ * Exemplos:
+ * - ["matricula_individual"] => R$ 99,90
+ * - ["matricula_individual", "cadeia_dominial"] => R$ 299,80
+ * - ["matricula_individual", "cadeia_dominial", "origem_publica", "nulidades_fraudes"] => R$ 749,60
+ * - ["cruzamento_total"] => R$ 499,90
+ * - ["cruzamento_total", "matricula_individual"] => Normalizado para R$ 499,90 (exclusividade)
+ */
+export function calculateAuditModulesTotal(selectedModules: string[]): number {
+  // Se cruzamento_total está selecionado, é um pacote exclusivo
+  if (selectedModules.includes("cruzamento_total")) {
+    return 499.90;
+  }
+
+  // Caso contrário, somar todos os módulos individuais sem aplicar teto automático
+  const total = selectedModules.reduce((sum, moduleId) => {
+    return sum + getModulePrice(moduleId);
+  }, 0);
+
+  return total;
+}
+
 export interface DocumentProfile {
   totalDocuments: number;
   totalMatriculas: number;

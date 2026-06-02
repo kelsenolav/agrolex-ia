@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Layers, CheckCircle2, AlertCircle, Info, ShieldAlert } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { AUDIT_MODULES, getModulePrice, buildDocumentProfile, getModuleCompatibility } from "@/lib/auditModules";
+import { AUDIT_MODULES, getModulePrice, buildDocumentProfile, getModuleCompatibility, calculateAuditModulesTotal } from "@/lib/auditModules";
 
 export default function NovaAnalisePage() {
   const router = useRouter();
@@ -50,13 +50,12 @@ export default function NovaAnalisePage() {
     return modules.filter(modId => getModuleCompatibility(modId, nextProfile).enabled);
   };
 
-  // Regra de preço estimada com teto de 499.90
+  // Calcular preço sem aplicar teto automático geral
+  // Regra:
+  // - Se cruzamento_total está selecionado: R$ 499,90
+  // - Caso contrário: soma dos módulos individuais sem teto
   const calculateTotalPrice = (modules: string[]) => {
-    if (modules.includes("cruzamento_total")) {
-      return 499.90;
-    }
-    const sum = modules.reduce((acc, mod) => acc + getModulePrice(mod), 0);
-    return sum > 499.90 ? 499.90 : sum;
+    return calculateAuditModulesTotal(modules);
   };
 
   const totalPrice = calculateTotalPrice(selectedModules);
@@ -67,18 +66,38 @@ export default function NovaAnalisePage() {
 
     setSelectedModules(prev => {
       let next;
-      if (prev.includes(id)) {
-        next = prev.filter(m => m !== id);
+      
+      // Implementar exclusividade de cruzamento_total
+      if (id === "cruzamento_total") {
+        // Se clicou em cruzamento_total, desseleciona todos os outros (módulo exclusivo)
+        if (prev.includes(id)) {
+          // Se já está selecionado, desseleciona
+          next = prev.filter(m => m !== id);
+        } else {
+          // Se não está selecionado, seleciona apenas ele
+          next = [id];
+        }
       } else {
-        next = [...prev, id];
+        // Se clicou em outro módulo
+        if (prev.includes(id)) {
+          // Se já está selecionado, desseleciona
+          next = prev.filter(m => m !== id);
+        } else {
+          // Se não está selecionado, adiciona e remove cruzamento_total se estiver
+          next = [...prev.filter(m => m !== "cruzamento_total"), id];
+        }
       }
+      
       return next;
     });
   };
 
   const selectAll = () => {
     // Selecionar apenas os módulos recomendados (não todos os habilitados).
-    const recommendedModules = AUDIT_MODULES.filter(m => getModuleCompatibility(m.id, docProfile).recommended).map(m => m.id);
+    // EXCLUSÃO: Nunca selecionar cruzamento_total automaticamente; é um pacote exclusivo que deve ser selecionado manualmente.
+    const recommendedModules = AUDIT_MODULES.filter(m => 
+      m.id !== "cruzamento_total" && getModuleCompatibility(m.id, docProfile).recommended
+    ).map(m => m.id);
     setSelectedModules(recommendedModules);
   };
 
