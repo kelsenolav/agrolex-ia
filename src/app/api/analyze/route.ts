@@ -328,7 +328,7 @@ export async function POST(req: Request) {
           return response.text();
         });
 
-        markdownResponse = await withTimeout(aiPromise, 35000, "gemini_generation");
+        markdownResponse = await withTimeout(aiPromise, 50000, "gemini_generation");
 
         if (markdownResponse.startsWith('\`\`\`markdown')) {
           markdownResponse = markdownResponse.replace(/^\`\`\`markdown\n?/, '').replace(/\n?\`\`\`$/, '');

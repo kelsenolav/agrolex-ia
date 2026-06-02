@@ -20,11 +20,11 @@ function countMatriculas(documents: AuditPromptDocument[]): number {
 
 const MODULE_INSTRUCTIONS: Record<string, string> = {
   matricula_individual: `
-MÓDULO: ANÁLISE DE MATRÍCULA INDIVIDUAL
-Realize análise de matrícula individual. Audite uma única matrícula imobiliária, identificando dados objetivos, inconsistências internas, riscos aparentes e documentos complementares necessários.
-Verifique, quando constarem no documento: número da matrícula; CNM; cartório; comarca; data de abertura; livro; imóvel; localização; área; matrícula de origem; proprietário atual; proprietários anteriores; atos de registro; averbações; ônus; restrições; condições; cláusulas resolutivas; campo Condições; continuidade registral; qualificação das partes; regime de bens; origem pública ou privada aparente; divergência de área; desmembramentos; retificações; cancelamentos; documentos faltantes.
-Apresente, quando possível: identificação da matrícula; quadro simples de dados extraídos; linha do tempo registral; achados técnicos; documentos faltantes; conclusão de risco; recomendações.
-Se apenas a matrícula tiver sido anexada, trate as conclusões como indícios técnicos preliminares sujeitos à confirmação documental.`,
+MÓDULO: MATRÍCULA INDIVIDUAL
+Realize a auditoria de uma única matrícula imobiliária. Identifique: dados do imóvel, proprietário atual, cadeia de transmissões (se houver), ônus, restrições e inconsistências internas.
+Verifique: CNM, cartório, área, continuidade registral, regime de bens, atos de registro/averbação e validade aparente.
+Apresente: identificação, dados extraídos, linha do tempo resumida, achados, documentos faltantes e recomendações.
+Diferencie fato de indício. Use prudência jurídica.`,
 
   cruzamento_matriculas: `
 MÓDULO: CRUZAMENTO DE MATRÍCULAS
