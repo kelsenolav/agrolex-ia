@@ -289,7 +289,8 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
           .eq('id', analysisId);
 
         const genAI = new GoogleGenerativeAI(geminiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const modelName = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+        const model = genAI.getGenerativeModel({ model: modelName });
 
         const aiPromise = model.generateContent(geminiParts).then(async (result) => {
           const response = await result.response;
@@ -376,14 +377,15 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
 
       const isTimeout = innerError.message?.includes("Timeout:");
       const technicalErrorType = isTimeout ? "ai_timeout" : "processing_failed";
+      const technicalErrorMessage = innerError.message || "Unknown error";
       const userMessage = isTimeout
         ? "Tempo limite excedido na geração do parecer da IA. Tente novamente."
-        : (innerError.message || "Não foi possível concluir o parecer técnico. Tente novamente ou contate o suporte.");
+        : "Não foi possível concluir o parecer técnico neste momento. Tente novamente ou contate o suporte.";
 
       const failedFindings = {
         ...updatedFindings,
         current_step: "Falha no processamento do parecer técnico.",
-        error_message: userMessage,
+        error_message: technicalErrorMessage,
         technical_error_type: technicalErrorType,
         failed_at: new Date().toISOString()
       };

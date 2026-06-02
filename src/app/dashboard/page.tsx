@@ -119,7 +119,7 @@ export default function DashboardPage() {
       router.push(`/dashboard/resultado?id=${analysisId}`);
     } catch (err: any) {
       console.error(err);
-      alert("Falha ao processar parecer com IA: " + err.message);
+      alert("Falha ao processar parecer com IA: Não foi possível concluir o parecer técnico neste momento. Tente novamente ou contate o suporte.");
       window.location.reload();
     } finally {
       setLoadingAnalysisId(null);
