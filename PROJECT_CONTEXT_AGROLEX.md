@@ -325,3 +325,16 @@ Entregar informações de arquivos alterados, resultados e pendências.
 - **Deploy**: Não efetuado (conforme orientações de governança do bloco).
 - **URL validada localmente**: `/dashboard/nova-analise`
 - **Pendências**: Restabelecer o processamento de laudos via IA em background de forma controlada (Bloco 5).
+
+- **Data**: 02/06/2026
+- **Tarefa**: Bloco 5 — Liberação Controlada para Processamento Sem Iniciar IA
+- **Arquivos alterados**: `src/app/api/checkout/route.ts`, `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Refatorada a rota POST `/api/checkout` para atuar como endpoint de liberação de análise simulado, removendo a integração com Mercado Pago Preference API.
+  - Implementada validação robusta no backend: autenticação da sessão, propriedade da análise (`user_id`), status atual (`payment_pending` ou `pending`) e presença de módulos de auditoria selecionados (`findings.selected_modules`).
+  - Atualização do status para `ready_for_processing` e realização do merge dos metadados de simulação (`payment_mode`, `payment_status`, `current_step`, `ready_for_processing_at`) em `findings` sem sobrescrever outras chaves.
+  - Adicionado botão "Liberar processamento" no dashboard para análises pendentes, chamando `/api/checkout` e atualizando o status visual para "Liberada" ("Aguardando início da IA") após a conclusão com sucesso.
+- **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados com 100% de sucesso.
+- **Deploy**: Não efetuado (conforme orientações de governança do bloco).
+- **URL validada localmente**: `/dashboard`
+- **Pendências**: Restabelecer o processamento de laudos via IA em background de forma controlada (Bloco 5 - execução da IA).
