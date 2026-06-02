@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local caches and rescue backups
+.npm-cache/
+artifacts/
+_BACKUP*/
+_BACKUP_AGROLEX_ANTES_ROLLBACK_SPRINT2/
+_BACKUP_AGROLEX_ANTES_ROLLBACK_TOTAL_PRE_SPRINTS/
+_BACKUP_PRE_ROLLBACK_AGROLEX/
