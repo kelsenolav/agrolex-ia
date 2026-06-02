@@ -11,6 +11,7 @@ export default function DashboardPage() {
   const [analises, setAnalises] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [credits, setCredits] = useState(0);
+  const [loadingAnalysisId, setLoadingAnalysisId] = useState<string | null>(null);
 
   useEffect(() => {
     const checkUserAndFetchData = async () => {
@@ -87,6 +88,41 @@ export default function DashboardPage() {
     } catch (err: any) {
       console.error(err);
       alert("Erro ao liberar processamento: " + err.message);
+    }
+  };
+
+  const handleStartAnalysis = async (analysisId: string, propertyId: string) => {
+    setLoadingAnalysisId(analysisId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert("Sua sessão expirou, faça login novamente.");
+        router.push('/login');
+        return;
+      }
+
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ analysisId, propertyId })
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || 'Erro ao processar análise com IA');
+      }
+
+      alert("Auditoria finalizada com sucesso!");
+      router.push(`/dashboard/resultado?id=${analysisId}`);
+    } catch (err: any) {
+      console.error(err);
+      alert("Falha ao processar parecer com IA: " + err.message);
+      window.location.reload();
+    } finally {
+      setLoadingAnalysisId(null);
     }
   };
 
@@ -266,7 +302,13 @@ export default function DashboardPage() {
                         ) : statusType === 'processing' ? (
                           <span className="text-gray-400 text-sm font-medium">Aguarde...</span>
                         ) : statusType === 'ready_for_processing' ? (
-                          <span className="text-purple-600 text-xs font-semibold">Aguardando início da IA</span>
+                          <button
+                            disabled={loadingAnalysisId !== null}
+                            onClick={() => handleStartAnalysis(analise.id, analise.properties?.id)}
+                            className="bg-brand-green text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
+                          >
+                            {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar parecer'}
+                          </button>
                         ) : statusType === 'error' ? (
                           <span className="text-red-600 text-xs font-semibold">Falha / Reprocessamento necessário</span>
                         ) : statusType === 'pending' ? (
