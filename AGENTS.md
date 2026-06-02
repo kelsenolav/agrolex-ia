@@ -124,4 +124,14 @@
 - **URL validada**: Processamento validado em compilação de produção.
 - **Problemas restantes**: Implementar lógica de desabilitação e avisos de compatibilidade na interface de intake baseada em arquivos anexados (Bloco 7.2).
 
+- **Data**: 02/06/2026
+- **Arquivos alterados**: `src/lib/auditModules.ts`, `src/app/dashboard/nova-analise/page.tsx`, `AGENTS.md`
+- **Rotas afetadas**: `/dashboard/nova-analise`
+- **Botões corrigidos**: Atualizada a interface de intake de Nova Análise com lógica de desabilitação de cards incompatíveis, exibição de tooltips de razões de exclusão, avisos de ressalva para escopos preliminares, auto-filtração de módulos incompatíveis após mudanças nos uploads e adequação da ação "Selecionar módulos compatíveis".
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
+- **Deploy**: Não aplicável (sem deploy neste bloco).
+- **URL validada**: Intake com regras de compatibilidade validado localmente.
+- **Problemas restantes**: Homologar e testar o fluxo de processamento de ponta a ponta.
+
+
 
