@@ -5,6 +5,14 @@ import { useRouter } from 'next/navigation';
 import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
+function normalizeStatus(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [userName, setUserName] = useState("Produtor");
@@ -58,14 +66,7 @@ export default function DashboardPage() {
       ];
 
       if (data) {
-        // [SIMULATION MODE OVERRIDE] Force processing to completed for UI testing
-        const overrideData = data.map(item => {
-          if (item.status === 'processing' || item.status === 'pending') {
-            return { ...item, status: 'completed', risk_level: 'Alto' };
-          }
-          return item;
-        });
-        setAnalises([...overrideData, ...mockAnalises]);
+        setAnalises([...data, ...mockAnalises]);
       } else {
         setAnalises(mockAnalises);
       }
@@ -77,7 +78,9 @@ export default function DashboardPage() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    await fetch('/api/auth/session', { method: 'DELETE' });
     router.push('/');
+    router.refresh();
   };
 
   const analisesConcluidas = analises.filter(a => a.status === 'completed').length;
@@ -96,7 +99,7 @@ export default function DashboardPage() {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-2 text-brand-gold">
             <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">Agrilex</span>
+            <span className="text-xl font-bold text-white">AgroLex</span>
           </Link>
           <div className="flex gap-4 items-center">
             <span className="text-sm font-medium">Olá, {userName}</span>
@@ -114,7 +117,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4">
             <Link href="/dashboard/planos" className="flex items-center gap-2 bg-white text-brand-dark border-2 border-brand-gold px-5 py-3 rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm">
               <Plus size={20} className="text-brand-gold" />
-              {credits > 0 ? `${credits} Crédito(s) B2B` : 'Planos B2B'}
+              {credits > 0 ? `${credits} Crédito(s)` : 'Planos'}
             </Link>
             <Link href="/dashboard/nova-analise" className="flex items-center gap-2 bg-brand-gold text-brand-green px-5 py-3 rounded-lg font-bold hover:brightness-110 transition-all shadow-lg hover:-translate-y-1">
               <Plus size={20} />
@@ -177,53 +180,63 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {analises.map((analise) => (
-                  <tr key={analise.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <MapPin size={18} className="text-brand-green" />
-                        <span className="font-semibold text-gray-800">{analise.properties?.name}</span>
-                      </div>
-                      <span className="text-sm text-gray-500 ml-6">{analise.properties?.city}, {analise.properties?.state}</span>
-                    </td>
-                    <td className="px-6 py-4 text-gray-700 flex items-center gap-2 mt-2">
-                      <FileText size={18} className="text-brand-gold" /> {analise.documents?.document_type}
-                    </td>
-                    <td className="px-6 py-4">
-                      {analise.status === 'processing' || analise.status === 'pending' ? (
-                        <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">Analisando</span>
-                      ) : (
-                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider">Concluído</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {analise.risk_level ? (
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                          analise.risk_level.toLowerCase() === 'alto' ? 'bg-red-100 text-red-800' :
-                          analise.risk_level.toLowerCase() === 'medio' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
-                        }`}>
-                          {analise.risk_level}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400 text-sm font-medium">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {analise.status === 'completed' ? (
-                        <div className="flex items-center gap-3">
-                          <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm">
-                            Ver Parecer
-                          </Link>
-                          <Link href={`/dashboard/radar?property_id=${analise.properties?.id}`} className="bg-gray-900 text-white px-3 py-1 rounded text-xs font-bold hover:bg-gray-800 transition-colors">
-                            Ativar Radar
-                          </Link>
+                {analises.map((analise) => {
+                  const statusStr = normalizeStatus(analise.status || '');
+                  const isAnalisando = ['analisando', 'processing', 'pending', 'em andamento'].includes(statusStr);
+                  const isCompleted = ['completed', 'done', 'concluido', 'finalizado'].includes(statusStr);
+
+                  return (
+                    <tr key={analise.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <MapPin size={18} className="text-brand-green" />
+                          <span className="font-semibold text-gray-800">{analise.properties?.name}</span>
                         </div>
-                      ) : (
-                        <span className="text-gray-400 text-sm font-medium cursor-not-allowed">Aguarde...</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        <span className="text-sm text-gray-500 ml-6">{analise.properties?.city}, {analise.properties?.state}</span>
+                      </td>
+                      <td className="px-6 py-4 text-gray-700 flex items-center gap-2 mt-2">
+                        <FileText size={18} className="text-brand-gold" /> {analise.documents?.document_type}
+                      </td>
+                      <td className="px-6 py-4">
+                        {isAnalisando ? (
+                          <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">Analisando</span>
+                        ) : isCompleted ? (
+                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider">Concluído</span>
+                        ) : (
+                          <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold uppercase tracking-wider">Falha</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {analise.risk_level ? (
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                            analise.risk_level.toLowerCase() === 'alto' ? 'bg-red-100 text-red-800' :
+                            analise.risk_level.toLowerCase() === 'medio' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
+                          }`}>
+                            {analise.risk_level}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-sm font-medium">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {isCompleted ? (
+                          <div className="flex items-center gap-3">
+                            <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm">
+                              Ver Parecer
+                            </Link>
+                            <Link href={`/dashboard/radar?property_id=${analise.properties?.id}`} className="bg-gray-900 text-white px-3 py-1 rounded text-xs font-bold hover:bg-gray-800 transition-colors">
+                              Ativar Radar
+                            </Link>
+                          </div>
+                        ) : isAnalisando ? (
+                          <span className="text-gray-400 text-sm font-medium cursor-not-allowed">Aguarde...</span>
+                        ) : (
+                          <span className="text-red-600 text-sm font-medium">Parecer indisponível</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

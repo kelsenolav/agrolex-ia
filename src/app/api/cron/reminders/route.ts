@@ -1,10 +1,29 @@
+import { timingSafeEqual } from 'crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+
+function hasValidCronSecret(req: Request) {
+  const configuredSecret = process.env.CRON_SECRET;
+  const authorization = req.headers.get('authorization');
+  const providedSecret = authorization?.startsWith('Bearer ') ? authorization.slice(7) : '';
+
+  if (!configuredSecret || !providedSecret) return false;
+
+  const configuredBuffer = Buffer.from(configuredSecret);
+  const providedBuffer = Buffer.from(providedSecret);
+
+  return configuredBuffer.length === providedBuffer.length
+    && timingSafeEqual(configuredBuffer, providedBuffer);
+}
 
 // Rota de Cron Job (Para ser chamada diariamente 1x ao dia)
 // Exemplo de URL: http://localhost:3000/api/cron/reminders
 export async function GET(req: Request) {
   try {
+    if (!hasValidCronSecret(req)) {
+      return NextResponse.json({ error: 'Rota indisponível.' }, { status: 404 });
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     
@@ -48,11 +67,11 @@ export async function GET(req: Request) {
         const propName = task.properties?.name;
 
         const warningLevel = diffDays === 0 ? '🚨 URGENTE: VENCE HOJE!' : `⏳ Faltam ${diffDays} dias para o vencimento.`;
-        const msg = `Olá ${clientName},\n\nO Agrilex informa: A obrigação ambiental "${task.title}" da propriedade ${propName} exige sua atenção.\n${warningLevel}\n\nAcesse seu painel para mais detalhes.`;
+        const msg = `Olá ${clientName},\n\nO AgroLex informa: A obrigação ambiental "${task.title}" da propriedade ${propName} exige sua atenção.\n${warningLevel}\n\nAcesse seu painel para mais detalhes.`;
 
         // [SIMULAÇÃO DE DISPARO DE WHATSAPP]
         console.log(`\n==========================================`);
-        console.log(`📱 [WHATSAPP DISPARADO] Para: Cliente Agrilex`);
+        console.log(`📱 [WHATSAPP DISPARADO] Para: Cliente AgroLex`);
         console.log(`Mensagem:\n${msg}`);
         console.log(`==========================================\n`);
         whatsappsSent++;
@@ -62,7 +81,7 @@ export async function GET(req: Request) {
            const { Resend } = require('resend');
            const resend = new Resend(process.env.RESEND_API_KEY);
            await resend.emails.send({
-             from: 'Agrilex Alertas <onboarding@resend.dev>',
+             from: 'AgroLex Alertas <onboarding@resend.dev>',
              to: clientEmail || 'comprador@teste.com',
              subject: `Alerta de Condicionante - ${task.title}`,
              text: msg

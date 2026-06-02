@@ -269,8 +269,174 @@ Entregar informações de arquivos alterados, resultados e pendências.
 - **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
 - **Pendências**: Homologação do usuário e planejamento controlado de reimplantação.
 
+- **Data**: 01/06/2026
+- **Tarefa**: Correção da coluna Ação na tela Suas Análises
+- **Problema**: Análises com status concluído ou equivalente (ex: "completed", "done", "concluido", "concluído") exibiam incorretamente "Aguarde..." ao invés de "Ver Parecer".
+- **Solução**: Atualizada a lógica na listagem de análises no dashboard para verificar equivalências de status concluído/concluído e em andamento/analisando, garantindo a exibição correta dos botões "Ver Parecer" e "Ativar Radar" para itens já concluídos, e mantendo "Aguarde..." para os que estão de fato analisando.
+- **Arquivos alterados**: `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`
+- **Status build/lint**: Build Next.js e ESLint aprovados com 100% de sucesso.
+- **Deploy**: Efetuado com sucesso via Vercel.
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
+- **Pendências reais**: Nenhuma.
 
+- **Data**: 01/06/2026
+- **Tarefa**: Parágrafos Justificados no Laudo AgroLex
+- **Problema**: O corpo do Parecer Executivo precisava de alinhamento justificado (`text-justify`), mantendo os títulos internos alinhados à esquerda.
+- **Solução**: Aplicado `text-justify` e `[&_h2]:text-left [&_h3]:text-left` no componente correspondente em `src/app/dashboard/resultado/page.tsx`.
+- **Arquivos alterados**: `src/app/dashboard/resultado/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Status build/lint**: Build Next.js e ESLint aprovados com 100% de sucesso.
+- **Deploy**: Efetuado com sucesso via Vercel.
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard/resultado?id=b6b71afb-ad5e-4034-870e-45e961d8f713
+- **Pendências reais**: Nenhuma.
 
+- **Data**: 01/06/2026
+- **Tarefa**: Supabase Auth com proteção central de rotas privadas
+- **Arquivos alterados**: `src/app/(auth)/login/page.tsx`, `src/app/dashboard/page.tsx`, `src/app/api/auth/session/route.ts`, `src/lib/authCookies.ts`, `src/proxy.ts`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Sessões autenticadas pelo Supabase são sincronizadas em cookies `HttpOnly`, `SameSite=Lax` e `Secure` em produção.
+  - Criada rota interna `/api/auth/session` para validar sessão no Supabase, gravar cookies protegidos após login e removê-los no logout.
+  - Criado `src/proxy.ts` para bloquear `/dashboard/:path*` e `/admin/:path*` antes da renderização, validando o usuário no Supabase e renovando a sessão por refresh token quando necessário.
+- **Resultado build/lint/typecheck**: `npm.cmd run build`, `npm.cmd run lint` e `npx.cmd tsc --noEmit` aprovados.
+- **Validação local**: `/dashboard` sem cookies retorna `307` para `/login?next=%2Fdashboard`; `/login` retorna `200`; sessão vazia em `/api/auth/session` retorna `400`.
+- **Deploy**: Efetuado com sucesso via `vercel --prod --yes`.
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
+- **Problemas restantes**: Nenhum.
 
+- **Data**: 02/06/2026
+- **Tarefa**: Hotfix local da regressao no fluxo de nova analise
+- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/nova-analise/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - `/api/analyze` voltou a exigir usuario autenticado, ownership da analise e status `processing`.
+  - Os modulos registrados pelo checkout ou credito sao preservados durante o processamento e usados como fonte de verdade da IA.
+  - O laudo somente recebe `completed` quando o resumo gerado e valido; falhas passam a registrar mensagem segura em `error`.
+  - A tela de nova analise exibe claramente o valor total calculado para os modulos selecionados.
+- **Resultado build/lint/typecheck**: `npm.cmd run build` (OK), `npm.cmd run lint` (OK) e `npx.cmd tsc --noEmit` (OK).
+- **Deploy**: Nao executado por determinacao expressa deste incidente.
+- **Problemas restantes**: As analises antigas que ja ficaram em `error` nao foram reprocessadas; homologar um novo fluxo autenticado antes de publicar.
 
+- **Data**: 02/06/2026
+- **Tarefa**: Validação final antes do deploy do fluxo de nova análise, módulos e parecer real
+- **Arquivos alterados**: `src/app/dashboard/nova-analise/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento validado**:
+  - Frontend aceita a resposta assíncrona `202 processing`, redireciona para `/dashboard/resultado` e acompanha o processamento por polling.
+  - Seleção múltipla, desmarcação, pacote master `Cruzamento Total`, teto de `R$ 499,90` e checkout simulado foram conferidos por inspeção.
+  - `/api/analyze` mantém autenticação, ownership, trava `processing`, módulos registrados e bloqueio de `completed` sem resumo válido.
+  - Resultado trata corretamente `processing`, `error` e `completed` sem resumo; link público, revogação, WhatsApp e PDF permaneceram preservados.
+- **Correção mínima aplicada**:
+  - Fluxo "Usar Crédito" agora verifica falha ao liberar a análise em `processing`, filtra por `user_id` e restaura o saldo descontado se a liberação falhar.
+- **Resultado build/lint/typecheck**: `npm.cmd run build`, `npm.cmd run lint` e `npx.cmd tsc --noEmit` aprovados.
+- **Deploy**: Não executado por determinação expressa desta validação.
+- **Problemas restantes**: Homologar visualmente o fluxo completo autenticado após publicação; reprocessar separadamente análises antigas inconsistentes.
 
+- **Data**: 02/06/2026
+- **Tarefa**: Auditoria e correção do fluxo de nova análise, módulos e geração real do parecer
+- **Arquivos alterados**: `src/app/dashboard/nova-analise/page.tsx`, `src/app/api/checkout/route.ts`, `src/app/api/analyze/route.ts`, `src/app/dashboard/resultado/page.tsx`, `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Restaurada seleção múltipla dos focos de auditoria, com `Cruzamento Total` como pacote master de `R$ 499,90`.
+  - Checkout calcula o valor exclusivamente no servidor, elimina duplicidades e aplica automaticamente o pacote master quando a soma dos módulos individuais atinge o teto.
+  - Seleção validada no checkout é registrada nos `findings` e reutilizada pela análise, evitando divergência entre cobrança e processamento.
+  - Pagamento simulado permanece restrito a liberar `processing`; não conclui análise e não chama Mercado Pago.
+  - `/api/analyze` valida tamanho mínimo do parecer antes de salvar `completed`, registra erro técnico seguro quando falha e responde `202 processing` enquanto o processamento assíncrono está em andamento.
+  - Tela de resultado não renderiza mais laudo válido para `completed` sem `findings.resumo`.
+  - Removido mascaramento visual do dashboard que convertia estados pendentes ou em processamento em concluídos.
+- **Resultado build/lint/typecheck**: `npm.cmd run build`, `npm.cmd run lint` e `npx.cmd tsc --noEmit` aprovados.
+- **Deploy**: Não executado por determinação expressa deste sprint.
+- **Problemas restantes**: Reprocessar análises antigas que já estejam em estado inconsistente `completed` sem `findings.resumo`.
+
+- **Data**: 01/06/2026
+- **Tarefa**: Mensagem pronta para WhatsApp ao compartilhar laudo AgroLex
+- **Arquivos alterados**: `src/app/dashboard/resultado/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Adicionada caixa "Mensagem para WhatsApp" exibida somente após a geração do link público seguro.
+  - Mensagem automática limitada ao nome do imóvel, grau de risco, URL pública e orientação técnica de uso.
+  - Adicionados os botões "Copiar mensagem para WhatsApp" e "Abrir WhatsApp", com texto completo e URL `wa.me` codificada.
+  - Mantidos intactos API, banco, Supabase, RLS, migration, motor de análise, conteúdo do laudo e impressão/PDF.
+- **Resultado build/lint/typecheck**: `npm.cmd run build`, `npm.cmd run lint` e `npx.cmd tsc --noEmit` aprovados.
+- **Deploy**: Não executado por determinação expressa deste sprint.
+- **Problemas restantes**: Teste funcional autenticado deve ser executado em ambiente com sessão válida antes da publicação.
+
+- **Data**: 01/06/2026
+- **Tarefa**: Diagnóstico e hardening do checkout Pix da nova análise
+- **Arquivos alterados**: `src/app/api/checkout/route.ts`, `src/app/dashboard/nova-analise/page.tsx`, `src/app/api/webhook/mercadopago/route.ts`, `.env.example`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Padronizada a variável do gateway como `MERCADO_PAGO_ACCESS_TOKEN`, conforme o template de ambiente.
+  - Removido token de teste embutido no código e mantido fallback simulado apenas em desenvolvimento com `CHECKOUT_DEV_SECRET`.
+  - Checkout agora exige sessão Supabase válida, confirma a propriedade da análise pendente e recalcula o preço no servidor pelos módulos permitidos.
+  - Frontend envia sessão e módulos selecionados e exibe mensagem amigável quando o provedor não está configurado.
+  - Webhook Mercado Pago alinhado à mesma variável de ambiente.
+- **Resultado build/lint/typecheck**: `npm.cmd run build`, `npm.cmd run lint` e `npx.cmd tsc --noEmit` aprovados.
+- **Deploy**: Não executado por determinação expressa desta tarefa.
+- **Problemas restantes**: Configurar `MERCADO_PAGO_ACCESS_TOKEN` no ambiente de produção e homologar Pix com credencial real; auditar futuramente o fluxo de créditos, que permanece independente do checkout Pix.
+
+- **Data**: 01/06/2026
+- **Tarefa**: Correção do valor do checkout e priorização de Pix no Mercado Pago
+- **Arquivos alterados**: `src/app/dashboard/nova-analise/page.tsx`, `src/app/api/checkout/route.ts`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Corrigida a seleção de auditoria para aceitar um único plano por análise, removendo o acúmulo silencioso de módulos.
+  - API de checkout agora rejeita múltiplos planos e calcula o preço exclusivamente no servidor pelo único plano selecionado.
+  - Para `Cruzamento Total`, a preferência Mercado Pago contém um item com quantidade `1` e preço unitário `499.90`.
+  - Ao escolher Pix, o Checkout Pro exclui cartões de crédito, débito, pré-pago e boleto, mantendo Pix como meio principal disponível.
+  - Adicionada orientação visual para escolha de Pix na tela do Mercado Pago.
+- **Resultado build/lint/typecheck**: `npm.cmd run build`, `npm.cmd run lint` e `npx.cmd tsc --noEmit` aprovados.
+- **Deploy**: Não executado por determinação expressa deste sprint.
+- **Problemas restantes**: Homologar o Checkout Pro Pix após deploy; dinheiro em conta Mercado Pago pode permanecer disponível porque o provider não permite excluir essa modalidade.
+
+- **Data**: 01/06/2026
+- **Tarefa**: Modo simulado controlado para validação interna do laudo
+- **Arquivos alterados**: `src/app/api/checkout/route.ts`, `src/app/api/webhook/mercadopago/route.ts`, `src/app/api/analyze/route.ts`, `src/app/dashboard/nova-analise/page.tsx`, `.env.example`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Adicionada feature flag `PAYMENT_PROVIDER`, com modos `simulated` e `mercadopago`; ausência ou valor desconhecido usam `simulated` como padrão seguro de beta.
+  - Checkout simulado exige sessão válida, valida propriedade da análise, calcula o valor no servidor e libera a IA sem chamar o Mercado Pago.
+  - Tela de nova análise informa claramente o modo de teste e troca a ação para "Confirmar pagamento simulado".
+  - Origem da liberação (`simulated`, `mercadopago` ou `credit`) é registrada nos `findings` existentes e preservada no resultado final sem alterar o texto do laudo.
+  - `/api/analyze` agora exige status `processing`, impedindo início direto antes da liberação por pagamento ou crédito.
+- **Resultado build/lint/typecheck**: `npm.cmd run build`, `npm.cmd run lint` e `npx.cmd tsc --noEmit` aprovados.
+- **Deploy**: Não executado por determinação expressa deste sprint.
+- **Problemas restantes**: Criar futuramente tabela de pagamentos para auditoria financeira completa; o registro atual nos `findings` é suficiente apenas para a fase beta.
+
+- **Data**: 02/06/2026
+- **Tarefa**: Publicacao e validacao do modo de pagamento simulado controlado
+- **Arquivos alterados**: `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Configurada variavel de ambiente `PAYMENT_PROVIDER=simulated` na producao da Vercel.
+  - Executadas validacoes locais de build, lint e typecheck, todas bem-sucedidas.
+  - Realizado deploy para ambiente de producao Vercel com sucesso.
+  - Testado o fluxo de pagamento simulado controlado (liberado sem Mercado Pago, processado com IA, geracao de laudo, PDF e compartilhamento preservados).
+- **Resultado build/lint/typecheck**: `npm.cmd run build` (OK), `npm.cmd run lint` (OK) e `npx.cmd tsc --noEmit` (OK).
+- **Deploy**: Efetuado com sucesso via `vercel --prod --yes`.
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
+- **Problemas restantes**: Nenhum.
+
+- **Data**: 02/06/2026
+- **Tarefa**: Validação, Correção de Marca e Publicação do AgroLex
+- **Arquivos alterados**: `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/dashboard/page.tsx`, `src/app/dashboard/planos/page.tsx`, `src/app/cofre/view/[id]/page.tsx`, `src/app/(auth)/login/page.tsx`, `src/app/(auth)/cadastro/page.tsx`, `src/app/api/cron/reminders/route.ts`, `src/app/api/analyze/route.ts`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Todas as ocorrências da marca visual "Agrilex" ou variações de casing incorreto ("Agrolex") em elementos visíveis da interface do usuário (barra de navegação, rodapé, FAQs, formulários de autenticação, e-mails e alertas) foram atualizadas para a marca oficial: **AgroLex**.
+  - O sufixo "B2B" foi removido dos botões de planos/créditos no dashboard para cumprir a restrição de rotas principais.
+  - Lógica técnica, Supabase, RLS, variáveis e identificadores de infraestrutura foram estritamente preservados sem alterações.
+- **Resultado build/lint/typecheck**: `npm.cmd run build` (OK), `npm.cmd run lint` (OK) e `npx.cmd tsc --noEmit` (OK).
+- **Deploy**: Efetuado com sucesso via `vercel --prod --yes`.
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
+- **Problemas restantes**: Nenhum.
+
+- **Data**: 02/06/2026
+- **Tarefa**: Validação e deploy do hotfix de nova análise e parecer real
+- **Arquivos alterados**: `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Deploy da branch contendo a correção de regressão do fluxo de nova análise, preservação de módulos/pagamento no `/api/analyze` e validação real do laudo.
+- **Resultado build/lint/typecheck**: `npm.cmd run build` (OK), `npm.cmd run lint` (OK) e `npx.cmd tsc --noEmit` (OK).
+- **Deploy**: Efetuado com sucesso via `vercel --prod --yes`.
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
+- **Problemas restantes**: Nenhum.
+
+- **Data**: 02/06/2026
+- **Tarefa**: Hotfix local para impedir analise presa em `processing`
+- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/resultado/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Adicionados timeouts explicitos para sintese da IA, download de documentos e consulta auxiliar opcional.
+  - Timeout da IA grava `status=error`, mensagem segura e `technical_error_type=ai_timeout`.
+  - Respostas vazias, curtas ou placeholders continuam impedidas de receber `completed`.
+  - A pagina de resultado interrompe polling continuo apos 2 minutos e exibe orientacao para reprocessar ou contatar o suporte.
+- **Resultado build/lint/typecheck**: `npm.cmd run build` (OK), `npm.cmd run lint` (OK) e `npx.cmd tsc --noEmit` (OK).
+- **Deploy**: Nao executado por determinacao expressa deste incidente.
+- **Problemas restantes**: Homologar uma nova analise autenticada apos publicacao; a analise antiga presa nao foi alterada nem reprocessada.

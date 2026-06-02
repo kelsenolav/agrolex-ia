@@ -14,6 +14,7 @@ const MODULE_PRICES: Record<string, number> = {
   forense: 299.90,
   cruzamento: 499.90,
 };
+const MASTER_MODULE = 'cruzamento';
 
 export default function NovaAnalisePage() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function NovaAnalisePage() {
   const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null);
   const [currentPropertyId, setCurrentPropertyId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'paid'>('idle');
+  const [checkoutMode, setCheckoutMode] = useState<'simulated' | 'mercadopago'>('simulated');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   // Estados para Integrações GOV
@@ -48,6 +50,19 @@ export default function NovaAnalisePage() {
     fetchCredits();
   }, []);
 
+  useEffect(() => {
+    const fetchCheckoutMode = async () => {
+      try {
+        const response = await fetch('/api/checkout');
+        const data = await response.json();
+        if (data.mode === 'mercadopago') setCheckoutMode('mercadopago');
+      } catch {
+        setCheckoutMode('simulated');
+      }
+    };
+    fetchCheckoutMode();
+  }, []);
+
   // Polling invisível na própria tela
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -62,25 +77,31 @@ export default function NovaAnalisePage() {
     return () => clearInterval(interval);
   }, [paymentStatus, currentAnalysisId]);
 
-  const allModulesList = Object.keys(MODULE_PRICES);
-  const totalPrice = selectedModules.reduce((acc, mod) => acc + (MODULE_PRICES[mod] || 0), 0);
+  const totalPrice = selectedModules.includes(MASTER_MODULE)
+    ? MODULE_PRICES[MASTER_MODULE]
+    : Math.min(
+      selectedModules.reduce((sum, moduleId) => sum + (MODULE_PRICES[moduleId] || 0), 0),
+      MODULE_PRICES[MASTER_MODULE]
+    );
 
   const toggleModule = (id: string) => {
-    setSelectedModules(prev => {
-      if (prev.includes(id)) {
-        return prev.filter(m => m !== id);
-      } else {
-        return [...prev, id];
+    setSelectedModules(previousModules => {
+      if (id === MASTER_MODULE) {
+        return previousModules.includes(MASTER_MODULE) ? [] : [MASTER_MODULE];
       }
+
+      const modulesWithoutMaster = previousModules.filter(moduleId => moduleId !== MASTER_MODULE);
+      const nextModules = modulesWithoutMaster.includes(id)
+        ? modulesWithoutMaster.filter(moduleId => moduleId !== id)
+        : [...modulesWithoutMaster, id];
+      const total = nextModules.reduce((sum, moduleId) => sum + MODULE_PRICES[moduleId], 0);
+
+      return total > MODULE_PRICES[MASTER_MODULE] ? [MASTER_MODULE] : nextModules;
     });
   };
 
-  const selectAll = () => {
-    if (selectedModules.length === allModulesList.length) {
-      setSelectedModules([]);
-    } else {
-      setSelectedModules(allModulesList);
-    }
+  const selectAllModules = () => {
+    setSelectedModules(previousModules => previousModules.includes(MASTER_MODULE) ? [] : [MASTER_MODULE]);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -239,7 +260,21 @@ export default function NovaAnalisePage() {
         if (creditError) throw new Error("Erro ao descontar crédito: " + creditError.message);
 
         // Atualiza a análise para processar (pulando a pendência de pagamento)
-        await supabase.from('analyses').update({ status: 'processing' }).eq('id', analysis.id);
+        const { error: analysisUpdateError } = await supabase.from('analyses').update({
+          status: 'processing',
+          findings: {
+            current_step: 'Credito corporativo aplicado.',
+            payment_mode: 'credit',
+            selected_modules: selectedModules,
+          },
+        }).eq('id', analysis.id).eq('user_id', userId);
+        if (analysisUpdateError) {
+          const { error: restoreCreditError } = await supabase.from('profiles').update({ credits: userCredits }).eq('id', userId);
+          if (restoreCreditError) {
+            throw new Error("Erro ao liberar análise com crédito e ao restaurar o saldo. Contate o suporte.");
+          }
+          throw new Error("Erro ao liberar análise com crédito. O saldo foi restaurado.");
+        }
         
         setUserCredits(prev => prev - 1);
         setPaymentStatus('paid');
@@ -250,21 +285,27 @@ export default function NovaAnalisePage() {
       // 4. Chamar Checkout (Para Pix e Cartão)
       const checkoutRes = await fetch('/api/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ 
-          amountPaid: totalPrice,
           analysisId: analysis.id,
           propertyId: property.id,
-          userEmail: session.user.email,
-          userName: session.user.user_metadata?.full_name || 'Usuário'
+          selectedModules,
+          paymentMethod
         })
       });
       const checkoutData = await checkoutRes.json();
-      if (checkoutData.checkoutUrl) {
+      if (checkoutData.mode === 'simulated' && checkoutData.status === 'approved') {
+        setCheckoutMode('simulated');
+        setPaymentStatus('paid');
+      } else if (checkoutData.checkoutUrl) {
+        setCheckoutMode('mercadopago');
         // Redirecionar para o Mercado Pago numa nova aba (não fechar esta)
         window.open(checkoutData.checkoutUrl, '_blank');
       } else {
-        throw new Error("Falha ao gerar link de pagamento.");
+        throw new Error(checkoutData.error || "Falha ao gerar link de pagamento.");
       }
       
     } catch (error: any) {
@@ -275,7 +316,9 @@ export default function NovaAnalisePage() {
         msgErro = JSON.stringify(error);
       }
       
-      alert('Erro ao processar (Detalhes Técnicos): ' + msgErro);
+      alert(msgErro.startsWith('Pagamento indisponível')
+        ? msgErro
+        : 'Erro ao processar (Detalhes Técnicos): ' + msgErro);
     } finally {
       setLoading(false);
     }
@@ -287,7 +330,7 @@ export default function NovaAnalisePage() {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
             <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">Agrilex</span>
+            <span className="text-xl font-bold text-white">AgroLex</span>
           </Link>
         </div>
       </nav>
@@ -413,13 +456,13 @@ export default function NovaAnalisePage() {
                 <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                   <Layers className="text-brand-gold"/> Selecione o Foco da Auditoria Forense
                 </h2>
-                <button 
-                  type="button" 
-                  onClick={selectAll}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-lg transition-colors border border-gray-300 text-sm flex items-center gap-2"
+                <button
+                  type="button"
+                  onClick={selectAllModules}
+                  className="flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-100 px-4 py-2 text-sm font-bold text-gray-800 transition-colors hover:bg-gray-200"
                 >
-                  <CheckCircle2 size={16} className={selectedModules.length === allModulesList.length ? "text-brand-green" : "text-gray-400"} /> 
-                  {selectedModules.length === allModulesList.length ? "Desmarcar Todos" : "Selecionar Todas as Análises"}
+                  <CheckCircle2 size={16} className={selectedModules.includes(MASTER_MODULE) ? 'text-brand-green' : 'text-gray-400'} />
+                  {selectedModules.includes(MASTER_MODULE) ? 'Desmarcar Cruzamento Total' : 'Selecionar Todas as Análises'}
                 </button>
               </div>
               
@@ -506,6 +549,11 @@ export default function NovaAnalisePage() {
               </div>
             </div>
 
+            <div className="mt-4 flex items-center justify-between rounded-xl border border-brand-gold/40 bg-amber-50 px-5 py-4">
+              <span className="text-sm font-bold uppercase tracking-wider text-gray-700">Valor total da auditoria</span>
+              <strong className="text-2xl font-black text-brand-dark">R$ {totalPrice.toFixed(2).replace('.', ',')}</strong>
+            </div>
+
             <div className="pt-6">
               <div className="mb-6 border border-gray-200 rounded-xl p-5 bg-gray-50">
                 <h3 className="text-sm font-bold text-gray-800 mb-3 uppercase tracking-wider">Forma de Pagamento</h3>
@@ -523,12 +571,22 @@ export default function NovaAnalisePage() {
                     <CreditCard size={20} /> Usar Crédito ({userCredits})
                   </div>
                   <div 
-                    onClick={() => setPaymentMethod("debito")}
-                    className={`cursor-pointer rounded-lg border p-4 flex items-center justify-center gap-2 font-bold transition-all ${paymentMethod === "debito" ? 'border-brand-green bg-green-100 text-brand-green ring-2 ring-brand-green/20' : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'}`}
+                    onClick={() => setPaymentMethod("cartao")}
+                    className={`cursor-pointer rounded-lg border p-4 flex items-center justify-center gap-2 font-bold transition-all ${paymentMethod === "cartao" ? 'border-brand-green bg-green-100 text-brand-green ring-2 ring-brand-green/20' : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'}`}
                   >
                     <CreditCard size={20} /> Cartão de Crédito
                   </div>
                 </div>
+                {checkoutMode === 'simulated' && paymentMethod !== 'credito' && (
+                  <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+                    Modo de teste interno: o pagamento será simulado para permitir validação do laudo.
+                  </p>
+                )}
+                {checkoutMode === 'mercadopago' && paymentMethod === "pix" && (
+                  <p className="mt-3 text-sm text-gray-600">
+                    Você será direcionado ao Mercado Pago. Na próxima tela, escolha Pix como meio de pagamento.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col md:flex-row gap-4 mt-6">
@@ -542,7 +600,11 @@ export default function NovaAnalisePage() {
                   ) : paymentStatus === 'pending' ? (
                     <>Aguardando Pagamento... <Layers size={24} className="animate-spin" /></>
                   ) : loading ? 'Processando Documentos...' : (
-                    paymentMethod === 'credito' ? `Descontar 1 Crédito` : `Pagar R$ ${totalPrice.toFixed(2).replace('.', ',')}`
+                    paymentMethod === 'credito'
+                      ? `Descontar 1 Crédito`
+                      : checkoutMode === 'simulated'
+                        ? 'Confirmar pagamento simulado'
+                        : `Pagar R$ ${totalPrice.toFixed(2).replace('.', ',')}`
                   )}
                 </button>
                 
@@ -557,7 +619,9 @@ export default function NovaAnalisePage() {
                 </button>
               </div>
               <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1">
-                <ShieldCheck size={14} /> O sistema detectará automaticamente quando o pagamento for concluído para habilitar a IA
+                <ShieldCheck size={14} /> {checkoutMode === 'simulated'
+                  ? 'A confirmação simulada habilitará a IA para validação interna do laudo'
+                  : 'O sistema detectará automaticamente quando o pagamento for concluído para habilitar a IA'}
               </p>
             </div>
           </form>

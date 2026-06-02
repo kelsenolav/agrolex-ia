@@ -14,7 +14,12 @@ export async function POST(req: Request) {
 
     if (topic === 'payment' && id) {
       // 1. Consultar a API do MP para verificar o status real do pagamento
-      const ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || '';
+      const ACCESS_TOKEN = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
+      if (!ACCESS_TOKEN) {
+        console.error('[Mercado Pago Webhook] Provider not configured: missing MERCADO_PAGO_ACCESS_TOKEN');
+        return NextResponse.json({ error: 'Provedor de pagamento indisponível.' }, { status: 503 });
+      }
+
       const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${id}`, {
         headers: { Authorization: `Bearer ${ACCESS_TOKEN}` }
       });

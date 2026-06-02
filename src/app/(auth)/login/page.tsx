@@ -19,7 +19,7 @@ export default function LoginPage() {
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -28,7 +28,24 @@ export default function LoginPage() {
       setError('E-mail ou senha incorretos.');
       setLoading(false);
     } else {
+      const response = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: data.session.access_token,
+          refreshToken: data.session.refresh_token
+        })
+      });
+
+      if (!response.ok) {
+        await supabase.auth.signOut();
+        setError('Não foi possível iniciar sua sessão com segurança.');
+        setLoading(false);
+        return;
+      }
+
       router.push('/dashboard');
+      router.refresh();
     }
   };
 
@@ -37,7 +54,7 @@ export default function LoginPage() {
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <Link href="/" className="flex justify-center items-center gap-2 text-brand-green mb-6 hover:scale-105 transition-transform">
           <ShieldCheck size={40} className="text-brand-gold" />
-          <span className="text-3xl font-bold">Agrilex</span>
+          <span className="text-3xl font-bold">AgroLex</span>
         </Link>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
           Acesse sua conta

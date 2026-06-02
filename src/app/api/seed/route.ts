@@ -1,8 +1,26 @@
+import { timingSafeEqual } from 'crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+function hasValidSeedSecret(req: Request) {
+  const configuredSecret = process.env.SEED_API_SECRET;
+  const providedSecret = req.headers.get('x-seed-secret');
+
+  if (!configuredSecret || !providedSecret) return false;
+
+  const configuredBuffer = Buffer.from(configuredSecret);
+  const providedBuffer = Buffer.from(providedSecret);
+
+  return configuredBuffer.length === providedBuffer.length
+    && timingSafeEqual(configuredBuffer, providedBuffer);
+}
+
 export async function GET(req: Request) {
   try {
+    if (!hasValidSeedSecret(req)) {
+      return NextResponse.json({ error: 'Rota indisponível.' }, { status: 404 });
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     

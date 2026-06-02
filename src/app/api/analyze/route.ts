@@ -10,6 +10,83 @@ const resend = new Resend(process.env.RESEND_API_KEY || 're_mock_key');
 // (O padrão do plano Hobby é 10 segundos, o que mataria a IA)
 export const maxDuration = 60;
 
+const MASTER_MODULE = 'cruzamento';
+const MIN_REPORT_LENGTH = 120;
+const AI_TIMEOUT_MS = 45_000;
+const DOCUMENT_DOWNLOAD_TIMEOUT_MS = 10_000;
+const AUXILIARY_FETCH_TIMEOUT_MS = 5_000;
+const MODULE_PRICES: Record<string, number> = {
+  titulos_incra: 99.90,
+  registros: 149.90,
+  geoespacial: 199.90,
+  nulidades: 249.90,
+  forense: 299.90,
+  cruzamento: 499.90,
+};
+
+class AnalysisTimeoutError extends Error {
+  technicalErrorType: string;
+
+  constructor(message: string, technicalErrorType: string) {
+    super(message);
+    this.name = 'AnalysisTimeoutError';
+    this.technicalErrorType = technicalErrorType;
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, technicalErrorType: string) {
+  let timeout: NodeJS.Timeout;
+
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new AnalysisTimeoutError('Tempo limite excedido ao aguardar a inteligencia artificial.', technicalErrorType));
+      }, timeoutMs);
+    }),
+  ]).finally(() => clearTimeout(timeout));
+}
+
+function resolveAnalysisModules(rawModules: unknown) {
+  const requestedModules = Array.isArray(rawModules)
+    ? rawModules.filter((moduleId): moduleId is string => typeof moduleId === 'string')
+    : [];
+  const modules = [...new Set(requestedModules)];
+
+  if (modules.length === 0 || modules.some(moduleId => !MODULE_PRICES[moduleId])) return null;
+  if (modules.includes(MASTER_MODULE)) {
+    return { selectedModules: [MASTER_MODULE], analysisModules: Object.keys(MODULE_PRICES), amountPaid: MODULE_PRICES[MASTER_MODULE] };
+  }
+
+  const amountPaid = modules.reduce((total, moduleId) => total + MODULE_PRICES[moduleId], 0);
+  return amountPaid > MODULE_PRICES[MASTER_MODULE]
+    ? { selectedModules: [MASTER_MODULE], analysisModules: Object.keys(MODULE_PRICES), amountPaid: MODULE_PRICES[MASTER_MODULE] }
+    : { selectedModules: modules, analysisModules: modules, amountPaid };
+}
+
+function isValidReport(report: string) {
+  const normalizedReport = report.trim();
+  return normalizedReport.length >= MIN_REPORT_LENGTH
+    && !/^(sem conte[uú]do|n[aã]o foi poss[ií]vel|erro|undefined|null)$/i.test(normalizedReport);
+}
+
+function getSafeAnalysisErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) return 'Nao foi possivel concluir o parecer tecnico.';
+  if (error instanceof AnalysisTimeoutError) {
+    return error.technicalErrorType === 'ai_timeout'
+      ? 'A sintese do parecer tecnico excedeu o tempo esperado. Tente novamente ou contate o suporte.'
+      : 'Uma etapa externa da analise excedeu o tempo esperado. Tente novamente ou contate o suporte.';
+  }
+  if (error.message.includes('Nenhum documento')) return 'Nenhum documento suficiente foi encontrado para gerar o parecer.';
+  if (error.message.includes('documentos visuais')) return 'Os documentos enviados nao puderam ser lidos para gerar o parecer.';
+  if (error.message.includes('parecer tecnico valido')) return 'A inteligencia artificial nao retornou um parecer tecnico valido.';
+  return 'Nao foi possivel concluir o parecer tecnico. Tente novamente ou contate o suporte.';
+}
+
+function getTechnicalErrorType(error: unknown) {
+  return error instanceof AnalysisTimeoutError ? error.technicalErrorType : 'analysis_error';
+}
+
 export async function POST(req: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -32,14 +109,45 @@ export async function POST(req: Request) {
       global: { headers: { Authorization: authHeader || '' } }
     });
 
-    const { propertyId, analysisId, analysisLevel, cpfCnpj, carNumber } = await req.json();
+    const { propertyId, analysisId, cpfCnpj, carNumber } = await req.json();
 
     if (!propertyId || !analysisId) {
       return NextResponse.json({ error: 'IDs inválidos' }, { status: 400 });
     }
 
-    const { data: { user } } = await supabaseUser.auth.getUser();
-    const userEmail = user?.email || 'cliente@teste.com';
+    const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Nao autorizado.' }, { status: 401 });
+    }
+
+    const { data: ownedAnalysis, error: ownershipError } = await supabaseUser
+      .from('analyses')
+      .select('id, status, findings')
+      .eq('id', analysisId)
+      .eq('property_id', propertyId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (ownershipError || !ownedAnalysis) {
+      return NextResponse.json({ error: 'Analise nao encontrada.' }, { status: 403 });
+    }
+    if (ownedAnalysis.status !== 'processing') {
+      return NextResponse.json({ error: 'A analise ainda nao esta liberada para processamento.' }, { status: 409 });
+    }
+
+    const existingFindings = ownedAnalysis.findings as {
+      payment_mode?: unknown;
+      selected_modules?: unknown;
+    } | null;
+    const paymentMode = typeof existingFindings?.payment_mode === 'string'
+      ? existingFindings.payment_mode
+      : 'unknown';
+    const moduleSelection = resolveAnalysisModules(existingFindings?.selected_modules);
+    if (!moduleSelection) {
+      return NextResponse.json({ error: 'Os modulos da auditoria nao foram registrados corretamente.' }, { status: 409 });
+    }
+    const { selectedModules, analysisModules, amountPaid } = moduleSelection;
+    const userEmail = user.email || 'cliente@teste.com';
 
     // O servidor responde imediatamente ao cliente
     // E joga a tarefa pesada para o background da Vercel
@@ -51,8 +159,15 @@ export async function POST(req: Request) {
           console.log(`[Analysis Progress] ${stepMessage}`);
           await supabaseAdmin
             .from('analyses')
-            .update({ findings: { current_step: stepMessage } })
-            .eq('id', analysisId);
+            .update({
+              findings: {
+                current_step: stepMessage,
+                payment_mode: paymentMode,
+                selected_modules: selectedModules,
+              }
+            })
+            .eq('id', analysisId)
+            .eq('user_id', user.id);
         };
 
         // Parsers locais de arquivos geoespaciais
@@ -108,7 +223,8 @@ export async function POST(req: Request) {
           const { data: documents, error: docError } = await supabaseAdmin
             .from('documents')
             .select('*')
-            .eq('property_id', propertyId);
+            .eq('property_id', propertyId)
+            .eq('user_id', user.id);
 
           if (docError) throw new Error('Erro de permissão no Supabase: ' + JSON.stringify(docError));
           if (!documents || documents.length === 0) throw new Error('Nenhum documento encontrado.');
@@ -123,7 +239,11 @@ export async function POST(req: Request) {
             try {
               const host = req.headers.get('host') || 'localhost:3000';
               const protocol = host.includes('localhost') ? 'http' : 'https';
-              const govRes = await fetch(`${protocol}://${host}/api/gov?cpf=${cpfCnpj || ''}&car=${carNumber || ''}`);
+              const govRes = await withTimeout(
+                fetch(`${protocol}://${host}/api/gov?cpf=${cpfCnpj || ''}&car=${carNumber || ''}`),
+                AUXILIARY_FETCH_TIMEOUT_MS,
+                'auxiliary_fetch_timeout'
+              );
               if (govRes.ok) {
                 const govData = await govRes.json();
                 geminiParts.push({
@@ -137,9 +257,13 @@ export async function POST(req: Request) {
           
           await updateStep('Executando visão computacional e extraindo polígonos geoespaciais...');
           for (const doc of documents) {
-            const { data: fileData, error: downloadError } = await supabaseAdmin.storage
-              .from('documents')
-              .download(doc.file_path);
+            const { data: fileData, error: downloadError } = await withTimeout(
+              supabaseAdmin.storage
+                .from('documents')
+                .download(doc.file_path),
+              DOCUMENT_DOWNLOAD_TIMEOUT_MS,
+              'document_download_timeout'
+            );
               
             if (downloadError || !fileData) continue;
 
@@ -178,22 +302,6 @@ export async function POST(req: Request) {
             throw new Error('Não foi possível ler os documentos visuais.');
           }
 
-          const MODULE_PRICES: Record<string, number> = {
-            titulos_incra: 99.90,
-            registros: 149.90,
-            geoespacial: 199.90,
-            nulidades: 249.90,
-            forense: 299.90,
-            cruzamento: 499.90,
-            moratoria_soja: 249.90,
-            gravames_dividas: 199.90,
-            cadeia_sucessoria: 299.90,
-            credito_carbono: 149.90,
-          };
-          
-          const selectedModules = (analysisLevel || '').split(',');
-          const amountPaid = selectedModules.reduce((acc: number, mod: string) => acc + (MODULE_PRICES[mod] || 0), 0);
-          
           let instructions = `Você é um Perito Forense Fundiário Sênior e Especialista em Direito Agrário/Registral.
 Sua missão é ler atentamente os documentos extraídos anexados e gerar um Parecer Forense rigoroso no formato Markdown.
 
@@ -205,37 +313,24 @@ INSTRUÇÕES DE FORMATAÇÃO:
 Os módulos de análise solicitados pelo usuário são:
 `;
 
-          if (selectedModules.includes('titulos_incra')) {
+          if (analysisModules.includes('titulos_incra')) {
             instructions += `\n- MÓDULO 1: AUDITORIA DE TÍTULOS INCRA. Verifique minuciosamente TODOS os títulos emitidos pelo INCRA na origem. Identifique Título Definitivo, Contrato de Concessão, etc. Analise pagamento (quitação, inadimplemento, quitação fraudulenta), Prazo de inalienabilidade (venda simulada, alienação antes do prazo), Exploração direta e Residência (posse fictícia), e Acúmulo irregular de lotes.\n`;
           }
-          if (selectedModules.includes('registros')) {
+          if (analysisModules.includes('registros')) {
             instructions += `\n- MÓDULO 2: AUDITORIA REGISTRAL E AVERBAÇÕES. Foque na manipulação cartorária, criação de matrículas fantasmas/clonadas, quebra da unicidade matricial. Audite gravames (hipotecas sucessivas, penhoras milionárias, cancelamentos em bloco suspeitos), averbações contraditórias e falsidade ideológica processual (uso de matrícula nula).\n`;
           }
-          if (selectedModules.includes('geoespacial')) {
+          if (analysisModules.includes('geoespacial')) {
             instructions += `\n- MÓDULO 3: AUDITORIA GEOESPACIAL E SIGEF. Verifique a (in)compatibilidade cadastral. Existe CAR, CCIR, SIGEF averbado? Há expansão territorial artificial e divergência de área? Há sobreposição com assentamentos reais, APP ou terras indígenas? Há clonagem de perímetro gerando grilagem de papel?\n`;
           }
-          if (selectedModules.includes('nulidades')) {
+          if (analysisModules.includes('nulidades')) {
             instructions += `\n- MÓDULO 4: MAPEAMENTO DE NULIDADES. Estruture o parecer apontando expressamente: Nulidade Absoluta (ex: registro duplicado), Inexistência Jurídica (fraude processual), Violação da Função Social (abandono vs posse pro labore), Nulidade Relativa (erros comunicacionais), e Violações do INCRA.\n`;
           }
-          if (selectedModules.includes('forense')) {
+          if (analysisModules.includes('forense')) {
             instructions += `\n- MÓDULO 5: INVESTIGAÇÃO FORENSE (GRILAGEM). Aponte indícios de lavagem patrimonial rural, laranjas (interposição fraudulenta), apropriação de terras públicas, padrões repetitivos financeiros (hipotecas para fins especulativos) e falsidade ideológica.\n`;
           }
-          if (selectedModules.includes('cruzamento')) {
+          if (analysisModules.includes('cruzamento')) {
             instructions += `\n- MÓDULO 6: CRUZAMENTO SISTÊMICO TOTAL. Cruza as informações de forma magistral: Matrículas antigas vs novas, Matrículas vs Processos judiciais, Matrículas vs Memoriais Físicos (SIGEF), Matrículas vs Posse Fática, Matrículas vs INCRA. Aponte todas as contradições entre os bancos de dados.\n`;
           }
-          if (selectedModules.includes('moratoria_soja')) {
-            instructions += `\n- MÓDULO 7: RASTREABILIDADE E MORATÓRIA DA SOJA. Investigue minuciosamente se há evidências de desmatamento (mesmo legal) a partir do marco temporal de Dezembro de 2020 (critério EUDR para exportação para União Europeia) ou após 2008 (critério da Moratória da Soja). Avalie se a área atende aos critérios do TAC da Carne e identifique o nível de conformidade para exportação de commodities agrícolas.\n`;
-          }
-          if (selectedModules.includes('gravames_dividas')) {
-            instructions += `\n- MÓDULO 8: DOSSIÊ DE GRAVAMES E GARANTIAS (CPR). Extraia e tabele de forma estruturada todos os ônus ativos registrados na matrícula, como Hipotecas, Cédulas de Produto Rural (CPRs) e Alienações Fiduciárias. Identifique os credores, valores nominais das garantias e datas de vencimento. Faça uma estimativa do endividamento patrimonial em relação à área total.\n`;
-          }
-          if (selectedModules.includes('cadeia_sucessoria')) {
-            instructions += `\n- MÓDULO 9: CADEIA SUCESSÓRIA FORENSE. Reconstrua cronologicamente a árvore de transmissões e proprietários desde a abertura da matrícula até o proprietário atual. Analise se há indícios de quebra do princípio de trato sucessivo, saltos de registro ou indícios suspeitos de falsificação documental na cadeia registral anterior.\n`;
-          }
-          if (selectedModules.includes('credito_carbono')) {
-            instructions += `\n- MÓDULO 10: ESTIMATIVA DE CRÉDITOS DE CARBONO. Estime o estoque de Carbono e o potencial anual de geração de Créditos de Carbono (tCO2e/ano) das áreas preservadas (Reserva Legal e APP) descritas nos documentos. Faça uma estimativa realista baseada no bioma do imóvel (ex: floresta amazônica, cerrado, mata atlântica) e na área correspondente, projetando a receita anual estimada com a cotação de mercado de créditos voluntários.\n`;
-          }
-          
           instructions += `\nINSTRUÇÃO FINAL: Leia minuciosamente os documentos PDFs anexados com sua visão computacional avançada, extraindo as entrelinhas e as averbações manuscritas/carimbos.
 INSTRUÇÃO CRÍTICA GEOESPACIAL: Identifique no texto dos documentos as coordenadas geográficas (Latitude e Longitude em formato decimal) do imóvel. Se encontrar, inclua na última linha do seu laudo o marcador especial exatamente neste formato: COORDS: lat, lng (exemplo: COORDS: -17.6521, -51.0429). Se não encontrar coordenadas exatas nos documentos, identifique o município e estado do imóvel no documento (por exemplo, Tocantínia-TO) e estime coordenadas rurais verossímeis correspondentes à região deste município (por exemplo, na estrada de aparecida em Tocantínia-TO, estime coordenadas na serra do lajeado como -10.0500, -48.2000) e inclua o marcador COORDS com estes valores estimados.
 
@@ -248,7 +343,11 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
           let markdownResponse = "";
           if (geminiParts.length > 1) {
             const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
-            const result = await model.generateContent(geminiParts);
+            const result = await withTimeout(
+              model.generateContent(geminiParts),
+              AI_TIMEOUT_MS,
+              'ai_timeout'
+            );
             const response = await result.response;
             markdownResponse = response.text();
 
@@ -285,6 +384,10 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
             markdownResponse = markdownResponse.replace(/COORDS:\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+/i, '').trim();
           }
 
+          if (!isValidReport(markdownResponse)) {
+            throw new Error('A IA nao retornou um parecer tecnico valido.');
+          }
+
           const resultJson = {
             isHtmlResumo: false,
             resumo: markdownResponse,
@@ -295,6 +398,7 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
             checklist: [],
             amountPaid: amountPaid,
             modulesSelected: selectedModules,
+            paymentMode: paymentMode,
             latitude: latitude,
             longitude: longitude,
             polygon: polygonCoords.length > 0 ? polygonCoords : null
@@ -307,7 +411,8 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
               risk_level: 'Alto',
               findings: resultJson
             })
-            .eq('id', analysisId);
+            .eq('id', analysisId)
+            .eq('user_id', user.id);
 
           if (dbError) throw new Error("Erro DB: " + dbError.message);
 
@@ -318,7 +423,7 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
             console.warn("⚠️ RESEND_API_KEY não configurada. Simulando envio de e-mail localmente...");
           } else {
             await resend.emails.send({
-              from: 'Agrilex IA <laudos@agrilex.com.br>',
+              from: 'AgroLex IA <laudos@agrilex.com.br>',
               to: [userEmail],
               subject: '✅ Seu Laudo Pericial Fundiário está pronto!',
               html: `
@@ -330,7 +435,7 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
                   Acessar Parecer Completo (PDF)
                 </a>
                 <br/><br/>
-                <p>Atenciosamente,<br/>Equipe Agrilex</p>
+                <p>Atenciosamente,<br/>Equipe AgroLex</p>
               `
             });
           }
@@ -363,7 +468,7 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
                   whatsapp: whatsapp,
                   amountPaid: amountPaid,
                   modulesCount: selectedModules.length,
-                  message: `Aviso do Agrilex IA: Nova análise concluída. Risco detectado: Alto.`
+                  message: `Aviso do AgroLex IA: Nova análise concluída. Risco detectado: Alto.`
                 })
               });
             }
@@ -388,7 +493,7 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
 
             // 3. Notificação no WhatsApp
             if (whatsapp) {
-              const whatsappMsg = `Olá, ${clientName}! A auditoria forense da sua propriedade no Agrolex IA foi concluída com sucesso.\n\n📋 *Laudo:* ID #${analysisId}\n⚠️ *Grau de Risco:* ALTO\n\n🔗 Acesse o parecer completo online:\n${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard/resultado?id=${analysisId}`;
+              const whatsappMsg = `Olá, ${clientName}! A auditoria forense da sua propriedade no AgroLex IA foi concluída com sucesso.\n\n📋 *Laudo:* ID #${analysisId}\n⚠️ *Grau de Risco:* ALTO\n\n🔗 Acesse o parecer completo online:\n${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard/resultado?id=${analysisId}`;
 
               if (process.env.WHATSAPP_API_URL && process.env.WHATSAPP_API_TOKEN) {
                 console.log(`[WhatsApp API] Enviando real para: ${whatsapp}`);
@@ -416,24 +521,34 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
 
           console.log(`[Background Job] Análise ${analysisId} finalizada 100%.`);
 
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error('[Background Job] Erro na análise da IA:', error);
-          await supabaseAdmin.from('analyses').update({ status: 'error', risk_level: 'Alto' }).eq('id', analysisId);
+          const technicalErrorType = getTechnicalErrorType(error);
+          await supabaseAdmin
+            .from('analyses')
+            .update({
+              status: 'error',
+              findings: {
+                current_step: technicalErrorType === 'ai_timeout'
+                  ? 'Falha na sintese do parecer tecnico.'
+                  : 'Nao foi possivel concluir o parecer tecnico.',
+                error_message: getSafeAnalysisErrorMessage(error),
+                technical_error_type: technicalErrorType,
+                payment_mode: paymentMode,
+                selected_modules: selectedModules,
+              }
+            })
+            .eq('id', analysisId)
+            .eq('user_id', user.id);
         }
       })()
     );
 
     // Retorna a resposta instantaneamente para liberar o navegador e evitar Timeout
-    return NextResponse.json({ success: true, simulador: false, analysisId: analysisId });
+    return NextResponse.json({ accepted: true, status: 'processing', analysisId }, { status: 202 });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro na análise da IA:', error);
-    try {
-      const body = await req.clone().json().catch(() => ({}));
-      if (body.analysisId) {
-        await supabaseAdmin.from('analyses').update({ status: 'error', risk_level: 'Alto' }).eq('id', body.analysisId);
-      }
-    } catch(e) {}
-    return NextResponse.json({ error: error.message || 'Falha ao processar' }, { status: 500 });
+    return NextResponse.json({ error: 'Falha ao iniciar o processamento.' }, { status: 500 });
   }
 }
