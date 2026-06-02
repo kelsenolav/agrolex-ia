@@ -283,3 +283,18 @@ Entregar informações de arquivos alterados, resultados e pendências.
 - **Deploy**: Não efetuado (conforme orientações de governança do bloco).
 - **URL validada localmente**: `/dashboard`
 - **Próximos Passos Recomendados**: Bloco 3 — Restauração controlada do formulário de Nova Análise com as novas validações.
+
+- **Data**: 02/06/2026
+- **Tarefa**: Bloco 3 — Restaurar Laudo Privado e Exportação PDF
+- **Arquivos alterados**: `src/app/dashboard/resultado/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Reconstruído o controle de renderização e estado de `ResultadoContent` buscando dados reais e exigindo autenticação do usuário.
+  - Removido completamente qualquer uso de `mockResponses`, fallbacks de propriedade fixa ou simulação.
+  - Implementada restrição estrita de exibição do laudo: somente renderiza se a análise estiver com status do tipo `completed` E contiver `findings.resumo` preenchido.
+  - Tratados devidamente os estados de erro/falha (exibindo "Parecer técnico indisponível"), processamento ("Análise em processamento") e ausência de ID/registro ("Parecer não encontrado").
+  - Corrigida a marca visual para usar estritamente "AgroLex" nos elementos de navegação e cabeçalho de impressão.
+  - Preservado o botão de exportação via `window.print()` e a estilização de impressão em PDF.
+- **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados com 100% de sucesso.
+- **Deploy**: Não efetuado (conforme orientações de governança do bloco).
+- **URL validada localmente**: `/dashboard/resultado`
+- **Próximos Passos Recomendados**: Bloco 4 — Restauração controlada do fluxo de Nova Análise.

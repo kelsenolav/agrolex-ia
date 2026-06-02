@@ -32,9 +32,14 @@ function ResultadoContent() {
 
   useEffect(() => {
     const fetchAnalise = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
       const id = searchParams.get('id');
-      
-      if (!id || id.startsWith('mock')) {
+      if (!id) {
         setLoading(false);
         return;
       }
@@ -54,18 +59,18 @@ function ResultadoContent() {
     };
     
     fetchAnalise();
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   // Polling para aguardar a IA (que agora roda assíncrona via waitUntil)
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (analise && analise.status === 'processing') {
+    if (analise && (analise.status === 'processing' || analise.status === 'analisando')) {
       interval = setInterval(async () => {
         const { data } = await supabase.from('analyses')
           .select('*, properties(name, city, state), documents(document_type, file_path)')
           .eq('id', analise.id).single();
         
-        if (data && data.status !== 'processing') {
+        if (data && data.status !== 'processing' && data.status !== 'analisando') {
           setAnalise(data);
         }
       }, 4000);
@@ -81,50 +86,90 @@ function ResultadoContent() {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-brand-green" size={48} /></div>;
   }
 
-  if (analise && analise.status === 'processing') {
+  if (!analise) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border-t-4 border-red-500">
+          <div className="w-20 h-20 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle size={40} />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Parecer não encontrado</h2>
+          <p className="text-gray-600 mb-6">A análise solicitada não foi localizada em nossa base de dados.</p>
+          <Link href="/dashboard" className="inline-block bg-brand-green text-white px-6 py-2.5 rounded-lg font-bold hover:brightness-110 transition-all">
+            Voltar ao Painel
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const rawStatus = (analise.status || '').toLowerCase().trim();
+  const isAnalisando = ['processing', 'analisando', 'pending', 'payment_pending'].includes(rawStatus);
+  const isCompleted = ['completed', 'done', 'concluido'].includes(rawStatus);
+  const isError = ['error', 'failed'].includes(rawStatus);
+
+  if (isAnalisando) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border-t-4 border-brand-green">
           <div className="w-20 h-20 bg-brand-green text-white rounded-full flex items-center justify-center mx-auto mb-6">
             <Loader2 size={40} className="animate-spin" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Agrilex em Ação...</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Análise em processamento</h2>
           <p className="text-gray-600 mb-6">
-            O sistema está auditando as páginas e extraindo os dados. Pode demorar até 1 minuto. Você receberá um E-mail assim que acabar, sinta-se livre para fechar ou aguardar aqui!
+            O sistema está auditando as páginas e extraindo os dados. Aguarde...
           </p>
+          <Link href="/dashboard" className="text-sm font-semibold text-brand-green hover:underline">
+            Voltar ao painel e aguardar
+          </Link>
         </div>
       </div>
     );
   }
 
-  const isMock = !analise;
-  const moduleParam = searchParams.get('module') || 'titulos_incra';
-  const selectedModules = moduleParam.split(',');
-  const propName = isMock ? "Fazenda Boa Esperança (Amostra)" : analise.properties?.name;
-  const propLocation = isMock ? "Goiás, GO" : `${analise.properties?.city}, ${analise.properties?.state}`;
-  const risco = isMock ? "Alto" : (analise.risk_level || "Pendente");
-  
-  const mockText = selectedModules
-    .map(m => mockResponses[m])
-    .filter(Boolean)
-    .join('\n\n---\n\n');
-    
-  const mockHtml = parseMarkdown(mockText || mockResponses['titulos_incra']);
-
-  let finalResumo = mockHtml;
-  if (!isMock && analise.findings?.resumo) {
-    // Se a IA enviou markdown, processa no frontend para ficar bonito
-    finalResumo = analise.findings.isHtmlResumo ? analise.findings.resumo : parseMarkdown(analise.findings.resumo);
+  if (isError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border-t-4 border-red-500">
+          <div className="w-20 h-20 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle size={40} />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Parecer técnico indisponível</h2>
+          <p className="text-gray-600 mb-6">Ocorreu um erro no processamento deste documento. Por favor, reenvie o arquivo.</p>
+          <Link href="/dashboard" className="inline-block bg-brand-green text-white px-6 py-2.5 rounded-lg font-bold hover:brightness-110 transition-all">
+            Voltar ao Painel
+          </Link>
+        </div>
+      </div>
+    );
   }
 
-  const findings = isMock || !analise.findings?.resumo ? {
-    isHtmlResumo: true,
-    resumo: mockHtml,
-    problemas: [],
-    recomendacoes: [],
-    documentosFaltantes: [],
-    linhaDoTempo: []
-  } : {
+  const hasParecer = analise.findings && analise.findings.resumo && String(analise.findings.resumo).trim().length > 0;
+
+  if (!isCompleted || !hasParecer) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border-t-4 border-amber-500">
+          <div className="w-20 h-20 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle size={40} />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Anomalia: parecer não localizado</h2>
+          <p className="text-gray-600 mb-6">O processamento consta como concluído, mas o parecer descritivo não pôde ser localizado.</p>
+          <Link href="/dashboard" className="inline-block bg-brand-green text-white px-6 py-2.5 rounded-lg font-bold hover:brightness-110 transition-all">
+            Voltar ao Painel
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const propName = analise.properties?.name;
+  const propLocation = `${analise.properties?.city}, ${analise.properties?.state}`;
+  const risco = analise.risk_level || "Pendente";
+  
+  let finalResumo = analise.findings.isHtmlResumo ? analise.findings.resumo : parseMarkdown(analise.findings.resumo);
+
+  const findings = {
     ...analise.findings,
     isHtmlResumo: true,
     resumo: finalResumo
@@ -145,7 +190,7 @@ function ResultadoContent() {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
             <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">Agrilex</span>
+            <span className="text-xl font-bold text-white">AgroLex</span>
           </Link>
         </div>
       </nav>
@@ -154,7 +199,7 @@ function ResultadoContent() {
       <div className="hidden print:flex justify-between items-center border-b-2 border-brand-green pb-6 mb-6">
         <div className="flex items-center gap-2 text-brand-green">
           <ShieldCheck size={36} />
-          <span className="text-3xl font-bold text-gray-900">AGRILEX</span>
+          <span className="text-3xl font-bold text-gray-900">AgroLex</span>
         </div>
         <div className="text-right text-gray-500 text-sm">
           <p>Laudo Pericial Oficial - IA</p>

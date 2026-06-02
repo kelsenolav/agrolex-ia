@@ -51,3 +51,12 @@
 - **Deploy**: Não aplicável (sem deploy neste bloco).
 - **URL validada**: Painel validado localmente.
 - **Problemas restantes**: Iniciar o Bloco 3 para restaurar de forma controlada o formulário de Nova Análise.
+
+- **Data**: 02/06/2026
+- **Arquivos alterados**: `src/app/dashboard/resultado/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Rotas afetadas**: `/dashboard/resultado`
+- **Botões corrigidos**: Botão "Exportar PDF" preservado para uso com window.print(), exibido somente com parecer válido. Outros CTAs de compartilhamento ocultados/removidos.
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
+- **Deploy**: Não aplicável (sem deploy neste bloco).
+- **URL validada**: Painel de laudo validado localmente.
+- **Problemas restantes**: Restabelecer a página de Nova Análise de forma controlada (Bloco 4).
