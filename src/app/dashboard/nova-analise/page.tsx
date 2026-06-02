@@ -2,40 +2,44 @@
 
 import { useState, useEffect } from "react";
 import Link from 'next/link';
-import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Layers, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Layers, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-
-const MODULE_PRICES: Record<string, number> = {
-  titulos_incra: 99.90,
-  registros: 149.90,
-  geoespacial: 199.90,
-  nulidades: 249.90,
-  forense: 299.90,
-  cruzamento: 499.90,
-};
+import { AUDIT_MODULES, getModulePrice } from "@/lib/auditModules";
 
 export default function NovaAnalisePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<{file: File, type: string}[]>([]);
   const [currentDocType, setCurrentDocType] = useState("");
-  const [selectedModules, setSelectedModules] = useState<string[]>(['titulos_incra']);
+  const [selectedModules, setSelectedModules] = useState<string[]>(['matricula_individual']);
   
   // Estados para Integrações GOV
   const [cpfCnpj, setCpfCnpj] = useState("");
   const [carNumber, setCarNumber] = useState("");
 
-  const allModulesList = Object.keys(MODULE_PRICES);
-  const totalPrice = selectedModules.reduce((acc, mod) => acc + (MODULE_PRICES[mod] || 0), 0);
+  const allModulesList = AUDIT_MODULES.map(m => m.id);
+
+  // Regra de preço estimada com teto de 499.90
+  const calculateTotalPrice = (modules: string[]) => {
+    if (modules.includes("cruzamento_total")) {
+      return 499.90;
+    }
+    const sum = modules.reduce((acc, mod) => acc + getModulePrice(mod), 0);
+    return sum > 499.90 ? 499.90 : sum;
+  };
+
+  const totalPrice = calculateTotalPrice(selectedModules);
 
   const toggleModule = (id: string) => {
     setSelectedModules(prev => {
+      let next;
       if (prev.includes(id)) {
-        return prev.filter(m => m !== id);
+        next = prev.filter(m => m !== id);
       } else {
-        return [...prev, id];
+        next = [...prev, id];
       }
+      return next;
     });
   };
 
@@ -186,7 +190,16 @@ export default function NovaAnalisePage() {
 
         <div className="bg-white p-8 rounded-2xl shadow-xl border-t-4 border-brand-gold">
           <h1 className="text-3xl font-extrabold text-gray-800 mb-2">Nova Auditoria Fundiária</h1>
-          <p className="text-gray-600 mb-8 text-lg">Envie uma ou mais matrículas da área e selecione a profundidade da auditoria cruzada.</p>
+          <p className="text-gray-600 mb-8 text-lg">Envie uma ou mais matrículas da área e selecione a profundidade da auditoria.</p>
+
+          {/* Alerta de Transição */}
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3 text-blue-800 text-sm">
+            <AlertCircle className="flex-shrink-0 mt-0.5" size={20} />
+            <div>
+              <p className="font-bold">Nota de Transição</p>
+              <p className="mt-0.5">Os módulos foram reorganizados. A análise será processada conforme o escopo selecionado e os documentos anexados.</p>
+            </div>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Dados Básicos */}
@@ -205,7 +218,6 @@ export default function NovaAnalisePage() {
                     <option value="GO">GO</option>
                     <option value="MS">MS</option>
                     <option value="MG">MG</option>
-                    <option value="BA">BA</option>
                     <option value="BA">BA</option>
                   </select>
                 </div>
@@ -273,7 +285,7 @@ export default function NovaAnalisePage() {
 
               {files.length > 0 && (
                 <div className="bg-gray-50 rounded-lg p-5 border border-gray-200 shadow-inner">
-                  <h3 className="text-sm font-bold text-gray-700 mb-3">Documentos Prontos para Auditoria Cruzada:</h3>
+                  <h3 className="text-sm font-bold text-gray-700 mb-3">Documentos Prontos para Auditoria:</h3>
                   <ul className="space-y-3">
                     {files.map((item, index) => (
                       <li key={index} className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
@@ -312,84 +324,52 @@ export default function NovaAnalisePage() {
               
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 
-                {/* Módulo 1 */}
-                <div 
-                  onClick={() => toggleModule("titulos_incra")}
-                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all flex flex-col ${selectedModules.includes('titulos_incra') ? 'border-brand-green bg-green-50 shadow-md ring-2 ring-green-100' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-md font-bold text-gray-900 leading-tight">Auditoria de Títulos INCRA</h3>
-                    {selectedModules.includes('titulos_incra') ? <CheckCircle2 className="text-brand-green flex-shrink-0" size={24} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0"></div>}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1 mb-4 flex-grow">Validação de cláusulas resolutivas, inalienabilidade e posse originária.</p>
-                  <div className="text-xl font-black text-gray-800 mt-auto">R$ 99,90</div>
-                </div>
+                {AUDIT_MODULES.map((mod) => {
+                  const isSelected = selectedModules.includes(mod.id);
+                  const isMaster = mod.id === "cruzamento_total";
+                  
+                  return (
+                    <div 
+                      key={mod.id}
+                      onClick={() => toggleModule(mod.id)}
+                      className={`cursor-pointer rounded-2xl border-2 p-5 transition-all relative overflow-hidden flex flex-col ${
+                        isMaster 
+                          ? isSelected
+                            ? "bg-gray-900 text-white border-brand-gold shadow-2xl ring-2 ring-brand-gold/50"
+                            : "bg-gray-900/90 text-gray-100 border-gray-800 hover:border-gray-700"
+                          : isSelected
+                            ? "border-brand-green bg-green-50 shadow-md ring-2 ring-green-100 text-gray-900"
+                            : "border-gray-200 hover:border-gray-300 text-gray-900"
+                      }`}
+                    >
+                      {isMaster && (
+                        <div className="absolute top-0 right-0 bg-brand-gold text-brand-green text-[10px] font-black px-2 py-1 rounded-bl-lg">
+                          MASTER
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className={`text-md font-bold leading-tight ${isMaster ? "text-white" : "text-gray-900"}`}>
+                          {mod.name}
+                        </h3>
+                        {isSelected ? (
+                          <CheckCircle2 className={isMaster ? "text-brand-gold flex-shrink-0" : "text-brand-green flex-shrink-0"} size={24} />
+                        ) : (
+                          <div className={`w-6 h-6 rounded-full border-2 flex-shrink-0 ${isMaster ? "border-gray-600" : "border-gray-300"}`}></div>
+                        )}
+                      </div>
+                      
+                      <p className={`text-xs mt-1 mb-4 flex-grow ${isMaster ? "text-gray-400" : "text-gray-500"}`}>
+                        {mod.description}
+                      </p>
+                      
+                      <div className={`text-xl font-black mt-auto ${isMaster ? "text-white" : "text-gray-800"}`}>
+                        R$ {mod.price.toFixed(2).replace('.', ',')}
+                      </div>
+                    </div>
+                  );
+                })}
 
-                {/* Módulo 2 */}
-                <div 
-                  onClick={() => toggleModule("registros")}
-                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all flex flex-col ${selectedModules.includes('registros') ? 'border-brand-green bg-green-50 shadow-md ring-2 ring-green-100' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-md font-bold text-gray-900 leading-tight">Auditoria Registral e Averbações</h3>
-                    {selectedModules.includes('registros') ? <CheckCircle2 className="text-brand-green flex-shrink-0" size={24} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0"></div>}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1 mb-4 flex-grow">Detecção de fraudes cartorárias, cancelamentos e históricos divergentes.</p>
-                  <div className="text-xl font-black text-gray-800 mt-auto">R$ 149,90</div>
-                </div>
-
-                {/* Módulo 3 */}
-                <div 
-                  onClick={() => toggleModule("geoespacial")}
-                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all flex flex-col ${selectedModules.includes('geoespacial') ? 'border-brand-green bg-green-50 shadow-md ring-2 ring-green-100' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-md font-bold text-gray-900 leading-tight">Auditoria Geoespacial e SIGEF</h3>
-                    {selectedModules.includes('geoespacial') ? <CheckCircle2 className="text-brand-green flex-shrink-0" size={24} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0"></div>}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1 mb-4 flex-grow">Sobreposições, limites, CAR e expansão artificial do perímetro.</p>
-                  <div className="text-xl font-black text-gray-800 mt-auto">R$ 199,90</div>
-                </div>
-
-                {/* Módulo 4 */}
-                <div 
-                  onClick={() => toggleModule("nulidades")}
-                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all flex flex-col ${selectedModules.includes('nulidades') ? 'border-brand-gold bg-amber-50 shadow-md ring-2 ring-amber-100' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-md font-bold text-gray-900 leading-tight">Mapeamento de Nulidades</h3>
-                    {selectedModules.includes('nulidades') ? <CheckCircle2 className="text-brand-gold flex-shrink-0" size={24} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0"></div>}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1 mb-4 flex-grow">Identificação de nulidade absoluta, violações constitucionais e base legal.</p>
-                  <div className="text-xl font-black text-gray-800 mt-auto">R$ 249,90</div>
-                </div>
-
-                {/* Módulo 5 */}
-                <div 
-                  onClick={() => toggleModule("forense")}
-                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all flex flex-col ${selectedModules.includes('forense') ? 'border-brand-gold bg-amber-50 shadow-md ring-2 ring-amber-100' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-md font-bold text-gray-900 leading-tight">Investigação Forense</h3>
-                    {selectedModules.includes('forense') ? <CheckCircle2 className="text-brand-gold flex-shrink-0" size={24} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0"></div>}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1 mb-4 flex-grow">Lavagem patrimonial, laranjas, interposição fraudulenta e simulações.</p>
-                  <div className="text-xl font-black text-gray-800 mt-auto">R$ 299,90</div>
-                </div>
-
-                {/* Módulo 6 */}
-                <div 
-                  onClick={() => toggleModule("cruzamento")}
-                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all relative overflow-hidden bg-gray-900 text-white flex flex-col ${selectedModules.includes('cruzamento') ? 'border-brand-gold shadow-2xl ring-2 ring-brand-gold/50' : 'border-gray-800 hover:border-gray-700'}`}
-                >
-                  <div className="absolute top-0 right-0 bg-brand-gold text-brand-green text-[10px] font-black px-2 py-1 rounded-bl-lg">MASTER</div>
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-md font-bold text-white leading-tight">Cruzamento Total</h3>
-                    {selectedModules.includes('cruzamento') ? <CheckCircle2 className="text-brand-gold flex-shrink-0" size={24} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-600 flex-shrink-0"></div>}
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1 mb-4 flex-grow">Cruzamento absoluto de dados: Matrículas, Processos, INCRA e ITR.</p>
-                  <div className="text-xl font-black text-white mt-auto">R$ 499,90</div>
-                </div>
               </div>
             </div>
 

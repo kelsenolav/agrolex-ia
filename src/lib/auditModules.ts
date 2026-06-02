@@ -1,0 +1,96 @@
+export interface AuditModule {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+}
+
+export const AUDIT_MODULES: AuditModule[] = [
+  {
+    id: "matricula_individual",
+    name: "Análise de Matrícula Individual",
+    price: 99.90,
+    description: "Análise de uma única matrícula, com identificação do imóvel, cadeia registral básica, atos, averbações, ônus, restrições, origem, inconsistências internas e documentos faltantes."
+  },
+  {
+    id: "cruzamento_matriculas",
+    name: "Cruzamento de Matrículas",
+    price: 149.90,
+    description: "Comparação entre duas ou mais matrículas para identificar divergências de área, origem comum, matrícula mãe/filha, sobreposição narrativa, continuidade registral e conflitos entre registros."
+  },
+  {
+    id: "cadeia_dominial",
+    name: "Cadeia Dominial Registral",
+    price: 199.90,
+    description: "Auditoria do histórico de transmissões, continuidade registral, desmembramentos e possíveis quebras na cadeia dominial."
+  },
+  {
+    id: "origem_publica",
+    name: "Auditoria de Origem Pública / Título Fundiário",
+    price: 199.90,
+    description: "Análise de origem em INCRA, ITERTINS, Estado, União, títulos definitivos, regularização fundiária, cláusulas resolutivas, pagamento, posse e exploração."
+  },
+  {
+    id: "geoespacial",
+    name: "Auditoria Geoespacial",
+    price: 199.90,
+    description: "Análise de memorial, CAR, CCIR, SIGEF, perímetro, área declarada versus área registrada e indícios de sobreposição."
+  },
+  {
+    id: "nulidades_fraudes",
+    name: "Mapeamento de Nulidades e Indícios de Fraude",
+    price: 249.90,
+    description: "Identificação de vícios registrais, nulidades, simulação, grilagem, fraude documental, inconsistências e pontos de impugnação."
+  },
+  {
+    id: "cruzamento_total",
+    name: "Cruzamento Total",
+    price: 499.90,
+    description: "Análise ampla dos documentos disponíveis. Deve ser usada preferencialmente quando houver documentação suficiente."
+  }
+];
+
+export const MODULE_PRICES: Record<string, number> = AUDIT_MODULES.reduce((acc, mod) => {
+  acc[mod.id] = mod.price;
+  return acc;
+}, {} as Record<string, number>);
+
+// Compatibilidade com chaves legadas e cálculo de preços robusto
+export const LEGACY_ALIASES: Record<string, string> = {
+  titulos_incra: "origem_publica",
+  registros: "cadeia_dominial",
+  nulidades: "nulidades_fraudes",
+  forense: "nulidades_fraudes",
+  cruzamento: "cruzamento_total",
+};
+
+// Aliases inversos para garantir que o backend atual (/api/analyze)
+// continue funcionando mesmo recebendo chaves novas, caso necessário
+export const NEW_TO_LEGACY_ALIASES: Record<string, string> = {
+  origem_publica: "titulos_incra",
+  cadeia_dominial: "registros",
+  matricula_individual: "registros", // Mapeamento seguro para IA legada
+  cruzamento_matriculas: "cruzamento",
+  nulidades_fraudes: "nulidades",
+  geoespacial: "geoespacial",
+  cruzamento_total: "cruzamento"
+};
+
+export function normalizeModuleId(id: string): string {
+  if (MODULE_PRICES[id] !== undefined) {
+    return id;
+  }
+  return LEGACY_ALIASES[id] || id;
+}
+
+export function getModulePrice(id: string): number {
+  const normId = normalizeModuleId(id);
+  // Se for uma das chaves antigas que mapeia direto
+  if (normId === "cadeia_dominial" && id === "registros") return 149.90; // manter preço antigo se carregado do BD antigo
+  if (normId === "origem_publica" && id === "titulos_incra") return 99.90;
+  if (normId === "nulidades_fraudes" && id === "nulidades") return 249.90;
+  if (normId === "nulidades_fraudes" && id === "forense") return 299.90;
+  if (normId === "cruzamento_total" && id === "cruzamento") return 499.90;
+
+  return MODULE_PRICES[normId] || 0;
+}
