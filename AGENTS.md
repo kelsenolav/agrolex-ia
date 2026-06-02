@@ -133,5 +133,17 @@
 - **URL validada**: Intake com regras de compatibilidade validado localmente.
 - **Problemas restantes**: Homologar e testar o fluxo de processamento de ponta a ponta.
 
+- **Data**: 02/06/2026
+- **Bloco**: 7.3.5 — Corrigir Cálculo de Preço dos Módulos e Exclusividade do Cruzamento Total
+- **Arquivos alterados**: `src/lib/auditModules.ts`, `src/app/dashboard/nova-analise/page.tsx`
+- **Rotas afetadas**: `/dashboard/nova-analise`
+- **Alterações implementadas**: 1) Criada função central `calculateAuditModulesTotal()` em auditModules.ts; 2) Removido teto automático geral de R$ 499,90; 3) R$ 499,90 é agora preço exclusivo de `cruzamento_total`; 4) Módulos individuais somados sem teto; 5) Exclusividade de `cruzamento_total` implementada em `toggleModule()` (desseleciona outros ao clicar); 6) Botão "Selecionar recomendados" nunca seleciona `cruzamento_total` automaticamente.
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
+- **Deploy**: Não aplicável (sem deploy neste bloco; aguardando autorização explícita do usuário).
+- **URL validada**: Não aplicável.
+- **Commit**: b1a896d — "fix: calculate selected audit modules without global cap and enforce cruzamento_total exclusivity"
+- **Exemplos de preço validados**: ["matricula_individual"] = R$ 99,90; ["matricula_individual", "cadeia_dominial", "origem_publica", "nulidades_fraudes"] = R$ 749,60; ["cruzamento_total"] = R$ 499,90.
+- **Problemas restantes**: Teste manual recomendado (validar R$ 749,60 com 4 módulos e exclusividade de cruzamento_total).
+
 
 
