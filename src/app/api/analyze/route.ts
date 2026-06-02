@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
+import { buildLegalAuditPrompt } from '@/lib/auditPromptBuilder';
 
 export const maxDuration = 60;
 
@@ -246,71 +247,7 @@ export async function POST(req: Request) {
         return m;
       })));
       
-      let instructions = `Você é um Perito Forense Fundiário Sênior e Especialista em Direito Agrário/Registral.
-Sua missão é ler atentamente os documentos extraídos anexados e gerar um Parecer Forense rigoroso no formato Markdown.
-
-INSTRUÇÕES DE FORMATAÇÃO:
-1. Retorne APENAS o texto em Markdown puro. NÃO retorne blocos de código JSON nem nada fora do padrão Markdown.
-2. Use formatação rica: **negrito** para alertas, listas com bullet points, títulos (###).
-3. Seja profundo, cite os números das matrículas, datas, hectares exatos e embasamento legal.
-
-SEÇÃO OBRIGATÓRIA DE LIMITAÇÃO DO ESCOPO DA ANÁLISE:
-O parecer DEVE conter obrigatoriamente uma seção chamada 'Limitação do Escopo da Análise'. 
-Nela, informe de forma visível que a análise foi realizada exclusivamente com base nos documentos anexados pelo usuário. 
-Caso o usuário tenha anexado apenas matrícula(s), declare explicitamente que os achados são indícios técnicos preliminares sujeitos à confirmação por meio de certidões atualizadas, títulos originários, processos administrativos, memoriais descritivos, CAR, CCIR e SIGEF.
-
-ESTRUTURA DE ACHADOS / CONFORMIDADE:
-Para cada achado relevante identificado nos módulos abaixo, aplique a seguinte estrutura de exposição:
-- **Achado identificado**: Descrição clara da inconformidade ou ponto de atenção.
-- **Base documental**: Páginas ou trechos da matrícula/documento de onde a informação foi extraída.
-- **Risco jurídico/fundiário**: Consequência prática, risco de nulidade, cancelamento ou litígio.
-- **Grau de criticidade**: Baixo, Médio ou Alto.
-- **Documento necessário para confirmação**: Documento complementar ou certidão que deve ser exigida.
-- **Recomendação**: Ação sugerida para sanar ou mitigar o risco.
-
-Os módulos de análise solicitados pelo usuário são:
-`;
-
-      if (normalizedModules.includes('matricula_individual')) {
-        instructions += `\n- MÓDULO: ANÁLISE DE MATRÍCULA INDIVIDUAL. Verifique identificação do imóvel, número da matrícula, CNM, cartório, comarca, data de abertura, área, localização, proprietários, origem, atos de registro, averbações, ônus, restrições, condições, continuidade registral, inconsistências internas, documentos faltantes e riscos aparentes. Declare expressamente que a análise se limita aos documentos anexados e que, havendo apenas matrícula, as conclusões são indícios técnicos preliminares sujeitos à confirmação documental.\n`;
-      }
-      if (normalizedModules.includes('cruzamento_matriculas')) {
-        instructions += `\n- MÓDULO: CRUZAMENTO DE MATRÍCULAS. Realize cruzamento entre as matrículas anexadas. Compare áreas, confrontações, origem, relação matrícula mãe/filha, proprietários, datas, transmissões, averbações, continuidade registral, possíveis duplicidades e conflitos de sobreposição narrativa. Se não houver duas ou mais matrículas, declare a limitação e recomende a anexação de matrícula complementar.\n`;
-      }
-      if (normalizedModules.includes('cadeia_dominial')) {
-        instructions += `\n- MÓDULO: CADEIA DOMINIAL REGISTRAL. Analise a cadeia dominial registral, a cronologia e a continuidade das transmissões, matrícula de origem, desmembramentos, registros, averbações, possíveis quebras de continuidade registral e documentos necessários para confirmação de legitimidade.\n`;
-      }
-      if (normalizedModules.includes('origem_publica')) {
-        instructions += `\n- MÓDULO: AUDITORIA DE ORIGEM PÚBLICA / TÍTULO FUNDIÁRIO. Analise indícios de origem pública ou título fundiário originário, incluindo emissões pelo INCRA, ITERTINS ou outros órgãos estaduais/federais. Verifique cláusulas resolutivas, inalienabilidade, adimplemento, posse, exploração e necessidade de processo administrativo. Use linguagem prudente: declare indícios, hipóteses a confirmar e documentos pendentes.\n`;
-      }
-      if (normalizedModules.includes('geoespacial')) {
-        instructions += `\n- MÓDULO: AUDITORIA GEOESPACIAL. Verifique a compatibilidade cadastral com memorial descritivo, CAR, CCIR e SIGEF. Identifique sobreposições de perímetros com assentamentos, unidades de conservação, terras indígenas ou imóveis limítrofes, divergências entre área declarada e área registrada, e expansão artificial de polígonos.\n`;
-      }
-      if (normalizedModules.includes('nulidades_fraudes')) {
-        instructions += `\n- MÓDULO: MAPEAMENTO DE NULIDADES E INDÍCIOS DE FRAUDE. Identifique vícios registrais, nulidades absolutas (ex: registros duplicados ou sem base), inexistência jurídica (fraudes processuais), simulação, grilagem de papel, falsidade ideológica ou documental, e pontos de potencial impugnação administrativa/judicial.\n`;
-      }
-      if (normalizedModules.includes('cruzamento_total')) {
-        instructions += `\n- MÓDULO: CRUZAMENTO TOTAL. Realize uma análise ampla, sistêmica e integrada de todos os documentos anexados. Cruza as informações de forma magistral: Matrículas antigas vs novas, Matrículas vs Processos judiciais, Matrículas vs Memoriais Físicos (SIGEF), Matrículas vs Posse Fática, Matrículas vs INCRA. Aponte todas as contradições entre os bancos de dados.\n`;
-      }
-
-      // Módulos adicionais
-      if (normalizedModules.includes('moratoria_soja')) {
-        instructions += `\n- MÓDULO ADICIONAL: RASTREABILIDADE E MORATÓRIA DA SOJA. Investigue desmatamento a partir de Dezembro de 2020 (EUDR) ou após 2008 (Moratória da Soja).\n`;
-      }
-      if (normalizedModules.includes('gravames_dividas')) {
-        instructions += `\n- MÓDULO ADICIONAL: DOSSIÊ DE GRAVAMES E GARANTIAS (CPR). Extraia e tabele hipotecas, Cédulas de Produto Rural e alienações fiduciárias.\n`;
-      }
-      if (normalizedModules.includes('cadeia_sucessoria')) {
-        instructions += `\n- MÓDULO ADICIONAL: CADEIA SUCESSÓRIA FORENSE. Reconstrua cronologicamente a árvore de transmissões e proprietários.\n`;
-      }
-      if (normalizedModules.includes('credito_carbono')) {
-        instructions += `\n- MÓDULO ADICIONAL: ESTIMATIVA DE CRÉDITOS DE CARBONO. Estime potencial de geração de Créditos de Carbono.\n`;
-      }
-
-      instructions += `\nINSTRUÇÃO FINAL: Leia minuciosamente os documentos PDFs anexados com sua visão computacional avançada, extraindo as entrelinhas e as averbações manuscritas/carimbos.
-INSTRUÇÃO CRÍTICA GEOESPACIAL: Identifique no texto dos documentos as coordenadas geográficas (Latitude e Longitude em formato decimal) do imóvel. Se encontrar, inclua na última linha do seu laudo o marcador especial exatamente neste formato: COORDS: lat, lng (exemplo: COORDS: -17.6521, -51.0429). Se não encontrar coordenadas exatas nos documentos, identifique o município e estado do imóvel no documento (por exemplo, Tocantínia-TO) e estime coordenadas rurais verossímeis correspondentes à região deste município (por exemplo, na estrada de aparecida em Tocantínia-TO, estime coordenadas na serra do lajeado como -10.0500, -48.2000) e inclua o marcador COORDS com estes valores estimados.
-
-AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
+      const instructions = buildLegalAuditPrompt(normalizedModules, documents);
 
       geminiParts.unshift({ text: instructions });
 
@@ -347,8 +284,8 @@ AGORA, GERE O PARECER FORENSE COMPLETAMENTE ESTRUTURADO EM MARKDOWN:`;
         throw new Error("A IA gerou um laudo incompleto ou muito curto.");
       }
 
-      let latitude = -17.6521;
-      let longitude = -51.0429;
+      let latitude: number | null = null;
+      let longitude: number | null = null;
 
       if (polygonCoords.length > 0) {
         let latSum = 0;
