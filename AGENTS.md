@@ -105,3 +105,13 @@
 - **Deploy**: Não aplicável (sem deploy neste bloco).
 - **URL validada**: Painel do dashboard e visualização de resultados validados localmente.
 - **Problemas restantes**: Homologação geral em ambiente real de produção.
+
+- **Data**: 02/06/2026
+- **Arquivos alterados**: `src/lib/auditModules.ts`, `src/app/dashboard/nova-analise/page.tsx`, `AGENTS.md`
+- **Rotas afetadas**: `/dashboard/nova-analise`
+- **Botões corrigidos**: Adicionados cards de seleção para os novos módulos reestruturados (`matricula_individual`, `cruzamento_matriculas`, `cadeia_dominial`, `origem_publica`, `geoespacial`, `nulidades_fraudes`, `cruzamento_total`) na UI. Configurada a regra de teto dinâmico de R$ 499,90 e inserida nota discreta de transição.
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
+- **Deploy**: Não aplicável (sem deploy neste bloco).
+- **URL validada**: Painel de Nova Análise validado localmente.
+- **Problemas restantes**: Realizar o mapeamento no motor da IA no próximo sub-bloco para processamento.
+
