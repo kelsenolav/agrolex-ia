@@ -94,3 +94,135 @@ export function getModulePrice(id: string): number {
 
   return MODULE_PRICES[normId] || 0;
 }
+
+export interface DocumentProfile {
+  totalDocuments: number;
+  totalMatriculas: number;
+  hasMatricula: boolean;
+  hasMultipleMatriculas: boolean;
+  hasTituloPublico: boolean;
+  hasGeospatialDocument: boolean;
+  hasCar: boolean;
+  hasSigef: boolean;
+  hasMemorial: boolean;
+  hasCcir: boolean;
+}
+
+export interface ModuleCompatibility {
+  enabled: boolean;
+  recommended: boolean;
+  warning?: string;
+  reason?: string;
+}
+
+export function buildDocumentProfile(files: { name?: string, type: string }[]): DocumentProfile {
+  const totalDocuments = files.length;
+  
+  const matriculasList = files.filter(f => 
+    f.type === "Matrícula" || 
+    f.type === "Certidão Inteiro Teor"
+  );
+  const totalMatriculas = matriculasList.length;
+  
+  const hasMatricula = totalMatriculas > 0;
+  const hasMultipleMatriculas = totalMatriculas >= 2;
+  
+  const hasTituloPublico = files.some(f => 
+    f.type === "Título INCRA" || 
+    (f.name && f.name.toLowerCase().includes("titulo"))
+  );
+  
+  const hasCar = files.some(f => f.type === "CAR");
+  const hasSigef = files.some(f => f.type === "SIGEF" || (f.name && f.name.toLowerCase().includes("sigef")));
+  const hasMemorial = files.some(f => f.type === "Memorial" || (f.name && f.name.toLowerCase().includes("memorial")));
+  const hasCcir = files.some(f => f.type === "CCIR");
+  
+  // Qualquer arquivo KML, GPX, CAR, ou que contenha no nome indica dado geoespacial
+  const hasGeospatialDocument = hasCar || hasSigef || hasMemorial || files.some(f => {
+    if (!f.name) return false;
+    const nameLower = f.name.toLowerCase();
+    return nameLower.endsWith(".kml") || nameLower.endsWith(".gpx") || nameLower.includes("geo");
+  });
+
+  return {
+    totalDocuments,
+    totalMatriculas,
+    hasMatricula,
+    hasMultipleMatriculas,
+    hasTituloPublico,
+    hasGeospatialDocument,
+    hasCar,
+    hasSigef,
+    hasMemorial,
+    hasCcir
+  };
+}
+
+export function getModuleCompatibility(moduleId: string, profile: DocumentProfile): ModuleCompatibility {
+  // Se não houver documento algum anexado, apenas matrícula_individual e cadeia_dominial ficam habilitados (pendendo documentos)
+  if (profile.totalDocuments === 0) {
+    if (moduleId === "matricula_individual" || moduleId === "cadeia_dominial") {
+      return { enabled: true, recommended: false, warning: "Anexe a matrícula da área." };
+    }
+    return { enabled: false, recommended: false, reason: "Anexe ao menos um documento." };
+  }
+
+  switch (moduleId) {
+    case "matricula_individual":
+      return { 
+        enabled: true, 
+        recommended: profile.totalMatriculas === 1,
+        warning: !profile.hasMatricula ? "Recomendado anexar uma Matrícula." : undefined
+      };
+      
+    case "cruzamento_matriculas":
+      return {
+        enabled: profile.hasMultipleMatriculas,
+        recommended: profile.hasMultipleMatriculas,
+        reason: "Exige duas ou mais matrículas."
+      };
+      
+    case "cadeia_dominial":
+      return {
+        enabled: profile.hasMatricula,
+        recommended: profile.hasMatricula,
+        reason: "Exige pelo menos uma matrícula."
+      };
+      
+    case "origem_publica":
+      return {
+        enabled: true,
+        recommended: profile.hasTituloPublico,
+        warning: !profile.hasTituloPublico 
+          ? "Com os documentos atuais, a análise será preliminar e limitada ao teor da matrícula." 
+          : undefined
+      };
+      
+    case "geoespacial":
+      return {
+        enabled: profile.hasGeospatialDocument,
+        recommended: profile.hasGeospatialDocument,
+        reason: "Exige CAR, SIGEF, memorial ou coordenadas."
+      };
+      
+    case "nulidades_fraudes":
+      return {
+        enabled: true,
+        recommended: true,
+        warning: profile.totalMatriculas === 1 
+          ? "A análise será limitada a indícios internos da matrícula." 
+          : undefined
+      };
+      
+    case "cruzamento_total":
+      return {
+        enabled: profile.totalDocuments >= 2,
+        recommended: profile.totalDocuments >= 3,
+        reason: "Recomendado apenas quando houver múltiplos documentos."
+      };
+      
+    default:
+      return { enabled: true, recommended: false };
+  }
+}
+

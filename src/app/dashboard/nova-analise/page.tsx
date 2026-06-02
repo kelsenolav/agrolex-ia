@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from 'next/link';
-import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Layers, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Layers, CheckCircle2, AlertCircle, Info, ShieldAlert } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { AUDIT_MODULES, getModulePrice } from "@/lib/auditModules";
+import { AUDIT_MODULES, getModulePrice, buildDocumentProfile, getModuleCompatibility } from "@/lib/auditModules";
 
 export default function NovaAnalisePage() {
   const router = useRouter();
@@ -20,6 +20,28 @@ export default function NovaAnalisePage() {
 
   const allModulesList = AUDIT_MODULES.map(m => m.id);
 
+  // Computar perfil documental e compatibilidade de módulos
+  const fileItemsForProfile = files.map(f => ({ name: f.file.name, type: f.type }));
+  const docProfile = buildDocumentProfile(fileItemsForProfile);
+
+  // Filtrar e remover módulos que ficaram incompatíveis caso os arquivos mudem
+  useEffect(() => {
+    setSelectedModules(prev => {
+      const filtered = prev.filter(modId => {
+        const comp = getModuleCompatibility(modId, docProfile);
+        return comp.enabled;
+      });
+      // Se ficou vazio, selecionar matricula_individual como recomendação se habilitado
+      if (filtered.length === 0) {
+        const individualComp = getModuleCompatibility("matricula_individual", docProfile);
+        if (individualComp.enabled) {
+          return ["matricula_individual"];
+        }
+      }
+      return filtered;
+    });
+  }, [files]);
+
   // Regra de preço estimada com teto de 499.90
   const calculateTotalPrice = (modules: string[]) => {
     if (modules.includes("cruzamento_total")) {
@@ -32,6 +54,9 @@ export default function NovaAnalisePage() {
   const totalPrice = calculateTotalPrice(selectedModules);
 
   const toggleModule = (id: string) => {
+    const comp = getModuleCompatibility(id, docProfile);
+    if (!comp.enabled) return;
+
     setSelectedModules(prev => {
       let next;
       if (prev.includes(id)) {
@@ -44,10 +69,14 @@ export default function NovaAnalisePage() {
   };
 
   const selectAll = () => {
-    if (selectedModules.length === allModulesList.length) {
+    // Apenas selecionar módulos que estão habilitados para o perfil atual de documentos
+    const enabledModules = AUDIT_MODULES.filter(m => getModuleCompatibility(m.id, docProfile).enabled).map(m => m.id);
+    
+    const allEnabledSelected = enabledModules.every(id => selectedModules.includes(id));
+    if (allEnabledSelected) {
       setSelectedModules([]);
     } else {
-      setSelectedModules(allModulesList);
+      setSelectedModules(enabledModules);
     }
   };
 
@@ -82,6 +111,13 @@ export default function NovaAnalisePage() {
 
     if (selectedModules.length === 0) {
       alert("Selecione ao menos um módulo de auditoria.");
+      return;
+    }
+
+    // Validação de compatibilidade extra antes do envio
+    const incompatible = selectedModules.some(id => !getModuleCompatibility(id, docProfile).enabled);
+    if (incompatible) {
+      alert("Sua seleção de módulos contém itens incompatíveis com os documentos anexados. Por favor, ajuste antes de enviar.");
       return;
     }
 
@@ -201,6 +237,18 @@ export default function NovaAnalisePage() {
             </div>
           </div>
 
+          {/* Caixa de Compatibilidade Documental Informativa */}
+          <div className="mb-8 p-5 bg-gray-50 border border-gray-200 rounded-2xl">
+            <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Info size={16} className="text-brand-gold"/> Compatibilidade Documental</h3>
+            <p className="text-xs text-gray-600">
+              {files.length === 0 ? (
+                "Nenhum documento anexado. Anexe a matrícula para habilitar a auditoria completa."
+              ) : (
+                `Detectamos ${docProfile.totalDocuments} documento(s) anexado(s) (${docProfile.totalMatriculas} matrícula(s)). Módulos recomendados foram destacados em verde. Itens incompatíveis com a documentação foram suspensos.`
+              )}
+            </p>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Dados Básicos */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -317,8 +365,8 @@ export default function NovaAnalisePage() {
                   onClick={selectAll}
                   className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-lg transition-colors border border-gray-300 text-sm flex items-center gap-2"
                 >
-                  <CheckCircle2 size={16} className={selectedModules.length === allModulesList.length ? "text-brand-green" : "text-gray-400"} /> 
-                  {selectedModules.length === allModulesList.length ? "Desmarcar Todos" : "Selecionar Todas as Análises"}
+                  <CheckCircle2 size={16} /> 
+                  Selecionar módulos compatíveis
                 </button>
               </div>
               
@@ -327,43 +375,60 @@ export default function NovaAnalisePage() {
                 {AUDIT_MODULES.map((mod) => {
                   const isSelected = selectedModules.includes(mod.id);
                   const isMaster = mod.id === "cruzamento_total";
+                  const compatibility = getModuleCompatibility(mod.id, docProfile);
                   
                   return (
                     <div 
                       key={mod.id}
                       onClick={() => toggleModule(mod.id)}
                       className={`cursor-pointer rounded-2xl border-2 p-5 transition-all relative overflow-hidden flex flex-col ${
-                        isMaster 
-                          ? isSelected
-                            ? "bg-gray-900 text-white border-brand-gold shadow-2xl ring-2 ring-brand-gold/50"
-                            : "bg-gray-900/90 text-gray-100 border-gray-800 hover:border-gray-700"
-                          : isSelected
-                            ? "border-brand-green bg-green-50 shadow-md ring-2 ring-green-100 text-gray-900"
-                            : "border-gray-200 hover:border-gray-300 text-gray-900"
+                        !compatibility.enabled
+                          ? "opacity-45 border-gray-200 bg-gray-50/50 cursor-not-allowed text-gray-400 select-none pointer-events-none"
+                          : isMaster 
+                            ? isSelected
+                              ? "bg-gray-900 text-white border-brand-gold shadow-2xl ring-2 ring-brand-gold/50"
+                              : "bg-gray-900/90 text-gray-100 border-gray-800 hover:border-gray-700"
+                            : isSelected
+                              ? "border-brand-green bg-green-50 shadow-md ring-2 ring-green-100 text-gray-900"
+                              : "border-gray-200 hover:border-gray-300 text-gray-900"
                       }`}
                     >
-                      {isMaster && (
+                      {isMaster && compatibility.enabled && (
                         <div className="absolute top-0 right-0 bg-brand-gold text-brand-green text-[10px] font-black px-2 py-1 rounded-bl-lg">
                           MASTER
                         </div>
                       )}
                       
                       <div className="flex justify-between items-start mb-2">
-                        <h3 className={`text-md font-bold leading-tight ${isMaster ? "text-white" : "text-gray-900"}`}>
+                        <h3 className={`text-md font-bold leading-tight ${!compatibility.enabled ? "text-gray-400" : isMaster ? "text-white" : "text-gray-900"}`}>
                           {mod.name}
                         </h3>
-                        {isSelected ? (
+                        {isSelected && compatibility.enabled ? (
                           <CheckCircle2 className={isMaster ? "text-brand-gold flex-shrink-0" : "text-brand-green flex-shrink-0"} size={24} />
                         ) : (
-                          <div className={`w-6 h-6 rounded-full border-2 flex-shrink-0 ${isMaster ? "border-gray-600" : "border-gray-300"}`}></div>
+                          <div className={`w-6 h-6 rounded-full border-2 flex-shrink-0 ${!compatibility.enabled ? "border-gray-200" : isMaster ? "border-gray-600" : "border-gray-300"}`}></div>
                         )}
                       </div>
                       
-                      <p className={`text-xs mt-1 mb-4 flex-grow ${isMaster ? "text-gray-400" : "text-gray-500"}`}>
+                      <p className={`text-xs mt-1 mb-4 flex-grow ${!compatibility.enabled ? "text-gray-300" : isMaster ? "text-gray-400" : "text-gray-500"}`}>
                         {mod.description}
                       </p>
+
+                      {/* Notificações e Razões de Incompatibilidade */}
+                      {!compatibility.enabled && compatibility.reason && (
+                        <div className="text-[11px] text-red-500 font-bold mb-3 flex items-center gap-1">
+                          <ShieldAlert size={14} /> {compatibility.reason}
+                        </div>
+                      )}
+
+                      {/* Ressalvas e Alertas de Limitação */}
+                      {compatibility.enabled && compatibility.warning && (
+                        <div className="text-[10px] text-amber-600 font-semibold mb-3 leading-normal border-l-2 border-amber-300 pl-2 bg-amber-50/50 py-1">
+                          {compatibility.warning}
+                        </div>
+                      )}
                       
-                      <div className={`text-xl font-black mt-auto ${isMaster ? "text-white" : "text-gray-800"}`}>
+                      <div className={`text-xl font-black mt-auto ${!compatibility.enabled ? "text-gray-300" : isMaster ? "text-white" : "text-gray-800"}`}>
                         R$ {mod.price.toFixed(2).replace('.', ',')}
                       </div>
                     </div>
