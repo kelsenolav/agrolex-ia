@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from 'next/link';
-import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, CreditCard, Layers, CheckCircle2, QrCode } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Layers, CheckCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
@@ -21,46 +21,10 @@ export default function NovaAnalisePage() {
   const [files, setFiles] = useState<{file: File, type: string}[]>([]);
   const [currentDocType, setCurrentDocType] = useState("");
   const [selectedModules, setSelectedModules] = useState<string[]>(['titulos_incra']);
-  const [paymentMethod, setPaymentMethod] = useState("pix");
-  
-  // Novos estados para separar o pagamento do início da IA
-  const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null);
-  const [currentPropertyId, setCurrentPropertyId] = useState<string | null>(null);
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'paid'>('idle');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   // Estados para Integrações GOV
   const [cpfCnpj, setCpfCnpj] = useState("");
   const [carNumber, setCarNumber] = useState("");
-
-  // Estado de Créditos B2B
-  const [userCredits, setUserCredits] = useState(0);
-
-  // Busca créditos iniciais
-  useEffect(() => {
-    const fetchCredits = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { data } = await supabase.from('profiles').select('credits').eq('id', session.user.id).single();
-        if (data) setUserCredits(data.credits || 0);
-      }
-    };
-    fetchCredits();
-  }, []);
-
-  // Polling invisível na própria tela
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (paymentStatus === 'pending' && currentAnalysisId) {
-      interval = setInterval(async () => {
-        const { data } = await supabase.from('analyses').select('status').eq('id', currentAnalysisId).single();
-        if (data && data.status !== 'payment_pending') {
-          setPaymentStatus('paid');
-        }
-      }, 3000);
-    }
-    return () => clearInterval(interval);
-  }, [paymentStatus, currentAnalysisId]);
 
   const allModulesList = Object.keys(MODULE_PRICES);
   const totalPrice = selectedModules.reduce((acc, mod) => acc + (MODULE_PRICES[mod] || 0), 0);
@@ -105,38 +69,6 @@ export default function NovaAnalisePage() {
     setFiles(newFiles);
   };
 
-  const handleStartAnalysis = async () => {
-    if (!currentAnalysisId || !currentPropertyId) return;
-    setIsAnalyzing(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const apiRes = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': session ? `Bearer ${session.access_token}` : ''
-        },
-        body: JSON.stringify({ 
-          propertyId: currentPropertyId, 
-          analysisId: currentAnalysisId,
-          analysisLevel: selectedModules.join(','),
-          cpfCnpj,
-          carNumber
-        })
-      });
-
-      const resultData = await apiRes.json().catch(() => ({}));
-      if (!apiRes.ok) {
-        throw new Error("Erro na IA: " + (resultData.error || "Falha na comunicação com a API."));
-      }
-
-      router.push(`/dashboard/resultado?id=${resultData.analysisId}`);
-    } catch (err: any) {
-      alert("Erro ao rodar IA: " + err.message);
-      setIsAnalyzing(false);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (files.length === 0) {
@@ -144,8 +76,12 @@ export default function NovaAnalisePage() {
       return;
     }
 
-    const formData = new FormData(e.currentTarget);
+    if (selectedModules.length === 0) {
+      alert("Selecione ao menos um módulo de auditoria.");
+      return;
+    }
 
+    const formData = new FormData(e.currentTarget);
     setLoading(true);
 
     try {
@@ -162,10 +98,7 @@ export default function NovaAnalisePage() {
       const city = formData.get('municipio') as string;
       const area = formData.get('area') as string;
 
-      // Simulando processamento de pagamento
-      await new Promise(r => setTimeout(r, 1500));
-
-      // 0. Garantir que o perfil do usuário existe (Evita erro de Foreign Key se o gatilho SQL falhou)
+      // 0. Garantir que o perfil do usuário existe
       await supabase.from('profiles').upsert({ 
         id: userId, 
         email: session.user.email,
@@ -186,7 +119,7 @@ export default function NovaAnalisePage() {
         })
         .select()
         .single();
-      if (propError) throw new Error("Erro (1) ao salvar Propriedade no Banco (Verifique as permissões de tabela no Supabase): " + JSON.stringify(propError) + " | Detalhe: " + propError.message);
+      if (propError) throw new Error("Erro ao salvar Propriedade no Banco: " + propError.message);
 
       // 2. Upload e Insert de TODOS os Documentos
       let firstDocId = null;
@@ -195,87 +128,41 @@ export default function NovaAnalisePage() {
         const filePath = `${userId}/${property.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         
         const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, item.file);
-        if (uploadError) throw new Error("Erro (2) de Upload no Storage (Verifique se o bucket 'documents' foi criado no Supabase): " + JSON.stringify(uploadError));
+        if (uploadError) throw new Error("Erro de Upload no Storage: " + uploadError.message);
 
         const { data: docData, error: docError } = await supabase.from('documents')
           .insert({ property_id: property.id, user_id: userId, file_path: filePath, document_type: item.type, status: 'pending' })
           .select().single();
-        if (docError) throw new Error("Erro (3) ao salvar Documento no banco: " + JSON.stringify(docError));
+        if (docError) throw new Error("Erro ao salvar Documento no banco: " + docError.message);
 
         if (!firstDocId) firstDocId = docData.id;
       }
 
-      // 3. Criar Análise
+      // 3. Criar Análise com findings básicos estruturados
+      const findingsJson = {
+        intake_status: "created",
+        selected_modules: selectedModules,
+        estimated_total: totalPrice,
+        current_step: "Análise criada e aguardando liberação para processamento."
+      };
+
       const { data: analysis, error: analysisError } = await supabase
         .from('analyses')
         .insert({
           document_id: firstDocId,
           property_id: property.id,
           user_id: userId,
-          status: 'payment_pending'
+          status: 'payment_pending',
+          findings: findingsJson
         }).select().single();
-      if (analysisError) throw new Error("Erro (4) ao criar Análise: " + JSON.stringify(analysisError));
+      if (analysisError) throw new Error("Erro ao criar Análise: " + analysisError.message);
 
-      setCurrentAnalysisId(analysis.id);
-      setCurrentPropertyId(property.id);
-      setPaymentStatus('pending');
-
-      if (selectedModules.length === 0) {
-        alert("Selecione ao menos um módulo de auditoria.");
-        setLoading(false);
-        return;
-      }
-
-      // [NOVO] Lógica de Pagamento B2B via Créditos
-      if (paymentMethod === "credito") {
-        if (userCredits <= 0) {
-          alert("Você não possui créditos corporativos suficientes. Por favor, adquira um pacote na aba 'Planos B2B'.");
-          setLoading(false);
-          return;
-        }
-
-        // Desconta 1 crédito
-        const { error: creditError } = await supabase.from('profiles').update({ credits: userCredits - 1 }).eq('id', userId);
-        if (creditError) throw new Error("Erro ao descontar crédito: " + creditError.message);
-
-        // Atualiza a análise para processar (pulando a pendência de pagamento)
-        await supabase.from('analyses').update({ status: 'processing' }).eq('id', analysis.id);
-        
-        setUserCredits(prev => prev - 1);
-        setPaymentStatus('paid');
-        setLoading(false);
-        return; // Sai do submit, o botão 'Iniciar Análise' já ficará ativo!
-      }
-
-      // 4. Chamar Checkout (Para Pix e Cartão)
-      const checkoutRes = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          amountPaid: totalPrice,
-          analysisId: analysis.id,
-          propertyId: property.id,
-          userEmail: session.user.email,
-          userName: session.user.user_metadata?.full_name || 'Usuário'
-        })
-      });
-      const checkoutData = await checkoutRes.json();
-      if (checkoutData.checkoutUrl) {
-        // Redirecionar para o Mercado Pago numa nova aba (não fechar esta)
-        window.open(checkoutData.checkoutUrl, '_blank');
-      } else {
-        throw new Error("Falha ao gerar link de pagamento.");
-      }
+      alert("Auditoria criada com sucesso! Aguarde a liberação do parecer.");
+      router.push('/dashboard');
       
     } catch (error: any) {
       console.error("Erro Completo Capturado:", error);
-      
-      let msgErro = error.message || "Erro desconhecido";
-      if (typeof error === 'object' && Object.keys(error).length > 0) {
-        msgErro = JSON.stringify(error);
-      }
-      
-      alert('Erro ao processar (Detalhes Técnicos): ' + msgErro);
+      alert('Erro ao processar (Detalhes Técnicos): ' + (error.message || "Erro desconhecido"));
     } finally {
       setLoading(false);
     }
@@ -507,58 +394,22 @@ export default function NovaAnalisePage() {
             </div>
 
             <div className="pt-6">
-              <div className="mb-6 border border-gray-200 rounded-xl p-5 bg-gray-50">
-                <h3 className="text-sm font-bold text-gray-800 mb-3 uppercase tracking-wider">Forma de Pagamento</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div 
-                    onClick={() => setPaymentMethod("pix")}
-                    className={`cursor-pointer rounded-lg border p-4 flex items-center justify-center gap-2 font-bold transition-all ${paymentMethod === "pix" ? 'border-brand-green bg-green-100 text-brand-green ring-2 ring-brand-green/20' : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'}`}
-                  >
-                    <QrCode size={20} /> Pix
-                  </div>
-                  <div 
-                    onClick={() => setPaymentMethod("credito")}
-                    className={`cursor-pointer rounded-lg border p-4 flex items-center justify-center gap-2 font-bold transition-all ${paymentMethod === "credito" ? 'border-brand-gold bg-amber-100 text-brand-dark ring-2 ring-brand-gold/50' : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'}`}
-                  >
-                    <CreditCard size={20} /> Usar Crédito ({userCredits})
-                  </div>
-                  <div 
-                    onClick={() => setPaymentMethod("debito")}
-                    className={`cursor-pointer rounded-lg border p-4 flex items-center justify-center gap-2 font-bold transition-all ${paymentMethod === "debito" ? 'border-brand-green bg-green-100 text-brand-green ring-2 ring-brand-green/20' : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'}`}
-                  >
-                    <CreditCard size={20} /> Cartão de Crédito
-                  </div>
-                </div>
+              <div className="mb-6 border border-gray-200 rounded-xl p-5 bg-gray-50 text-center">
+                <p className="text-gray-700 font-bold text-lg">Valor estimado da auditoria: R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
+                <p className="text-sm text-amber-600 mt-2 font-medium">
+                  Análise criada como pendente. A liberação para processamento será restaurada no próximo bloco.
+                </p>
               </div>
 
               <div className="flex flex-col md:flex-row gap-4 mt-6">
                 <button 
-                  disabled={loading || selectedModules.length === 0 || paymentStatus === 'paid'} 
+                  disabled={loading || selectedModules.length === 0} 
                   type="submit" 
-                  className={`flex-1 font-extrabold py-5 rounded-xl shadow-lg transition-all flex justify-center items-center gap-3 text-lg ${paymentStatus === 'paid' ? 'bg-gray-100 text-green-600 border border-green-200' : (paymentMethod === 'credito' ? 'bg-brand-dark text-brand-gold hover:brightness-110' : 'bg-brand-green text-white hover:brightness-110 disabled:opacity-50')}`}
+                  className="flex-1 font-extrabold py-5 rounded-xl shadow-lg transition-all flex justify-center items-center gap-3 text-lg bg-brand-green text-white hover:brightness-110 disabled:opacity-50"
                 >
-                  {paymentStatus === 'paid' ? (
-                    <>Pagamento Confirmado <CheckCircle2 size={24} className="text-green-600" /></>
-                  ) : paymentStatus === 'pending' ? (
-                    <>Aguardando Pagamento... <Layers size={24} className="animate-spin" /></>
-                  ) : loading ? 'Processando Documentos...' : (
-                    paymentMethod === 'credito' ? `Descontar 1 Crédito` : `Pagar R$ ${totalPrice.toFixed(2).replace('.', ',')}`
-                  )}
-                </button>
-                
-                <button 
-                  type="button"
-                  onClick={handleStartAnalysis}
-                  disabled={paymentStatus !== 'paid' || isAnalyzing}
-                  className={`flex-1 font-extrabold py-5 rounded-xl shadow-lg transition-all flex justify-center items-center gap-3 text-lg ${paymentStatus === 'paid' ? 'bg-brand-gold text-brand-dark hover:scale-[1.02]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                >
-                  {isAnalyzing ? 'Auditando (Aguarde)...' : 'Iniciar Parecer com IA'}
-                  <ShieldCheck size={24} />
+                  {loading ? 'Processando Documentos...' : 'Enviar Documentos para Auditoria'}
                 </button>
               </div>
-              <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1">
-                <ShieldCheck size={14} /> O sistema detectará automaticamente quando o pagamento for concluído para habilitar a IA
-              </p>
             </div>
           </form>
         </div>
