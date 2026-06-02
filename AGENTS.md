@@ -145,5 +145,18 @@
 - **Exemplos de preço validados**: ["matricula_individual"] = R$ 99,90; ["matricula_individual", "cadeia_dominial", "origem_publica", "nulidades_fraudes"] = R$ 749,60; ["cruzamento_total"] = R$ 499,90.
 - **Problemas restantes**: Teste manual recomendado (validar R$ 749,60 com 4 módulos e exclusividade de cruzamento_total).
 
+- **Data**: 02/06/2026
+- **Bloco**: 7.3.5.1 — Preço Server-side como Fonte da Verdade
+- **Arquivos alterados**: `src/app/api/checkout/route.ts`
+- **Rotas afetadas**: `/api/checkout`
+- **Alterações implementadas**: 1) Importação de `calculateAuditModulesTotal` e `MODULE_PRICES` de auditModules.ts; 2) Validação robusta de cada módulo selecionado (existência e preço válido); 3) Recálculo obrigatório do preço no servidor usando `calculateAuditModulesTotal(selectedModules)`; 4) Salvamento de `estimated_total` (calculado no servidor), `client_estimated_total` (do frontend, para auditoria), `price_source: "server"` e `price_checked_at` em findings; 5) Resposta JSON agora inclui `serverEstimatedTotal` e `clientEstimatedTotal` para comparação.
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
+- **Deploy**: Não aplicável (sem deploy neste bloco; aguardando autorização explícita do usuário).
+- **URL validada**: Não aplicável.
+- **Commit**: bf78042 — "fix: enforce server-side audit module pricing"
+- **Exemplos de preço validados (servidor)**: ["matricula_individual"] = R$ 99,90; ["matricula_individual", "cadeia_dominial", "origem_publica", "nulidades_fraudes"] = R$ 749,60; ["cruzamento_total"] = R$ 499,90.
+- **Segurança**: Frontend pode enviar qualquer `estimated_total`; servidor ignora e recalcula a verdade. Preço do pagamento é sempre o valor recalculado no servidor.
+- **Problemas restantes**: Teste manual recomendado (validar que backend recalcula mesmo que frontend envie valor incorreto).
+
 
 

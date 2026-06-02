@@ -577,3 +577,23 @@ Entregar informações de arquivos alterados, resultados e pendências.
 - **Deploy**: Não efetuado (conforme orientações de governança do bloco; aguardando autorização explícita do usuário).
 - **URL validada localmente**: `/dashboard/nova-analise`
 - **Pendências**: Teste manual recomendado (validar seleção de múltiplos módulos com preço R$ 749,60 e exclusividade de `cruzamento_total`).
+
+- **Data**: 02/06/2026
+- **Tarefa**: Bloco 7.3.5.1 — Preço Server-side como Fonte da Verdade
+- **Arquivos alterados**: `src/app/api/checkout/route.ts`
+- **Comportamento implementado**:
+  1. Importação de `calculateAuditModulesTotal` e `MODULE_PRICES` de auditModules.ts na rota `/api/checkout`.
+  2. Validação robusta: cada módulo selecionado em `findings.selected_modules` é verificado contra `MODULE_PRICES` para garantir existência e preço válido.
+  3. Recálculo obrigatório do preço no servidor: `serverEstimatedTotal = calculateAuditModulesTotal(selectedModules)`.
+  4. Captura do preço enviado pelo cliente (se existir) em `clientEstimatedTotal` para auditoria e comparação.
+  5. Salvamento em `findings`: `estimated_total` (valor do servidor), `client_estimated_total` (valor do cliente), `price_source: "server"` e `price_checked_at` (timestamp ISO).
+  6. Resposta JSON agora inclui `serverEstimatedTotal` e `clientEstimatedTotal` para o frontend validar e auditar.
+- **Exemplos validados**: 
+  - `["matricula_individual"]` = R$ 99,90
+  - `["matricula_individual", "cadeia_dominial", "origem_publica", "nulidades_fraudes"]` = R$ 749,60
+  - `["cruzamento_total"]` = R$ 499,90
+- **Segurança**: O frontend pode enviar qualquer `estimated_total`; o servidor a ignora e sempre recalcula a verdade baseada em `selected_modules`. Preço de pagamento é sempre `serverEstimatedTotal`.
+- **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados com 100% de sucesso.
+- **Deploy**: Não efetuado (conforme orientações de governança do bloco; aguardando autorização explícita do usuário).
+- **URL validada localmente**: `/api/checkout` (rota POST)
+- **Pendências**: Teste manual recomendado (validar que backend recalcula mesmo que frontend envie `estimated_total` incorreto).
