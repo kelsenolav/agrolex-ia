@@ -15,6 +15,66 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
 }
 
+type RiskLevel = 'Baixo' | 'Médio' | 'Alto' | 'Crítico';
+
+const riskLevelPatterns: Array<{ level: RiskLevel; terms: RegExp[] }> = [
+  {
+    level: 'Crítico',
+    terms: [
+      /\bclassificacao\s+de\s+risco\s*(?::|-|\n)\s*critico\b/,
+      /\brisco\s*:\s*critico\b/,
+      /\brisco\s+critico\b/,
+      /\bclassificacao\s*:\s*critico\b/
+    ]
+  },
+  {
+    level: 'Alto',
+    terms: [
+      /\bclassificacao\s+de\s+risco\s*(?::|-|\n)\s*alto\b/,
+      /\brisco\s*:\s*alto\b/,
+      /\brisco\s+alto\b/,
+      /\bclassificacao\s*:\s*alto\b/
+    ]
+  },
+  {
+    level: 'Médio',
+    terms: [
+      /\bclassificacao\s+de\s+risco\s*(?::|-|\n)\s*medio\b/,
+      /\brisco\s*:\s*medio\b/,
+      /\brisco\s+medio\b/,
+      /\bclassificacao\s*:\s*medio\b/
+    ]
+  },
+  {
+    level: 'Baixo',
+    terms: [
+      /\bclassificacao\s+de\s+risco\s*(?::|-|\n)\s*baixo\b/,
+      /\brisco\s*:\s*baixo\b/,
+      /\brisco\s+baixo\b/,
+      /\bclassificacao\s*:\s*baixo\b/
+    ]
+  }
+];
+
+function findExplicitRiskLevelFromResumo(resumo: string): RiskLevel | null {
+  const normalizedResumo = resumo
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  for (const { level, terms } of riskLevelPatterns) {
+    if (terms.some((term) => term.test(normalizedResumo))) {
+      return level;
+    }
+  }
+
+  return null;
+}
+
+function deriveRiskLevelFromResumo(resumo: string): RiskLevel {
+  return findExplicitRiskLevelFromResumo(resumo) || 'Alto';
+}
+
 // Parsers locais de arquivos geoespaciais
 const parseKmlCoordinates = (kmlText: string): [number, number][] => {
   const coordsList: [number, number][] = [];
@@ -284,6 +344,10 @@ export async function POST(req: Request) {
         throw new Error("A IA gerou um laudo incompleto ou muito curto.");
       }
 
+      const explicitRiskLevel = findExplicitRiskLevelFromResumo(markdownResponse);
+      const riskLevel = deriveRiskLevelFromResumo(markdownResponse);
+      const riskLevelSource = explicitRiskLevel ? 'ai_text' : 'fallback';
+
       let latitude: number | null = null;
       let longitude: number | null = null;
 
@@ -322,14 +386,16 @@ export async function POST(req: Request) {
         longitude: longitude,
         polygon: polygonCoords.length > 0 ? polygonCoords : null,
         current_step: "Parecer técnico concluído.",
-        completed_at: new Date().toISOString()
+        completed_at: new Date().toISOString(),
+        risk_level_source: riskLevelSource,
+        ...(explicitRiskLevel ? { risk_level_detected_at: new Date().toISOString() } : {})
       };
 
       const { error: dbError } = await supabaseAdmin
         .from('analyses')
         .update({
           status: 'completed',
-          risk_level: 'Alto',
+          risk_level: riskLevel,
           findings: resultJson
         })
         .eq('id', analysisId);
