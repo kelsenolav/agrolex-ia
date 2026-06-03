@@ -8,6 +8,26 @@ import { supabase } from '@/lib/supabase';
 import { AUDIT_MODULES, getModulePrice, buildDocumentProfile, getModuleCompatibility, calculateAuditModulesTotal } from "@/lib/auditModules";
 import { createInitialCaseFile, type CaseFileDocument } from "@/lib/caseFile";
 
+function parseDeclaredAreaHa(value: string | null): number | null {
+  const normalizedValue = (value || "").trim().replace(/\s+/g, "");
+  if (!normalizedValue) return null;
+
+  const lastComma = normalizedValue.lastIndexOf(",");
+  const lastDot = normalizedValue.lastIndexOf(".");
+  let numericText = normalizedValue;
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    numericText = lastComma > lastDot
+      ? normalizedValue.replace(/\./g, "").replace(",", ".")
+      : normalizedValue.replace(/,/g, "");
+  } else if (lastComma >= 0) {
+    numericText = normalizedValue.replace(",", ".");
+  }
+
+  const parsed = Number.parseFloat(numericText);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export default function NovaAnalisePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -162,8 +182,7 @@ export default function NovaAnalisePage() {
       const state = formData.get('estado') as string;
       const city = formData.get('municipio') as string;
       const area = formData.get('area') as string;
-      const parsedArea = Number.parseFloat((area || "").replace(",", "."));
-      const declaredAreaHa = Number.isFinite(parsedArea) ? parsedArea : null;
+      const declaredAreaHa = parseDeclaredAreaHa(area);
 
       // 0. Garantir que o perfil do usuário existe
       await supabase.from('profiles').upsert({ 
@@ -318,8 +337,9 @@ export default function NovaAnalisePage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Área (ha)</label>
-                  <input name="area" type="number" step="0.01" required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-green outline-none" placeholder="0.00" />
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Área declarada (ha) - opcional</label>
+                  <input name="area" type="text" inputMode="decimal" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-green outline-none" placeholder="Ex.: 122,54 - deixe em branco se não souber" />
+                  <p className="text-xs text-gray-500 mt-1">Se não souber a área, deixe em branco. O sistema poderá extrair ou comparar a área a partir dos documentos enviados.</p>
                 </div>
               </div>
 
