@@ -19,10 +19,59 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
 
 type RiskLevel = 'Baixo' | 'Médio' | 'Alto' | 'Crítico';
 type RiskLevelSource = 'ai_section' | 'ai_text' | 'fallback';
+type RecoverableErrorType = 'ai_timeout' | 'ai_unavailable' | 'ai_incomplete_response';
 
 interface DerivedRiskLevel {
   level: RiskLevel;
   source: RiskLevelSource;
+}
+
+const RECOVERABLE_ERROR_TYPES: RecoverableErrorType[] = ['ai_timeout', 'ai_unavailable', 'ai_incomplete_response'];
+
+function isRecoverableErrorType(value: unknown): value is RecoverableErrorType {
+  return typeof value === 'string' && RECOVERABLE_ERROR_TYPES.includes(value as RecoverableErrorType);
+}
+
+function getRecoverableRetryReason(findings: Record<string, any>): RecoverableErrorType | null {
+  const candidates = [
+    findings.technical_error_type,
+    findings.retry_reason,
+    findings.retry_state?.reason,
+    findings.case_file?.retry_state?.reason
+  ];
+
+  for (const candidate of candidates) {
+    if (isRecoverableErrorType(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function getRetryCount(findings: Record<string, any>): number {
+  const values = [
+    findings.retry_state?.retry_count,
+    findings.case_file?.retry_state?.retry_count
+  ];
+
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+      return value;
+    }
+  }
+
+  return 0;
+}
+
+function buildRetryState(findings: Record<string, any>, reason: RecoverableErrorType, now: string) {
+  return {
+    available: true,
+    reason,
+    retry_count: getRetryCount(findings) + 1,
+    last_error_at: now,
+    last_error_type: reason
+  };
 }
 
 /**
@@ -294,7 +343,21 @@ export async function POST(req: Request) {
 
     // Validação de status atual
     const currentStatus = (analysis.status || '').toLowerCase().trim();
-    if (currentStatus !== 'ready_for_processing') {
+
+    const findings = analysis.findings || {};
+    if (currentStatus === 'processing') {
+      return NextResponse.json({ error: 'Esta análise já está em processamento.' }, { status: 409 });
+    }
+
+    const retryReason = getRecoverableRetryReason(findings);
+    const isRecoverableRetry =
+      currentStatus === 'error' &&
+      (
+        findings.retry_available === true ||
+        Boolean(retryReason)
+      );
+
+    if (currentStatus !== 'ready_for_processing' && !isRecoverableRetry) {
       return NextResponse.json({ error: 'Status atual inválido para iniciar processamento' }, { status: 400 });
     }
 
@@ -303,7 +366,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Propriedade não associada a esta análise' }, { status: 400 });
     }
 
-    const findings = analysis.findings || {};
     const selectedModules = findings.selected_modules;
     if (!selectedModules || !Array.isArray(selectedModules) || selectedModules.length === 0) {
       return NextResponse.json({ error: 'Nenhum módulo selecionado para auditoria' }, { status: 400 });
@@ -349,11 +411,23 @@ export async function POST(req: Request) {
       documents: caseFileDocuments
     });
 
+    const processingStartedAt = new Date().toISOString();
+    const retryStartState = isRecoverableRetry
+      ? buildRetryState(findingsWithCaseFile, retryReason || 'ai_timeout', processingStartedAt)
+      : null;
+
     // 1. Atualizar para "processing" e iniciar log
     const updatedFindings = {
       ...findingsWithCaseFile,
+      retry_available: false,
+      retry_reason: null,
+      ...(retryStartState ? { retry_state: retryStartState } : {}),
+      case_file: {
+        ...findingsWithCaseFile.case_file,
+        ...(retryStartState ? { retry_state: retryStartState } : {})
+      },
       current_step: "Processamento de IA iniciado.",
-      processing_started_at: new Date().toISOString()
+      processing_started_at: processingStartedAt
     };
 
     const { error: startUpdateError } = await supabaseAdmin
@@ -696,8 +770,8 @@ export async function POST(req: Request) {
         userMessage = innerError?.userMessage || 'A IA retornou um parecer incompleto. Tente reprocessar.';
       } else if (isTimeout) {
         technicalErrorType = 'ai_timeout';
-        findingsCurrentStep = 'O processamento da IA excedeu o tempo limite. Tente novamente com menos documentos ou em alguns minutos.';
-        userMessage = 'O processamento da IA excedeu o tempo limite. Tente novamente com menos documentos ou em alguns minutos.';
+        findingsCurrentStep = 'A IA demorou mais que o esperado para concluir. Voce pode tentar novamente sem reenviar os documentos.';
+        userMessage = 'A IA demorou mais que o esperado para concluir. Voce pode tentar novamente sem reenviar os documentos.';
       } else if (isAiUnavailable) {
         technicalErrorType = 'ai_unavailable';
         // Mensagem de etapa salva de forma amigável
@@ -707,13 +781,24 @@ export async function POST(req: Request) {
 
       // Sanitize any URLs to avoid leaking endpoints
       const sanitizedMessage = rawMessage.replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
+      const failedAt = new Date().toISOString();
+      const recoverableFailureType = isRecoverableErrorType(technicalErrorType) ? technicalErrorType : null;
+      const isRecoverableFailure = Boolean(recoverableFailureType);
+      const retryState = recoverableFailureType ? buildRetryState(updatedFindings, recoverableFailureType, failedAt) : null;
 
       const failedFindings = {
         ...updatedFindings,
         current_step: findingsCurrentStep,
         error_message: sanitizedMessage || 'Erro no processamento interno',
         technical_error_type: technicalErrorType,
-        failed_at: new Date().toISOString()
+        failed_at: failedAt,
+        retry_available: isRecoverableFailure,
+        retry_reason: isRecoverableFailure ? technicalErrorType : null,
+        ...(retryState ? { retry_state: retryState } : {}),
+        case_file: {
+          ...updatedFindings.case_file,
+          ...(retryState ? { retry_state: retryState } : {})
+        }
       };
 
       await supabaseAdmin

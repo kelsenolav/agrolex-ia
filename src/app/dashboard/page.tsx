@@ -91,9 +91,36 @@ export default function DashboardPage() {
     }
   };
 
-  const handleStartAnalysis = async (analysisId: string, propertyId: string) => {
+  const isRecoverableAnalysisError = (analysis: any) => {
+    const technicalErrorType = analysis.findings?.technical_error_type;
+    return analysis.findings?.retry_available === true ||
+      technicalErrorType === 'ai_timeout' ||
+      technicalErrorType === 'ai_unavailable' ||
+      technicalErrorType === 'ai_incomplete_response';
+  };
+
+  const getRetryMessage = (analysis: any) => {
+    const technicalErrorType = analysis.findings?.technical_error_type;
+    if (technicalErrorType === 'ai_timeout') {
+      return 'A IA demorou demais na tentativa anterior. Vamos tentar novamente sem reenviar os documentos.';
+    }
+    if (technicalErrorType === 'ai_unavailable') {
+      return 'A IA estava temporariamente indisponível. Vamos tentar novamente.';
+    }
+    if (technicalErrorType === 'ai_incomplete_response') {
+      return 'A IA retornou um parecer incompleto. Vamos reprocessar esta análise.';
+    }
+    return 'Vamos reprocessar esta análise sem reenviar os documentos.';
+  };
+
+  const handleStartAnalysis = async (analysisId: string, propertyId: string, options?: { retryMessage?: string }) => {
+    if (loadingAnalysisId) return;
     setLoadingAnalysisId(analysisId);
     try {
+      if (options?.retryMessage) {
+        alert(options.retryMessage);
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         alert("Sua sessão expirou, faça login novamente.");
@@ -119,7 +146,7 @@ export default function DashboardPage() {
       router.push(`/dashboard/resultado?id=${analysisId}`);
     } catch (err: any) {
       console.error(err);
-      alert("Falha ao processar parecer com IA: Não foi possível concluir o parecer técnico neste momento. Tente novamente ou contate o suporte.");
+      alert("Falha ao processar parecer com IA: " + (err.message || "Não foi possível concluir agora. A análise pode ser reprocessada."));
       window.location.reload();
     } finally {
       setLoadingAnalysisId(null);
@@ -255,6 +282,7 @@ export default function DashboardPage() {
 
                   // Verificar se tem parecer (findings.resumo)
                   const hasParecer = analise.findings && analise.findings.resumo && String(analise.findings.resumo).trim().length > 0;
+                  const canRetryAnalysis = statusType === 'error' && isRecoverableAnalysisError(analise);
 
                   return (
                     <tr key={analise.id} className="hover:bg-gray-50 transition-colors">
@@ -310,7 +338,17 @@ export default function DashboardPage() {
                             {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar parecer'}
                           </button>
                         ) : statusType === 'error' ? (
-                          <span className="text-red-600 text-xs font-semibold">Falha / Reprocessamento necessário</span>
+                          canRetryAnalysis ? (
+                            <button
+                              disabled={loadingAnalysisId !== null}
+                              onClick={() => handleStartAnalysis(analise.id, analise.properties?.id, { retryMessage: getRetryMessage(analise) })}
+                              className="bg-red-600 text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
+                            >
+                              {loadingAnalysisId === analise.id ? 'Reprocessando...' : 'Tentar novamente'}
+                            </button>
+                          ) : (
+                            <span className="text-red-600 text-xs font-semibold">Falha / Reprocessamento necessário</span>
+                          )
                         ) : statusType === 'pending' ? (
                           <button
                             onClick={() => handleReleaseProcessing(analise.id)}
