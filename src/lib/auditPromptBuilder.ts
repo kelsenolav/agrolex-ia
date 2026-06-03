@@ -84,7 +84,10 @@ Como foi apresentada apenas uma matrícula, a análise deve se limitar aos eleme
 Leia exclusivamente os documentos anexados e produza uma resposta objetiva, sintética e auditável.
 
 MODO RÁPIDO: CADEIA DOMINIAL REGISTRAL
-Responda de forma objetiva e sintética. Priorize conclusão útil dentro do escopo da cadeia dominial. Não escreva parecer extenso. Não ultrapasse aproximadamente 1.200 palavras.
+Responda obrigatoriamente em português do Brasil. Não escreva em inglês. Traduza qualquer expressão estrangeira para o português jurídico adequado. Se o documento contiver termos em inglês, explique-os em português.
+Não misture idiomas. Todo o parecer, títulos, achados, recomendações e conclusão devem estar em português.
+Responda de forma objetiva e sintética, mas completa. Priorize conclusão útil dentro do escopo da cadeia dominial. Não escreva parecer extenso. O tamanho-alvo é de aproximadamente 900 a 1.500 palavras.
+Não gere parecer com menos de 600 palavras, salvo se os documentos apresentados forem realmente insuficientes; nesse caso, explique objetivamente a insuficiência documental.
 Se não conseguir concluir todos os detalhes, escreva: A cadeia dominial exige análise complementar aprofundada, mas os principais eventos identificáveis são...
 
 ESCOPO EXCLUSIVO
@@ -92,8 +95,8 @@ Analise somente: matrícula de origem; matrícula-mãe; atos de transmissão; se
 Não faça análise geoespacial. Não aprofunde origem pública. Não aprofunde nulidades/fraudes. Não aprofunde processos judiciais. Não transcreva todos os atos. Não repita fatos em várias seções.${singleMatriculaNotice}
 
 LIMITES OBRIGATÓRIOS
-- Até 8 eventos registrais relevantes.
-- Até 3 achados dominiais.
+- Linha do tempo: entre 5 e 10 eventos registrais relevantes, se houver dados suficientes.
+- Entre 2 e 4 achados dominiais, se houver inconsistências.
 - Até 6 documentos faltantes.
 - Até 5 recomendações.
 - Conclusão de até 2 parágrafos.
@@ -113,13 +116,14 @@ Use termos como indício, risco, hipótese a confirmar e não é possível concl
 FORMATO OBRIGATÓRIO
 PARECER SINTÉTICO DE CADEIA DOMINIAL REGISTRAL
 1. IDENTIFICAÇÃO DA MATRÍCULA
-2. CADEIA DOMINIAL ESSENCIAL
-3. EVENTOS REGISTRAIS RELEVANTES
-4. ACHADOS DOMINIAIS
-5. DOCUMENTOS FALTANTES
-6. CLASSIFICAÇÃO DE RISCO
-7. RECOMENDAÇÕES OBJETIVAS
-8. CONCLUSÃO
+2. DOCUMENTOS ANALISADOS
+3. RESUMO DA CADEIA DOMINIAL
+4. LINHA DO TEMPO REGISTRAL ESSENCIAL
+5. ACHADOS DOMINIAIS
+6. DOCUMENTOS FALTANTES
+7. CLASSIFICAÇÃO DE RISCO
+8. RECOMENDAÇÕES OBJETIVAS
+9. CONCLUSÃO
 
 INSTRUÇÃO SOBRE COORDENADAS
 Somente inclua, na última linha, o marcador COORDS: lat, lng se coordenadas exatas constarem dos documentos anexados. Não estime coordenadas e não invente localização.

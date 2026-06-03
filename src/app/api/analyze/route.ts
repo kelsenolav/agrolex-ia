@@ -127,6 +127,71 @@ function deriveRiskLevelFromResumo(resumo: string): DerivedRiskLevel {
   };
 }
 
+function normalizeForQualityCheck(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function countWords(value: string): number {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .length;
+}
+
+function validateFastChainOfTitleResponse(resumo: string): string | null {
+  const normalized = normalizeForQualityCheck(resumo);
+  const requiredSections = [
+    'identificacao',
+    'documentos analisados',
+    'cadeia dominial',
+    'achados',
+    'classificacao de risco',
+    'recomendacoes'
+  ];
+
+  const missingSection = requiredSections.find((section) => !normalized.includes(section));
+  if (missingSection) {
+    return `Resposta incompleta: seção obrigatória ausente (${missingSection}).`;
+  }
+
+  const insufficientDocumentSignals = [
+    'documentos insuficientes',
+    'documentacao insuficiente',
+    'documentacao apresentada e insuficiente',
+    'nao ha dados suficientes',
+    'nao foi possivel identificar',
+    'nao e possivel concluir apenas com os documentos apresentados',
+    'documentos apresentados nao permitem'
+  ];
+
+  const wordCount = countWords(resumo);
+  const hasInsufficientDocumentSignal = insufficientDocumentSignals.some((signal) => normalized.includes(signal));
+  if (wordCount < 600 && !hasInsufficientDocumentSignal) {
+    return `Resposta incompleta: parecer com ${wordCount} palavras, abaixo do mínimo esperado.`;
+  }
+
+  const englishIndicators = [
+    'public deed',
+    'ownership',
+    'chain of title',
+    'risk classification',
+    'missing documents',
+    'recommendations',
+    'registry events',
+    'title deed'
+  ];
+  const englishHits = englishIndicators.filter((indicator) => normalized.includes(indicator));
+  if (englishHits.length >= 2 || normalized.includes('public deed')) {
+    return `Resposta inadequada: indícios de idioma estrangeiro (${englishHits.join(', ') || 'public deed'}).`;
+  }
+
+  return null;
+}
+
 // Parsers locais de arquivos geoespaciais
 const parseKmlCoordinates = (kmlText: string): [number, number][] => {
   const coordsList: [number, number][] = [];
@@ -378,7 +443,7 @@ export async function POST(req: Request) {
         const modelName = process.env.GEMINI_MODEL || "gemini-3.5-flash";
         const model = genAI.getGenerativeModel({
           model: modelName,
-          ...(isFastChainOfTitleOnly ? { generationConfig: { maxOutputTokens: 2048 } } : {})
+          ...(isFastChainOfTitleOnly ? { generationConfig: { maxOutputTokens: 4096 } } : {})
         });
 
         const genStartAt = Date.now();
@@ -402,6 +467,17 @@ export async function POST(req: Request) {
       // Validar retorno da IA
       if (!markdownResponse || markdownResponse.trim().length < 120 || markdownResponse.includes("PLACEHOLDER")) {
         throw new Error("A IA gerou um laudo incompleto ou muito curto.");
+      }
+
+      if (isFastChainOfTitleOnly) {
+        const fastQualityIssue = validateFastChainOfTitleResponse(markdownResponse);
+        if (fastQualityIssue) {
+          const qualityError = new Error(fastQualityIssue);
+          (qualityError as any).technicalErrorType = 'ai_incomplete_response';
+          (qualityError as any).userMessage = 'A IA retornou um parecer incompleto. Tente reprocessar.';
+          (qualityError as any).findingsCurrentStep = 'A IA retornou um parecer incompleto. Tente reprocessar.';
+          throw qualityError;
+        }
       }
 
       const derivedRisk = deriveRiskLevelFromResumo(markdownResponse);
@@ -545,6 +621,7 @@ export async function POST(req: Request) {
       const rawMessage = (innerError && (innerError.message || innerError.toString())) || '';
       const messageLower = rawMessage.toLowerCase();
       const isTimeout = messageLower.includes("timeout:");
+      const forcedTechnicalErrorType = innerError?.technicalErrorType;
 
       const aiUnavailableIndicators = [
         '503',
@@ -559,7 +636,11 @@ export async function POST(req: Request) {
       let userMessage = 'Não foi possível concluir o parecer técnico neste momento. Tente novamente ou contate o suporte.';
       let findingsCurrentStep = 'Falha no processamento do parecer técnico.';
 
-      if (isTimeout) {
+      if (forcedTechnicalErrorType === 'ai_incomplete_response') {
+        technicalErrorType = 'ai_incomplete_response';
+        findingsCurrentStep = innerError?.findingsCurrentStep || 'A IA retornou um parecer incompleto. Tente reprocessar.';
+        userMessage = innerError?.userMessage || 'A IA retornou um parecer incompleto. Tente reprocessar.';
+      } else if (isTimeout) {
         technicalErrorType = 'ai_timeout';
         findingsCurrentStep = 'O processamento da IA excedeu o tempo limite. Tente novamente com menos documentos ou em alguns minutos.';
         userMessage = 'O processamento da IA excedeu o tempo limite. Tente novamente com menos documentos ou em alguns minutos.';
