@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { buildLegalAuditPrompt } from '@/lib/auditPromptBuilder';
 import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRecommendationsFromReport } from '@/lib/reportExtractors';
-import { withEnsuredCaseFile, type CaseFileDocument } from '@/lib/caseFile';
+import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocument } from '@/lib/caseFile';
 
 export const maxDuration = 60;
 
@@ -577,12 +577,39 @@ export async function POST(req: Request) {
         const parsedRecomendacoes = extractRecommendationsFromReport(markdownResponse);
         const postprocessMs = Date.now() - postprocessStartAt;
         const totalMs = Date.now() - startedAt;
+        let caseFileExtractError: string | null = null;
+        let enrichedCaseFile = resultJson.case_file;
+
+        try {
+          enrichedCaseFile = updateCaseFileWithBasicFacts(resultJson.case_file, {
+            now: new Date().toISOString(),
+            property: {
+              name: propertyData?.name || null,
+              state: propertyData?.state || null,
+              city: propertyData?.city || null,
+              car_number: propertyData?.car_number || null,
+              declared_area_ha: propertyData?.area ?? null,
+              owner_document: propertyData?.cpf_cnpj || null
+            },
+            resumo: markdownResponse,
+            problemas: parsedProblemas,
+            documentosFaltantes: parsedDocumentosFaltantes,
+            recomendacoes: parsedRecomendacoes,
+            riskLevel
+          });
+        } catch (caseFileError: any) {
+          caseFileExtractError = ((caseFileError && (caseFileError.message || caseFileError.toString())) || 'Erro desconhecido no case_file')
+            .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
+          console.error('[CaseFile] Falha ao enriquecer fatos bÃ¡sicos:', caseFileExtractError);
+        }
 
         const patchedFindings = {
           ...resultJson,
           problemas: parsedProblemas,
           recomendacoes: parsedRecomendacoes,
           documentosFaltantes: parsedDocumentosFaltantes,
+          case_file: enrichedCaseFile,
+          ...(caseFileExtractError ? { case_file_extract_error: caseFileExtractError } : {}),
           structured_extract_source: 'local_parser',
           structured_extract_at: new Date().toISOString(),
           processing_metrics: {
