@@ -6,6 +6,7 @@ import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Lay
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { AUDIT_MODULES, getModulePrice, buildDocumentProfile, getModuleCompatibility, calculateAuditModulesTotal } from "@/lib/auditModules";
+import { createInitialCaseFile, type CaseFileDocument } from "@/lib/caseFile";
 
 export default function NovaAnalisePage() {
   const router = useRouter();
@@ -161,6 +162,8 @@ export default function NovaAnalisePage() {
       const state = formData.get('estado') as string;
       const city = formData.get('municipio') as string;
       const area = formData.get('area') as string;
+      const parsedArea = Number.parseFloat((area || "").replace(",", "."));
+      const declaredAreaHa = Number.isFinite(parsedArea) ? parsedArea : null;
 
       // 0. Garantir que o perfil do usuário existe
       await supabase.from('profiles').upsert({ 
@@ -177,7 +180,7 @@ export default function NovaAnalisePage() {
           name, 
           state, 
           city, 
-          area: parseFloat(area) || null,
+          area: declaredAreaHa,
           cpf_cnpj: cpfCnpj || null,
           car_number: carNumber || null
         })
@@ -187,6 +190,8 @@ export default function NovaAnalisePage() {
 
       // 2. Upload e Insert de TODOS os Documentos
       let firstDocId = null;
+      const uploadedDocuments: CaseFileDocument[] = [];
+      const intakeCreatedAt = new Date().toISOString();
       for (const item of files) {
         const fileExt = item.file.name.split('.').pop();
         const filePath = `${userId}/${property.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -200,6 +205,13 @@ export default function NovaAnalisePage() {
         if (docError) throw new Error("Erro ao salvar Documento no banco: " + docError.message);
 
         if (!firstDocId) firstDocId = docData.id;
+        uploadedDocuments.push({
+          name: item.file.name,
+          type: item.type,
+          storage_path: filePath,
+          size: item.file.size ?? null,
+          uploaded_at: intakeCreatedAt
+        });
       }
 
       // 3. Criar Análise com findings básicos estruturados
@@ -207,7 +219,19 @@ export default function NovaAnalisePage() {
         intake_status: "created",
         selected_modules: selectedModules,
         estimated_total: totalPrice,
-        current_step: "Análise criada e aguardando liberação para processamento."
+        current_step: "Análise criada e aguardando liberação para processamento.",
+        case_file: createInitialCaseFile({
+          now: intakeCreatedAt,
+          property: {
+            name,
+            state,
+            city,
+            car_number: carNumber || null,
+            declared_area_ha: declaredAreaHa,
+            owner_document: cpfCnpj || null
+          },
+          documents: uploadedDocuments
+        })
       };
 
       const { data: analysis, error: analysisError } = await supabase

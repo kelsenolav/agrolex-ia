@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { buildLegalAuditPrompt } from '@/lib/auditPromptBuilder';
 import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRecommendationsFromReport } from '@/lib/reportExtractors';
+import { withEnsuredCaseFile, type CaseFileDocument } from '@/lib/caseFile';
 
 export const maxDuration = 60;
 
@@ -308,6 +309,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nenhum módulo selecionado para auditoria' }, { status: 400 });
     }
 
+    const { data: propertyData } = await supabaseAdmin
+      .from('properties')
+      .select('name, state, city, area, cpf_cnpj, car_number')
+      .eq('id', analysis.property_id)
+      .maybeSingle();
+
     // Buscar os documentos vinculados
     const { data: documents, error: docError } = await supabaseAdmin
       .from('documents')
@@ -322,9 +329,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nenhum documento anexado para a análise da propriedade' }, { status: 400 });
     }
 
+    const caseFileDocuments: CaseFileDocument[] = documents.map((doc: any) => ({
+      name: doc.file_path?.split('/').pop() || doc.file_path || 'Documento',
+      type: doc.document_type || null,
+      storage_path: doc.file_path || null,
+      size: null,
+      uploaded_at: doc.created_at || null
+    }));
+
+    const findingsWithCaseFile = withEnsuredCaseFile(findings, {
+      property: {
+        name: propertyData?.name || null,
+        state: propertyData?.state || null,
+        city: propertyData?.city || null,
+        car_number: propertyData?.car_number || null,
+        declared_area_ha: propertyData?.area ?? null,
+        owner_document: propertyData?.cpf_cnpj || null
+      },
+      documents: caseFileDocuments
+    });
+
     // 1. Atualizar para "processing" e iniciar log
     const updatedFindings = {
-      ...findings,
+      ...findingsWithCaseFile,
       current_step: "Processamento de IA iniciado.",
       processing_started_at: new Date().toISOString()
     };
