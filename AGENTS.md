@@ -158,5 +158,16 @@
 - **Segurança**: Frontend pode enviar qualquer `estimated_total`; servidor ignora e recalcula a verdade. Preço do pagamento é sempre o valor recalculado no servidor.
 - **Problemas restantes**: Teste manual recomendado (validar que backend recalcula mesmo que frontend envie valor incorreto).
 
+- **Data**: 03/06/2026
+- **Bloco**: 8.2.2 — Limitar Loop Infinito de Retry por Timeout da IA
+- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`
+- **Rotas afetadas**: `/api/analyze`, `/dashboard`
+- **Alterações implementadas**: 1) Adicionado teto de 3 tentativas para erros `ai_timeout`; 2) Ao atingir ou superar 3 tentativas, o status continua `error`, mas `retry_available` é setado para `false`, `retry_exhausted` para `true`, `retry_reason` para `"max_ai_timeout_attempts"`, e o passo de processamento (`current_step` / `userMessage`) indica que a análise exige processamento em etapas; 3) O dashboard oculta o botão "Tentar novamente" se `findings.retry_exhausted === true` e renderiza um badge informativo "Exige processamento em etapas" com descrição adequada.
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
+- **Deploy**: Não aplicável (sem deploy neste bloco; aguardando autorização explícita do usuário).
+- **URL validada**: Não aplicável.
+- **Commit**: "fix: limit retry loop for ai timeouts"
+- **Problemas restantes**: Nenhum. Fluxo de retry por timeout de IA robusto e livre de loop infinito.
+
 
 

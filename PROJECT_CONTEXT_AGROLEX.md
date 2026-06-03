@@ -597,3 +597,15 @@ Entregar informações de arquivos alterados, resultados e pendências.
 - **Deploy**: Não efetuado (conforme orientações de governança do bloco; aguardando autorização explícita do usuário).
 - **URL validada localmente**: `/api/checkout` (rota POST)
 - **Pendências**: Teste manual recomendado (validar que backend recalcula mesmo que frontend envie `estimated_total` incorreto).
+
+- **Data**: 03/06/2026
+- **Tarefa**: Bloco 8.2.2 — Limitar Loop Infinito de Retry por Timeout da IA
+- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`
+- **Comportamento implementado**:
+  - Adicionado limite máximo de 3 tentativas para erros de timeout da IA (`ai_timeout`).
+  - No backend, se `retry_count >= 3` para `ai_timeout`, os campos `retry_available` é setado como `false`, `retry_exhausted` como `true`, e `retry_reason` como `"max_ai_timeout_attempts"`. A mensagem de erro em `current_step` é alterada para alertar que exige processamento em etapas.
+  - No frontend, a renderização do dashboard oculta o botão "Tentar novamente" se `findings.retry_exhausted === true` e exibe o badge "Exige processamento em etapas" com uma descrição amigável correspondente.
+- **Resultado build/lint**: Build Next.js (`npm run build`), ESLint (`npm run lint`), e TypeScript (`npx tsc --noEmit`) aprovados com 100% de sucesso.
+- **Deploy**: Não efetuado (conforme governança do bloco; sem deploy automático).
+- **URL validada localmente**: `/dashboard` e `/api/analyze`
+- **Pendências**: Homologação final do controle de loop de retry.

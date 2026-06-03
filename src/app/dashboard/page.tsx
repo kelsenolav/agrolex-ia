@@ -92,6 +92,9 @@ export default function DashboardPage() {
   };
 
   const isRecoverableAnalysisError = (analysis: any) => {
+    if (analysis.findings?.retry_exhausted === true) {
+      return false;
+    }
     const technicalErrorType = analysis.findings?.technical_error_type;
     return analysis.findings?.retry_available === true ||
       technicalErrorType === 'ai_timeout' ||
@@ -338,7 +341,16 @@ export default function DashboardPage() {
                             {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar parecer'}
                           </button>
                         ) : statusType === 'error' ? (
-                          canRetryAnalysis ? (
+                          analise.findings?.retry_exhausted === true ? (
+                            <div className="flex flex-col gap-1">
+                              <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wide inline-block w-fit">
+                                Exige processamento em etapas
+                              </span>
+                              <span className="text-gray-500 text-[10px] max-w-[200px] leading-tight">
+                                A IA excedeu o tempo limite em múltiplas tentativas. Este documento provavelmente exige processamento em etapas.
+                              </span>
+                            </div>
+                          ) : canRetryAnalysis ? (
                             <button
                               disabled={loadingAnalysisId !== null}
                               onClick={() => handleStartAnalysis(analise.id, analise.properties?.id, { retryMessage: getRetryMessage(analise) })}

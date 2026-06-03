@@ -783,17 +783,37 @@ export async function POST(req: Request) {
       const sanitizedMessage = rawMessage.replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
       const failedAt = new Date().toISOString();
       const recoverableFailureType = isRecoverableErrorType(technicalErrorType) ? technicalErrorType : null;
-      const isRecoverableFailure = Boolean(recoverableFailureType);
-      const retryState = recoverableFailureType ? buildRetryState(updatedFindings, recoverableFailureType, failedAt) : null;
+      
+      const currentRetryCount = getRetryCount(updatedFindings);
+      const isTimeoutExhausted = recoverableFailureType === 'ai_timeout' && currentRetryCount >= 3;
+      
+      const isRecoverableFailure = Boolean(recoverableFailureType) && !isTimeoutExhausted;
+      let retryState: any = null;
+
+      if (isTimeoutExhausted) {
+        retryState = {
+          available: false,
+          exhausted: true,
+          reason: "max_ai_timeout_attempts",
+          retry_count: currentRetryCount,
+          last_error_type: "ai_timeout",
+          last_error_at: failedAt
+        };
+        findingsCurrentStep = "A IA excedeu o tempo limite em múltiplas tentativas. Esta análise exige processamento em etapas.";
+        userMessage = "A IA excedeu o tempo limite em múltiplas tentativas. Esta análise exige processamento em etapas.";
+      } else if (recoverableFailureType) {
+        retryState = buildRetryState(updatedFindings, recoverableFailureType, failedAt);
+      }
 
       const failedFindings = {
         ...updatedFindings,
         current_step: findingsCurrentStep,
         error_message: sanitizedMessage || 'Erro no processamento interno',
-        technical_error_type: technicalErrorType,
+        technical_error_type: isTimeoutExhausted ? 'max_ai_timeout_attempts' : technicalErrorType,
         failed_at: failedAt,
         retry_available: isRecoverableFailure,
-        retry_reason: isRecoverableFailure ? technicalErrorType : null,
+        retry_reason: isTimeoutExhausted ? "max_ai_timeout_attempts" : (isRecoverableFailure ? technicalErrorType : null),
+        retry_exhausted: isTimeoutExhausted ? true : undefined,
         ...(retryState ? { retry_state: retryState } : {}),
         case_file: {
           ...updatedFindings.case_file,
