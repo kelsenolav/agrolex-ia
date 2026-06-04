@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { buildLegalAuditPrompt } from '@/lib/auditPromptBuilder';
+import { MODULE_PRICES } from '@/lib/auditModules';
 import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRecommendationsFromReport } from '@/lib/reportExtractors';
 import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocument } from '@/lib/caseFile';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutId: NodeJS.Timeout;
@@ -315,7 +316,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { analysisId } = body;
+    const { analysisId, forceRetry } = body;
 
     if (!analysisId) {
       return NextResponse.json({ error: 'analysisId não informado' }, { status: 400 });
@@ -350,11 +351,13 @@ export async function POST(req: Request) {
     }
 
     const retryReason = getRecoverableRetryReason(findings);
+    const isRetryExhausted = findings.retry_exhausted === true;
     const isRecoverableRetry =
       currentStatus === 'error' &&
       (
         findings.retry_available === true ||
-        Boolean(retryReason)
+        Boolean(retryReason) ||
+        (forceRetry === true && isRetryExhausted)
       );
 
     if (currentStatus !== 'ready_for_processing' && !isRecoverableRetry) {
@@ -497,25 +500,6 @@ export async function POST(req: Request) {
         throw new Error('Documentos ilegíveis ou insuficientes para análise fundiária');
       }
 
-      const MODULE_PRICES: Record<string, number> = {
-        titulos_incra: 99.90,
-        registros: 149.90,
-        geoespacial: 199.90,
-        nulidades: 249.90,
-        forense: 299.90,
-        cruzamento: 499.90,
-        moratoria_soja: 249.90,
-        gravames_dividas: 199.90,
-        cadeia_sucessoria: 299.90,
-        credito_carbono: 149.90,
-        matricula_individual: 99.90,
-        cruzamento_matriculas: 149.90,
-        cadeia_dominial: 199.90,
-        origem_publica: 199.90,
-        nulidades_fraudes: 249.90,
-        cruzamento_total: 499.90
-      };
-      
       const amountPaid = selectedModules.reduce((acc: number, mod: string) => acc + (MODULE_PRICES[mod] || 0), 0);
 
       // Normalização em memória para montagem do prompt
@@ -530,11 +514,18 @@ export async function POST(req: Request) {
       
       const instructions = buildLegalAuditPrompt(normalizedModules, documents);
 
-      geminiParts.unshift({ text: instructions });
+      // Para matrículas densas, adicionar instrução de concisão ao prompt
+      const pdfPartsCountForPrompt = geminiParts.filter(p => p.inlineData?.mimeType === 'application/pdf').length;
+      if (pdfPartsCountForPrompt >= 2) {
+        const denseSuffix = `\n\nATENÇÃO: Os documentos anexados são densos e extensos. Produza o parecer de forma objetiva e concisa, focando nos pontos juridicamente relevantes. Evite transcrições longas de atos repetitivos. Agrupe eventos por período. Limite a resposta a no máximo 2.000 palavras. Priorize qualidade sobre volume.`;
+        geminiParts.unshift({ text: instructions + denseSuffix });
+      } else {
+        geminiParts.unshift({ text: instructions });
+      }
 
       let markdownResponse = "";
       if (geminiParts.length > 1) {
-        // Chamada Gemini com timeout explícito global de 35s
+      // Chamada Gemini com timeout explícito global (adaptativo para documentos densos)
         await supabaseAdmin
           .from('analyses')
           .update({ findings: { ...updatedFindings, current_step: "Sintetizando Parecer Técnico Forense com Inteligência Artificial..." } })
@@ -548,12 +539,19 @@ export async function POST(req: Request) {
         });
 
         const genStartAt = Date.now();
+
+        // Detectar documentos densos: múltiplos PDFs ou muitos parts (>6 indica matrícula densa)
+        const pdfPartsCount = geminiParts.filter(p => p.inlineData?.mimeType === 'application/pdf').length;
+        const isDenseDocument = pdfPartsCount >= 3 || geminiParts.length > 12;
+
         const aiPromise = model.generateContent(geminiParts).then(async (result) => {
           const response = await result.response;
           return response.text();
         });
 
-        markdownResponse = await withTimeout(aiPromise, 50000, "gemini_generation");
+        // Timeout adaptativo: 110s para documentos densos, 90s para documentos simples
+        const aiTimeoutMs = isDenseDocument ? 110000 : 90000;
+        markdownResponse = await withTimeout(aiPromise, aiTimeoutMs, "gemini_generation");
         geminiMs = Date.now() - genStartAt;
 
         if (markdownResponse.startsWith('\`\`\`markdown')) {
@@ -736,13 +734,6 @@ export async function POST(req: Request) {
         status: 'completed'
       });
 
-      return NextResponse.json({
-        success: true,
-        simulador: false,
-        analysisId: analysisId,
-        status: 'completed'
-      });
-
     } catch (innerError: any) {
       console.error("[Synchronous AI Process] Erro no processamento interno:", innerError);
 
@@ -785,7 +776,7 @@ export async function POST(req: Request) {
       const recoverableFailureType = isRecoverableErrorType(technicalErrorType) ? technicalErrorType : null;
       
       const currentRetryCount = getRetryCount(updatedFindings);
-      const isTimeoutExhausted = recoverableFailureType === 'ai_timeout' && currentRetryCount >= 3;
+      const isTimeoutExhausted = recoverableFailureType === 'ai_timeout' && currentRetryCount >= 5;
       
       const isRecoverableFailure = Boolean(recoverableFailureType) && !isTimeoutExhausted;
       let retryState: any = null;

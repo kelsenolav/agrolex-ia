@@ -41,7 +41,22 @@
 - **Resultados de validação**: `npm run build` e `npm run lint` aprovados com 100% de sucesso.
 - **Deploy**: Efetuado com sucesso via `vercel --prod --yes`.
 - **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
-- **Problemas restantes**: Aguardar homologação do usuário pós-rollback total para reimplantação progressiva.
+- **Data**: 04/06/2026
+- **Bloco**: Correção de timeout de matrículas densas, retry forçado, sistema de Toast, PDF profissional A4 e suíte Jest
+- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`, `src/app/dashboard/nova-analise/page.tsx`, `src/app/globals.css`, `package.json`, `package-lock.json`, `tsconfig.json`, `jest.config.ts` *(novo)*, `src/lib/__tests__/auditModules.test.ts` *(novo)*, `src/lib/__tests__/reportExtractors.test.ts` *(novo)*, `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
+- **Rotas afetadas**: `/api/analyze`, `/dashboard`, `/dashboard/nova-analise`, impressão/PDF de `/dashboard/resultado`
+- **Alterações implementadas**:
+  1. **API `/api/analyze`**: `maxDuration` 60s → 120s (Vercel); timeout Gemini adaptativo (90s simples / 110s denso) com detecção `isDenseDocument` (≥3 PDFs OU >12 parts); instrução de concisão no prompt para docs densos (máx. 2.000 palavras); retries de timeout 3 → 5; suporte a `forceRetry` no body para reprocessar análises com `retry_exhausted`; `MODULE_PRICES` centralizado (remove duplicação inline).
+  2. **Dashboard `/dashboard`**: `handleStartAnalysis` aceita `forceRetry`; botão "Tentar novamente" reexibido em `retry_exhausted` enviando `forceRetry: true`; copy do aviso de processamento em etapas melhorada.
+  3. **Nova Análise `/dashboard/nova-analise`**: substituição completa de `alert()` por **sistema de Toast** (success/error/info, auto-dismiss 4s, redirect com delay 1.5s); type safety em `error: unknown`.
+  4. **PDF profissional (`src/app/globals.css`)**: +103 linhas de CSS `@media print` para A4 (margens 15mm/12mm, paginação controlada, fonte 10pt, badges de risco preservados, sem espaços vazios na página 2).
+  5. **Jest**: adicionada suíte completa (`jest`, `ts-jest`, `@types/jest`); 2 arquivos de teste (44 testes cobrindo `auditModules` e `reportExtractors`).
+- **Resultados de validação**: `npm run build` (21 rotas, 14.7s), `npm run lint`, `npx tsc --noEmit` e `npm test` (44/44 testes) aprovados com 100% de sucesso.
+- **Commit**: `94fe6ac — feat(bloco 04/06/2026): timeout adaptativo, forceRetry, Toast system, PDF A4 e Jest` (12 arquivos, +6849 / -2876).
+- **Push**: Efetuado para `origin/stable/rebuild-beta-01-laudo-compartilhavel` (ad9e4a4 → 94fe6ac).
+- **Deploy em produção**: **NÃO EFETUADO** — aguardando autorização explícita do usuário (regra CTO: deploy só com autorização).
+- **URL validada**: Não aplicável (commit apenas — deploy pendente).
+- **Problemas restantes**: Deploy pendente; homologação do fluxo de retry com forceRetry em produção após deploy.
 
 - **Data**: 02/06/2026
 - **Arquivos alterados**: `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from 'next/link';
 import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Layers, CheckCircle2, AlertCircle, Info, ShieldAlert } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -34,6 +34,14 @@ export default function NovaAnalisePage() {
   const [files, setFiles] = useState<{file: File, type: string}[]>([]);
   const [currentDocType, setCurrentDocType] = useState("");
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ message, type });
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+  };
   
   // Estados para Integrações GOV
   const [cpfCnpj, setCpfCnpj] = useState("");
@@ -125,7 +133,7 @@ export default function NovaAnalisePage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       if (!currentDocType) {
-        alert("Selecione o tipo de documento antes de anexar os arquivos.");
+        showToast("Selecione o tipo de documento antes de anexar os arquivos.", 'error');
         return;
       }
       
@@ -150,19 +158,19 @@ export default function NovaAnalisePage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (files.length === 0) {
-      alert('Por favor, anexe ao menos um documento.');
+      showToast('Por favor, anexe ao menos um documento.', 'error');
       return;
     }
 
     if (selectedModules.length === 0) {
-      alert("Selecione ao menos um módulo de auditoria.");
+      showToast("Selecione ao menos um módulo de auditoria.", 'error');
       return;
     }
 
     // Validação de compatibilidade extra antes do envio
     const incompatible = selectedModules.some(id => !getModuleCompatibility(id, docProfile).enabled);
     if (incompatible) {
-      alert("Sua seleção de módulos contém itens incompatíveis com os documentos anexados. Por favor, ajuste antes de enviar.");
+      showToast("Sua seleção de módulos contém itens incompatíveis com os documentos anexados. Ajuste antes de enviar.", 'error');
       return;
     }
 
@@ -172,8 +180,8 @@ export default function NovaAnalisePage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        alert("Sua sessão expirou, faça login novamente.");
-        router.push('/login');
+        showToast("Sua sessão expirou, faça login novamente.", 'error');
+        setTimeout(() => router.push('/login'), 1500);
         return;
       }
       const userId = session.user.id;
@@ -264,12 +272,13 @@ export default function NovaAnalisePage() {
         }).select().single();
       if (analysisError) throw new Error("Erro ao criar Análise: " + analysisError.message);
 
-      alert("Auditoria criada com sucesso! Aguarde a liberação do parecer.");
-      router.push('/dashboard');
+      showToast("Auditoria criada com sucesso! Redirecionando...", 'success');
+      setTimeout(() => router.push('/dashboard'), 1500);
       
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
       console.error("Erro Completo Capturado:", error);
-      alert('Erro ao processar (Detalhes Técnicos): ' + (error.message || "Erro desconhecido"));
+      showToast('Erro ao criar auditoria: ' + errorMessage, 'error');
     } finally {
       setLoading(false);
     }
@@ -277,6 +286,17 @@ export default function NovaAnalisePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-xl shadow-2xl text-sm font-bold transition-all ${
+          toast.type === 'success' ? 'bg-green-600 text-white' :
+          toast.type === 'error' ? 'bg-red-600 text-white' :
+          'bg-blue-600 text-white'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+
       <nav className="bg-brand-green text-white shadow-md">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">

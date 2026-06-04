@@ -150,7 +150,7 @@ export default function DashboardPage() {
     return 'Vamos reprocessar esta análise sem reenviar os documentos.';
   };
 
-  const handleStartAnalysis = async (analysisId: string, propertyId: string, retryOptions?: { retryMessage?: string }) => {
+  const handleStartAnalysis = async (analysisId: string, propertyId: string, retryOptions?: { retryMessage?: string; forceRetry?: boolean }) => {
     if (loadingAnalysisId) return;
     setLoadingAnalysisId(analysisId);
     try {
@@ -171,7 +171,7 @@ export default function DashboardPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ analysisId, propertyId })
+        body: JSON.stringify({ analysisId, propertyId, forceRetry: retryOptions?.forceRetry === true })
       });
 
       if (!res.ok) {
@@ -322,12 +322,12 @@ export default function DashboardPage() {
                           </button>
                         ) : statusType === 'error' ? (
                         analise.findings?.retry_exhausted === true ? (
-                            <div className="flex flex-col gap-1.5 max-w-[260px]">
+                            <div className="flex flex-col gap-1.5 max-w-[280px]">
                               <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wide w-fit">
                                 Exige processamento em etapas
                               </span>
                               <span className="text-gray-500 text-[10px] leading-tight">
-                                Esta matrícula possui volume, complexidade ou inconsistências acima do limite de processamento único. Recomendamos dividir a auditoria em etapas:
+                                Esta matrícula possui volume ou complexidade acima do limite de processamento único. Você pode tentar reprocessar ou dividir a auditoria em etapas:
                               </span>
                               <ol className="list-decimal pl-4 space-y-0.5">
                                 <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Análise de Matrícula Individual</strong> — revisar atos, averbações, ônus, inconsistências internas e riscos diretos do registro.</li>
@@ -335,9 +335,13 @@ export default function DashboardPage() {
                                 <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Auditoria de Origem Pública / Título Fundiário</strong> — verificar título originário, cláusulas resolutivas, INCRA/ITERINS/Estado e possível vício de origem.</li>
                                 <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Mapeamento de Nulidades e Indícios de Fraude</strong> — aprofundar inconsistências, simulação, sobreposição documental, fraude documental e pontos de impugnação.</li>
                               </ol>
-                              <span className="text-gray-500 text-[10px] leading-tight mt-0.5">
-                                Execute essas etapas separadamente para obter um parecer mais robusto e reduzir risco de falha por excesso de complexidade.
-                              </span>
+                              <button
+                                disabled={loadingAnalysisId !== null}
+                                onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: 'Tentando reprocessar com tempo estendido...', forceRetry: true })}
+                                className="bg-amber-600 text-white px-3 py-1.5 rounded text-[11px] font-bold hover:brightness-110 transition-all shadow disabled:opacity-50 mt-1 w-fit"
+                              >
+                                {loadingAnalysisId === analise.id ? 'Reprocessando...' : 'Tentar novamente'}
+                              </button>
                             </div>
                           ) : canRetryAnalysis ? (
                             <button

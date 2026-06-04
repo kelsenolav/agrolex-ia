@@ -16,3 +16,106 @@ body {
   color: var(--color-brand-dark);
   font-family: var(--font-sans);
 }
+
+/* ============================================================
+   PRINT / PDF EXPORT — A4 Professional
+   ============================================================ */
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm 12mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide non-print elements */
+  nav, header, footer, .no-print, button, a[href]::after {
+    display: none !important;
+  }
+
+  /* Report content: full width, no max-width constraint */
+  #report-content,
+  .report-content {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  /* Page breaks */
+  .report-page, .print-page {
+    page-break-after: always;
+    break-after: page;
+    min-height: auto !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 0 6mm 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Avoid breaks inside sections */
+  .report-section, .compact-print-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 6mm !important;
+    padding: 6mm !important;
+    box-shadow: none !important;
+  }
+
+  /* Headings: no page break after */
+  h1, h2, h3, h4 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Paragraphs and lists: compact */
+  p, li, span, div {
+    font-size: 10pt !important;
+    line-height: 1.4 !important;
+  }
+
+  /* Remove large web spacing (display:none APENAS em wrappers vazios;
+     .min-h-screen é o container raiz do laudo e DEVE permanecer visível) */
+  .large-web-spacing, .spacer, .empty-space {
+    display: none !important;
+    height: auto !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Remove background colors that waste ink, keep text contrast */
+  .bg-gray-50, .bg-gray-100, .bg-green-50, .bg-blue-50 {
+    background: #ffffff !important;
+  }
+
+  /* Risk badge colors for print */
+  .bg-red-100 { background: #fee2e2 !important; }
+  .bg-amber-100 { background: #fef3c7 !important; }
+  .bg-green-100 { background: #dcfce7 !important; }
+
+  /* Remove shadows */
+  * {
+    box-shadow: none !important;
+  }
+
+  /* Links: no underline decoration in print */
+  a {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+
+  /* Images: constrain */
+  img {
+    max-width: 100% !important;
+  }
+}
