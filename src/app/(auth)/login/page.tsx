@@ -56,7 +56,7 @@ export default function LoginPage() {
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <Link href="/" className="flex justify-center items-center gap-2 text-brand-green mb-6 hover:scale-105 transition-transform">
           <ShieldCheck size={40} className="text-brand-gold" />
-          <span className="text-3xl font-bold">Agrilex</span>
+          <span className="text-3xl font-bold">AgroLex</span>
         </Link>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
           Acesse sua conta

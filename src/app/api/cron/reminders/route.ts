@@ -48,11 +48,11 @@ export async function GET(req: Request) {
         const propName = task.properties?.name;
 
         const warningLevel = diffDays === 0 ? '🚨 URGENTE: VENCE HOJE!' : `⏳ Faltam ${diffDays} dias para o vencimento.`;
-        const msg = `Olá ${clientName},\n\nO Agrilex informa: A obrigação ambiental "${task.title}" da propriedade ${propName} exige sua atenção.\n${warningLevel}\n\nAcesse seu painel para mais detalhes.`;
+        const msg = `Olá ${clientName},\n\nO AgroLex informa: A obrigação ambiental "${task.title}" da propriedade ${propName} exige sua atenção.\n${warningLevel}\n\nAcesse seu painel para mais detalhes.`;
 
         // [SIMULAÇÃO DE DISPARO DE WHATSAPP]
         console.log(`\n==========================================`);
-        console.log(`📱 [WHATSAPP DISPARADO] Para: Cliente Agrilex`);
+        console.log(`📱 [WHATSAPP DISPARADO] Para: Cliente AgroLex`);
         console.log(`Mensagem:\n${msg}`);
         console.log(`==========================================\n`);
         whatsappsSent++;
@@ -62,7 +62,7 @@ export async function GET(req: Request) {
            const { Resend } = require('resend');
            const resend = new Resend(process.env.RESEND_API_KEY);
            await resend.emails.send({
-             from: 'Agrilex Alertas <onboarding@resend.dev>',
+             from: 'AgroLex Alertas <onboarding@resend.dev>',
              to: clientEmail || 'comprador@teste.com',
              subject: `Alerta de Condicionante - ${task.title}`,
              text: msg

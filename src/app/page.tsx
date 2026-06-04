@@ -37,7 +37,7 @@ export default function Home() {
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="text-2xl font-black flex items-center gap-2 text-white">
             <ShieldCheck size={32} className="text-brand-gold" />
-            <span className="tracking-tight">Agrilex</span>
+            <span className="tracking-tight">AgroLex</span>
           </div>
           <nav className="hidden md:flex gap-8">
             <Link href="#recursos" className="text-gray-300 hover:text-brand-gold transition-colors font-medium text-sm tracking-wide">RECURSOS</Link>
@@ -171,7 +171,7 @@ export default function Home() {
           </div>
           <div className="space-y-6">
             {[
-              { q: "O Agrilex substitui um advogado ou perito agrário?", a: "Não. A IA atua como uma ferramenta de alta velocidade para acelerar em 90% a triagem documental, revelando inconsistências de forma automática. A decisão final é sempre estratégica e humana." },
+              { q: "O AgroLex substitui um advogado ou perito agrário?", a: "Não. A IA atua como uma ferramenta de alta velocidade para acelerar em 90% a triagem documental, revelando inconsistências de forma automática. A decisão final é sempre estratégica e humana." },
               { q: "Quais documentos a plataforma consegue ler?", a: "Nossa tecnologia de Visão Computacional (Gemini 3.5) é capaz de ler Certidões de Matrícula (mesmo digitalizadas/escaneadas), CCIR, CAR, SIGEF e petições iniciais." },
               { q: "A plataforma salva os meus documentos?", a: "Nós armazenamos temporariamente para a análise, de forma criptografada. Você tem a opção de excluir permanentemente o laudo e os arquivos do nosso banco de dados a qualquer momento." },
               { q: "O relatório gerado é válido juridicamente?", a: "O laudo em PDF é um documento técnico-analítico formidável para uso interno e base para peças processuais, mas não possui fé pública como uma assinatura de um perito nomeado." }
@@ -192,9 +192,9 @@ export default function Home() {
         <div className="container mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="text-2xl font-black flex items-center gap-2 text-white">
             <ShieldCheck size={28} className="text-brand-gold" />
-            <span className="tracking-tight">Agrilex</span>
+            <span className="tracking-tight">AgroLex</span>
           </div>
-          <p className="text-sm text-gray-500 font-medium">© {new Date().getFullYear()} Agrilex. A tecnologia que o agronegócio brasileiro confia.</p>
+          <p className="text-sm text-gray-500 font-medium">© {new Date().getFullYear()} AgroLex. A tecnologia que o agronegócio brasileiro confia.</p>
         </div>
       </footer>
     </div>

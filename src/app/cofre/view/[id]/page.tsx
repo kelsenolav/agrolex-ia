@@ -41,7 +41,7 @@ export default function PublicCofreView() {
           <div className="flex justify-center mb-3">
             <Lock size={40} className="text-purple-300" />
           </div>
-          <h1 className="text-xl font-bold">Agrilex Data Room</h1>
+          <h1 className="text-xl font-bold">AgroLex Data Room</h1>
           <p className="text-purple-200 text-sm mt-1">Acesso Restrito Autorizado</p>
         </div>
 
