@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Analysis, AnalysisFindings } from '@/types/analise';
 import { normalizeStatus } from '@/types/analise';
@@ -14,6 +14,39 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [credits, setCredits] = useState(0);
   const [loadingAnalysisId, setLoadingAnalysisId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ message, type });
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+  };
+
+  const refreshAnalises = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data } = await supabase
+        .from('analyses')
+        .select(`
+          id,
+          status,
+          risk_level,
+          findings,
+          properties (id, name, city, state, risk_score),
+          documents (document_type)
+        `)
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false });
+      if (data) {
+        setAnalises(data as unknown as Analysis[]);
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar análises:', err);
+      showToast('Erro ao atualizar lista de análises.', 'error');
+    }
+  };
 
   useEffect(() => {
     const checkUserAndFetchData = async () => {
@@ -31,7 +64,7 @@ export default function DashboardPage() {
       if (profile) setCredits(profile.credits || 0);
 
       // Buscar Análises reais do Banco de Dados
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('analyses')
         .select(`
           id,
@@ -46,8 +79,6 @@ export default function DashboardPage() {
 
       if (data) {
         setAnalises(data as unknown as Analysis[]);
-      } else {
-        setAnalises([]);
       }
       setLoading(false);
     };
@@ -66,8 +97,8 @@ export default function DashboardPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        alert("Sua sessão expirou, faça login novamente.");
-        router.push('/login');
+        showToast("Sua sessão expirou, faça login novamente.", 'error');
+        setTimeout(() => router.push('/login'), 2000);
         return;
       }
 
@@ -80,20 +111,21 @@ export default function DashboardPage() {
         body: JSON.stringify({ analysisId })
       });
 
-      const result = await res.json();
       if (!res.ok) {
+        const result = await res.json();
         throw new Error(result.error || 'Erro ao liberar análise');
       }
 
-      alert("Análise liberada com sucesso para processamento!");
-      window.location.reload();
-    } catch (err: any) {
-      console.error(err);
-      alert("Erro ao liberar processamento: " + err.message);
+      showToast("Análise liberada com sucesso para processamento!", 'success');
+      await refreshAnalises();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      console.error('Erro ao liberar:', err);
+      showToast("Erro ao liberar processamento: " + message, 'error');
     }
   };
 
-  const isRecoverableAnalysisError = (analysis: any) => {
+  const isRecoverableAnalysisError = (analysis: Analysis): boolean => {
     if (analysis.findings?.retry_exhausted === true) {
       return false;
     }
@@ -104,7 +136,7 @@ export default function DashboardPage() {
       technicalErrorType === 'ai_incomplete_response';
   };
 
-  const getRetryMessage = (analysis: any) => {
+  const getRetryMessage = (analysis: Analysis): string => {
     const technicalErrorType = analysis.findings?.technical_error_type;
     if (technicalErrorType === 'ai_timeout') {
       return 'A IA demorou demais na tentativa anterior. Vamos tentar novamente sem reenviar os documentos.';
@@ -118,18 +150,18 @@ export default function DashboardPage() {
     return 'Vamos reprocessar esta análise sem reenviar os documentos.';
   };
 
-  const handleStartAnalysis = async (analysisId: string, propertyId: string, options?: { retryMessage?: string }) => {
+  const handleStartAnalysis = async (analysisId: string, propertyId: string, retryOptions?: { retryMessage?: string }) => {
     if (loadingAnalysisId) return;
     setLoadingAnalysisId(analysisId);
     try {
-      if (options?.retryMessage) {
-        alert(options.retryMessage);
+      if (retryOptions?.retryMessage) {
+        showToast(retryOptions.retryMessage, 'success');
       }
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        alert("Sua sessão expirou, faça login novamente.");
-        router.push('/login');
+        showToast("Sua sessão expirou, faça login novamente.", 'error');
+        setTimeout(() => router.push('/login'), 2000);
         return;
       }
 
@@ -142,17 +174,18 @@ export default function DashboardPage() {
         body: JSON.stringify({ analysisId, propertyId })
       });
 
-      const result = await res.json();
       if (!res.ok) {
+        const result = await res.json();
         throw new Error(result.error || 'Erro ao processar análise com IA');
       }
 
-      alert("Auditoria finalizada com sucesso!");
+      showToast("Auditoria finalizada com sucesso!", 'success');
       router.push(`/dashboard/resultado?id=${analysisId}`);
-    } catch (err: any) {
-      console.error(err);
-      alert("Falha ao processar parecer com IA: " + (err.message || "Não foi possível concluir agora. A análise pode ser reprocessada."));
-      window.location.reload();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Não foi possível concluir agora. A análise pode ser reprocessada.";
+      console.error('Erro ao processar:', err);
+      showToast("Falha ao processar parecer com IA: " + message, 'error');
+      await refreshAnalises();
     } finally {
       setLoadingAnalysisId(null);
     }
@@ -174,7 +207,7 @@ export default function DashboardPage() {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-2 text-brand-gold">
             <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">Agrilex</span>
+            <span className="text-xl font-bold text-white">AgroLex</span>
           </Link>
           <div className="flex gap-4 items-center">
             <span className="text-sm font-medium">Olá, {userName}</span>
@@ -192,7 +225,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4">
             <Link href="/dashboard/planos" className="flex items-center gap-2 bg-white text-brand-dark border-2 border-brand-gold px-5 py-3 rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm">
               <Plus size={20} className="text-brand-gold" />
-              {credits > 0 ? `${credits} Crédito(s) B2B` : 'Planos B2B'}
+              {credits > 0 ? `${credits} Crédito(s)` : 'Planos'}
             </Link>
             <Link href="/dashboard/nova-analise" className="flex items-center gap-2 bg-brand-gold text-brand-green px-5 py-3 rounded-lg font-bold hover:brightness-110 transition-all shadow-lg hover:-translate-y-1">
               <Plus size={20} />
@@ -211,30 +244,6 @@ export default function DashboardPage() {
               </div>
             </div>
           ))}
-        </div>
-
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Módulos Enterprise</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
-          <Link href="/dashboard/fornecedores" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
-            <div className="bg-blue-50 text-blue-600 p-3 rounded-full"><Clock size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center">Fornecedores</h3>
-            <span className="text-xs text-gray-500 text-center">Análise de Cadeia</span>
-          </Link>
-          <Link href="/dashboard/cofre" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
-            <div className="bg-purple-50 text-purple-600 p-3 rounded-full"><FileText size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center">Data Room</h3>
-            <span className="text-xs text-gray-500 text-center">Cofre Criptografado</span>
-          </Link>
-          <Link href="/dashboard/calendario" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
-            <div className="bg-orange-50 text-orange-600 p-3 rounded-full"><MapPin size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center">Calendário</h3>
-            <span className="text-xs text-gray-500 text-center">Condicionantes</span>
-          </Link>
-          <Link href="/dashboard/radar" className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-3 hover:-translate-y-1 transition-transform hover:shadow-md cursor-pointer">
-            <div className="bg-red-50 text-red-600 p-3 rounded-full"><AlertTriangle size={24} /></div>
-            <h3 className="font-bold text-gray-800 text-center">Radar Fundiário</h3>
-            <span className="text-xs text-gray-500 text-center">Monitoramento</span>
-          </Link>
         </div>
 
         <h2 className="text-xl font-bold text-gray-800 mb-4">Suas Análises</h2>
@@ -256,34 +265,8 @@ export default function DashboardPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {analises.map((analise) => {
-                  const rawStatus = (analise.status || '').toLowerCase().trim();
-                  
-                  // Normalizar status
-                  let statusText = 'Pendente';
-                  let statusColorClass = 'bg-gray-100 text-gray-700';
-                  let statusType = 'pending'; // pending, processing, completed, error
-                  
-                  if (rawStatus === 'pending' || rawStatus === 'payment_pending') {
-                    statusText = 'Pendente';
-                    statusColorClass = 'bg-amber-100 text-amber-700';
-                    statusType = 'pending';
-                  } else if (rawStatus === 'ready_for_processing') {
-                    statusText = 'Liberada';
-                    statusColorClass = 'bg-purple-100 text-purple-700';
-                    statusType = 'ready_for_processing';
-                  } else if (rawStatus === 'processing' || rawStatus === 'analisando') {
-                    statusText = 'Analisando';
-                    statusColorClass = 'bg-blue-100 text-blue-700 animate-pulse';
-                    statusType = 'processing';
-                  } else if (rawStatus === 'completed' || rawStatus === 'done' || rawStatus === 'concluido') {
-                    statusText = 'Concluído';
-                    statusColorClass = 'bg-green-100 text-green-700';
-                    statusType = 'completed';
-                  } else if (rawStatus === 'error' || rawStatus === 'failed') {
-                    statusText = 'Falha';
-                    statusColorClass = 'bg-red-100 text-red-700';
-                    statusType = 'error';
-                  }
+                  // Usar função centralizada de normalização de status
+                  const { text: statusText, colorClass: statusColorClass, type: statusType } = normalizeStatus(analise.status || '');
 
                   // Verificar se tem parecer (findings.resumo)
                   const hasParecer = analise.findings && analise.findings.resumo && String(analise.findings.resumo).trim().length > 0;
@@ -321,14 +304,9 @@ export default function DashboardPage() {
                       <td className="px-6 py-4">
                         {statusType === 'completed' ? (
                           hasParecer ? (
-                            <div className="flex items-center gap-3">
-                              <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm">
-                                Ver Parecer
-                              </Link>
-                              <Link href={`/dashboard/radar?property_id=${analise.properties?.id}`} className="bg-gray-900 text-white px-3 py-1 rounded text-xs font-bold hover:bg-gray-800 transition-colors">
-                                Ativar Radar
-                              </Link>
-                            </div>
+                            <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm">
+                              Ver Parecer
+                            </Link>
                           ) : (
                             <span className="text-red-500 text-xs font-semibold">Anomalia: parecer não localizado</span>
                           )
@@ -391,6 +369,30 @@ export default function DashboardPage() {
           )}
         </div>
       </main>
+
+      {/* Toast de notificação */}
+      {toast && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 px-6 py-3 rounded-xl shadow-2xl text-white font-medium transition-all duration-300 ${
+            toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            {toast.type === 'success' ? (
+              <CheckCircle size={20} />
+            ) : (
+              <AlertTriangle size={20} />
+            )}
+            <span>{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 text-white/80 hover:text-white transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
