@@ -1,11 +1,14 @@
 "use client";
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ShieldCheck, ArrowLeft, AlertTriangle, FileCheck, Info, CheckCircle2, Loader2, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import type { Analysis, AnalysisFindings, ReportProblem, TimelineEvent, ChecklistItem } from '@/types/analise';
+import DOMPurify from 'dompurify';
 
-import { mockResponses } from './mockData';
+const POLLING_MAX_RETRIES = 30;
+const POLLING_INTERVAL_MS = 4000;
 
 function parseMarkdown(md: string) {
   if (!md) return '';
@@ -27,8 +30,9 @@ function parseMarkdown(md: string) {
 function ResultadoContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [analise, setAnalise] = useState<any>(null);
+  const [analise, setAnalise] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(true);
+  const pollingCountRef = useRef(0);
 
   useEffect(() => {
     const fetchAnalise = async () => {
@@ -54,26 +58,36 @@ function ResultadoContent() {
         .eq('id', id)
         .single();
 
-      if (data) setAnalise(data);
+      if (data) setAnalise(data as unknown as Analysis);
       setLoading(false);
     };
     
     fetchAnalise();
   }, [searchParams, router]);
 
-  // Polling para aguardar a IA (que agora roda assíncrona via waitUntil)
+  // Polling para aguardar a IA — com teto de tentativas
   useEffect(() => {
     let interval: NodeJS.Timeout;
+    pollingCountRef.current = 0;
+
     if (analise && (analise.status === 'processing' || analise.status === 'analisando')) {
       interval = setInterval(async () => {
+        pollingCountRef.current += 1;
+
+        if (pollingCountRef.current >= POLLING_MAX_RETRIES) {
+          clearInterval(interval);
+          return;
+        }
+
         const { data } = await supabase.from('analyses')
           .select('*, properties(name, city, state), documents(document_type, file_path)')
           .eq('id', analise.id).single();
         
         if (data && data.status !== 'processing' && data.status !== 'analisando') {
-          setAnalise(data);
+          setAnalise(data as unknown as Analysis);
+          clearInterval(interval);
         }
-      }, 4000);
+      }, POLLING_INTERVAL_MS);
     }
     return () => clearInterval(interval);
   }, [analise]);
@@ -144,7 +158,8 @@ function ResultadoContent() {
     );
   }
 
-  const hasParecer = analise.findings && analise.findings.resumo && String(analise.findings.resumo).trim().length > 0;
+  const findings = analise.findings as AnalysisFindings | undefined;
+  const hasParecer = findings?.resumo && String(findings.resumo).trim().length > 0;
 
   if (!isCompleted || !hasParecer) {
     return (
@@ -167,13 +182,8 @@ function ResultadoContent() {
   const propLocation = `${analise.properties?.city}, ${analise.properties?.state}`;
   const risco = analise.risk_level || "Pendente";
   
-  let finalResumo = analise.findings.isHtmlResumo ? analise.findings.resumo : parseMarkdown(analise.findings.resumo);
-
-  const findings = {
-    ...analise.findings,
-    isHtmlResumo: true,
-    resumo: finalResumo
-  };
+  let finalResumo = findings!.isHtmlResumo ? findings!.resumo : parseMarkdown(findings!.resumo);
+  const sanitizedResumo = DOMPurify.sanitize(finalResumo);
 
   const getRiscoStyle = (r: string) => {
     const rLower = r?.toLowerCase();
@@ -238,26 +248,26 @@ function ResultadoContent() {
             <h2 className="text-2xl font-bold text-brand-dark mb-4 border-b-2 border-gray-100 pb-3 flex items-center gap-2">
               <Info className="text-brand-gold" size={28} /> Parecer Executivo
             </h2>
-            {findings.isHtmlResumo ? (
+            {findings!.isHtmlResumo ? (
               <div 
                 className="text-gray-700 leading-relaxed bg-gray-50 p-6 rounded-xl border border-gray-200 text-lg print:bg-white"
-                dangerouslySetInnerHTML={{ __html: findings.resumo }} 
+                dangerouslySetInnerHTML={{ __html: sanitizedResumo }} 
               />
             ) : (
               <p className="text-gray-700 leading-relaxed bg-gray-50 p-6 rounded-xl border border-gray-200 text-lg print:bg-white whitespace-pre-wrap">
-                {findings.resumo}
+                {findings!.resumo}
               </p>
             )}
           </section>
 
           {/* LINHA DO TEMPO (Renderizada apenas se existir) */}
-          {findings.linhaDoTempo && findings.linhaDoTempo.length > 0 && (
+          {findings!.linhaDoTempo && findings!.linhaDoTempo.length > 0 && (
             <section className="print:break-inside-avoid border-b-2 border-gray-100 pb-10">
               <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
                 <Clock className="text-brand-gold" size={28} /> Linha do Tempo Registral
               </h2>
               <div className="relative border-l-2 border-brand-green/30 ml-3 md:ml-6 space-y-8">
-                {findings.linhaDoTempo.map((item: any, i: number) => (
+                {findings!.linhaDoTempo.map((item: TimelineEvent, i: number) => (
                   <div key={i} className="relative pl-8 md:pl-10">
                     <div className="absolute -left-[9px] top-1 bg-white border-4 border-brand-green w-4 h-4 rounded-full"></div>
                     <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow print:bg-white print:shadow-none print:border-b">
@@ -277,19 +287,7 @@ function ResultadoContent() {
                 <AlertTriangle className="text-red-500" size={24} /> Problemas / Divergências
               </h2>
               <ul className="space-y-4">
-                {(Array.isArray(findings.problemas) ? findings.problemas : []).map((prob: any, i: number) => {
-                  if (typeof prob === 'string') {
-                    // Fallback para laudo antigo (string única)
-                    return (
-                      <li key={i} className="bg-red-50 p-4 rounded-xl border border-red-100 shadow-sm print:shadow-none print:bg-white">
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5 bg-red-200 rounded-full p-1.5 flex-shrink-0"><AlertTriangle size={14} className="text-red-700" /></div>
-                          <span className="text-sm text-red-900 font-medium">{prob.length > 320 ? prob.slice(0, 320).trim() + '…' : prob}</span>
-                        </div>
-                      </li>
-                    );
-                  }
-
+                {(Array.isArray(findings!.problemas) ? findings!.problemas : []).map((prob: ReportProblem, i: number) => {
                   // Card executivo para objetos estruturados
                   const titulo = prob.titulo || prob.descricao || 'Problema identificado';
                   const descricao = prob.descricao && prob.descricao !== prob.titulo ? prob.descricao : null;
@@ -353,13 +351,13 @@ function ResultadoContent() {
                 <FileCheck className="text-orange-500" size={24} /> Documentos Faltantes
               </h2>
               <ul className="space-y-4">
-                {findings.documentosFaltantes?.map((doc: string, i: number) => (
+                {findings!.documentosFaltantes?.map((doc: string, i: number) => (
                   <li key={i} className="flex items-center gap-4 bg-orange-50 p-4 rounded-xl border border-orange-100 shadow-sm print:shadow-none print:bg-white">
                     <div className="bg-orange-200 p-1.5 rounded-full"><Info size={16} className="text-orange-700" /></div>
                     <span className="text-orange-900 font-medium">{doc}</span>
                   </li>
                 ))}
-                {(!findings.documentosFaltantes || findings.documentosFaltantes.length === 0) && (
+                {(!findings!.documentosFaltantes || findings!.documentosFaltantes.length === 0) && (
                    <li className="text-gray-500 italic p-4">Nenhum documento listado.</li>
                 )}
               </ul>
@@ -372,7 +370,7 @@ function ResultadoContent() {
             </h2>
             <div className="bg-green-50 p-8 rounded-2xl border border-green-200 shadow-sm print:shadow-none print:bg-white print:border">
               <ul className="space-y-4 text-green-900 font-medium text-lg">
-                {findings.recomendacoes?.map((rec: string, i: number) => (
+                {findings!.recomendacoes?.map((rec: string, i: number) => (
                   <li key={i} className="flex items-start gap-3">
                     <CheckCircle2 className="mt-1 flex-shrink-0 text-green-600" size={20} />
                     <span>{rec}</span>
@@ -383,13 +381,13 @@ function ResultadoContent() {
           </section>
 
           {/* CHECKLIST DA CADEIA DOMINIAL (CAMADA 3) */}
-          {findings.checklist && findings.checklist.length > 0 && (
+          {findings!.checklist && findings!.checklist.length > 0 && (
             <section className="print:break-inside-avoid pt-4">
               <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
                 <ShieldCheck className="text-brand-gold" size={28} /> Auditoria da Cadeia Dominial & Princípios Registrais
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
-                {findings.checklist.map((item: any, i: number) => {
+                {findings!.checklist.map((item: ChecklistItem, i: number) => {
                   const isReprovado = item.status?.toLowerCase().includes('reprovado') || item.status?.toLowerCase().includes('violado');
                   const isAlerta = item.status?.toLowerCase().includes('alerta');
                   
@@ -421,7 +419,7 @@ function ResultadoContent() {
           )}
 
           {/* PEÇA JURÍDICA (CAMADA 4) */}
-          {findings.pecaJuridica && (
+          {findings!.pecaJuridica && (
             <section className="print:break-inside-avoid pt-4">
               <div className="bg-gray-900 text-white p-8 rounded-2xl shadow-xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 bg-brand-gold text-brand-green text-xs font-black px-4 py-2 rounded-bl-xl shadow-lg">PREMIUM</div>
@@ -431,11 +429,11 @@ function ResultadoContent() {
                 <p className="text-gray-300 mb-6">A Inteligência Artificial preparou uma minuta/parecer completo baseado nos apontamentos forenses desta auditoria. O documento está formatado e pronto para uso.</p>
                 
                 <div className="bg-white text-gray-900 p-6 rounded-xl max-h-64 overflow-y-auto mb-6 shadow-inner text-sm font-serif">
-                  <div dangerouslySetInnerHTML={{ __html: findings.pecaJuridica }} />
+                  <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(findings!.pecaJuridica) }} />
                 </div>
                 
                 <button onClick={() => {
-                  const blob = new Blob(['\\ufeff', findings.pecaJuridica], { type: 'application/msword' });
+                  const blob = new Blob(['\ufeff', findings!.pecaJuridica || ''], { type: 'application/msword' });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;

@@ -4,11 +4,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import type { Analysis, AnalysisFindings } from '@/types/analise';
+import { normalizeStatus } from '@/types/analise';
 
 export default function DashboardPage() {
   const router = useRouter();
   const [userName, setUserName] = useState("Produtor");
-  const [analises, setAnalises] = useState<any[]>([]);
+  const [analises, setAnalises] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
   const [credits, setCredits] = useState(0);
   const [loadingAnalysisId, setLoadingAnalysisId] = useState<string | null>(null);
@@ -43,7 +45,7 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false });
 
       if (data) {
-        setAnalises(data);
+        setAnalises(data as unknown as Analysis[]);
       } else {
         setAnalises([]);
       }
@@ -297,7 +299,7 @@ export default function DashboardPage() {
                         <span className="text-sm text-gray-500 ml-6">{analise.properties?.city}, {analise.properties?.state}</span>
                       </td>
                       <td className="px-6 py-4 text-gray-700 flex items-center gap-2 mt-2">
-                        <FileText size={18} className="text-brand-gold" /> {analise.documents?.document_type}
+                        <FileText size={18} className="text-brand-gold" /> {analise.documents?.[0]?.document_type}
                       </td>
                       <td className="px-6 py-4">
                         <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusColorClass}`}>
@@ -335,7 +337,7 @@ export default function DashboardPage() {
                         ) : statusType === 'ready_for_processing' ? (
                           <button
                             disabled={loadingAnalysisId !== null}
-                            onClick={() => handleStartAnalysis(analise.id, analise.properties?.id)}
+                            onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '')}
                             className="bg-brand-green text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
                           >
                             {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar parecer'}
@@ -362,7 +364,7 @@ export default function DashboardPage() {
                           ) : canRetryAnalysis ? (
                             <button
                               disabled={loadingAnalysisId !== null}
-                              onClick={() => handleStartAnalysis(analise.id, analise.properties?.id, { retryMessage: getRetryMessage(analise) })}
+                              onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: getRetryMessage(analise) })}
                               className="bg-red-600 text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
                             >
                               {loadingAnalysisId === analise.id ? 'Reprocessando...' : 'Tentar novamente'}

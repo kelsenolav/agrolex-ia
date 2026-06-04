@@ -1,11 +1,4 @@
-export interface ReportProblem {
-  titulo: string;
-  descricao: string;
-  criticidade?: string;
-  baseDocumental?: string;
-  documentoNecessario?: string;
-  recomendacao?: string;
-}
+import type { ReportProblem } from '@/types/analise';
 
 function normalizeText(value: string): string {
   return value
