@@ -3,6 +3,7 @@ export interface ReportProblem {
   descricao: string;
   criticidade?: string;
   baseDocumental?: string;
+  documentoNecessario?: string;
   recomendacao?: string;
 }
 
@@ -100,11 +101,17 @@ function parseProblemBlock(block: string): ReportProblem | null {
     'ACHADO IDENTIFICADO'
   ]);
 
+  const documentoNecessario = extractField(cleaned, 'DOCUMENTO NECESSÁRIO PARA CONFIRMAÇÃO', [
+    'RECOMENDAÇÃO',
+    'ACHADO IDENTIFICADO'
+  ]);
+
   return {
     titulo: normalizeText(titulo),
     descricao: normalizeText(descricao),
     criticidade: criticidade || undefined,
     baseDocumental: baseDocumental || undefined,
+    documentoNecessario: documentoNecessario || undefined,
     recomendacao: recomendacao || undefined
   };
 }

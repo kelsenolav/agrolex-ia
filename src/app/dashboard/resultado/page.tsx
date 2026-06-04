@@ -278,16 +278,69 @@ function ResultadoContent() {
               </h2>
               <ul className="space-y-4">
                 {(Array.isArray(findings.problemas) ? findings.problemas : []).map((prob: any, i: number) => {
-                  const titulo = typeof prob === 'string' ? prob : prob.titulo || prob.descricao || 'Problema identificado';
-                  const descricao = typeof prob === 'string' ? null : prob.descricao;
-                  return (
-                    <li key={i} className="flex flex-col gap-3 bg-red-50 p-4 rounded-xl border border-red-100 shadow-sm print:shadow-none print:bg-white">
-                      <div className="flex items-start gap-4">
-                        <div className="mt-0.5 bg-red-200 rounded-full p-1.5"><AlertTriangle size={16} className="text-red-700" /></div>
-                        <div>
-                          <span className="text-red-900 font-semibold">{titulo}</span>
-                          {descricao && <p className="text-red-700 mt-2">{descricao}</p>}
+                  if (typeof prob === 'string') {
+                    // Fallback para laudo antigo (string única)
+                    return (
+                      <li key={i} className="bg-red-50 p-4 rounded-xl border border-red-100 shadow-sm print:shadow-none print:bg-white">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 bg-red-200 rounded-full p-1.5 flex-shrink-0"><AlertTriangle size={14} className="text-red-700" /></div>
+                          <span className="text-sm text-red-900 font-medium">{prob.length > 320 ? prob.slice(0, 320).trim() + '…' : prob}</span>
                         </div>
+                      </li>
+                    );
+                  }
+
+                  // Card executivo para objetos estruturados
+                  const titulo = prob.titulo || prob.descricao || 'Problema identificado';
+                  const descricao = prob.descricao && prob.descricao !== prob.titulo ? prob.descricao : null;
+
+                  return (
+                    <li key={i} className="bg-red-50 p-4 rounded-xl border border-red-100 shadow-sm print:shadow-none print:bg-white">
+                      {/* Título */}
+                      <div className="flex items-start gap-3 mb-2">
+                        <div className="mt-0.5 bg-red-200 rounded-full p-1.5 flex-shrink-0"><AlertTriangle size={14} className="text-red-700" /></div>
+                        <span className="text-sm font-bold text-red-900 leading-tight">
+                          {titulo.length > 160 ? titulo.slice(0, 160).trim() + '…' : titulo}
+                        </span>
+                      </div>
+
+                      {/* Campos executivos */}
+                      <div className="ml-8 space-y-1">
+                        {descricao && (
+                          <div>
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">Risco</span>
+                            <span className="text-sm text-gray-800">{descricao.length > 280 ? descricao.slice(0, 280).trim() + '…' : descricao}</span>
+                          </div>
+                        )}
+                        {prob.criticidade && (
+                          <div className="mt-1.5">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">Criticidade</span>
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
+                              String(prob.criticidade).toLowerCase().includes('critico') ? 'bg-red-200 text-red-900' :
+                              String(prob.criticidade).toLowerCase().includes('alto') ? 'bg-orange-200 text-orange-900' :
+                              String(prob.criticidade).toLowerCase().includes('medio') ? 'bg-yellow-200 text-yellow-900' :
+                              'bg-green-200 text-green-900'
+                            }`}>{prob.criticidade}</span>
+                          </div>
+                        )}
+                        {prob.baseDocumental && (
+                          <div className="mt-1.5">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">Base documental</span>
+                            <span className="text-sm text-gray-800">{prob.baseDocumental.length > 260 ? prob.baseDocumental.slice(0, 260).trim() + '…' : prob.baseDocumental}</span>
+                          </div>
+                        )}
+                        {prob.documentoNecessario && (
+                          <div className="mt-1.5">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">Documento necessário</span>
+                            <span className="text-sm text-gray-800">{prob.documentoNecessario.length > 260 ? prob.documentoNecessario.slice(0, 260).trim() + '…' : prob.documentoNecessario}</span>
+                          </div>
+                        )}
+                        {prob.recomendacao && (
+                          <div className="mt-1.5">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">Recomendação</span>
+                            <span className="text-sm text-gray-800">{prob.recomendacao.length > 280 ? prob.recomendacao.slice(0, 280).trim() + '…' : prob.recomendacao}</span>
+                          </div>
+                        )}
                       </div>
                     </li>
                   );
