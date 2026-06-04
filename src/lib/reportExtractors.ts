@@ -64,6 +64,62 @@ function extractField(text: string, label: string, terminators: string[]): strin
   return match?.[1] ? normalizeText(match[1]) : null;
 }
 
+/**
+ * Strip known problem-block markers from a fallback title string.
+ */
+function stripMarkersFromTitle(text: string): string {
+  if (!text) return text;
+  const markers = [
+    'BASE DOCUMENTAL\\s*:',
+    'RISCO JURÍDICO/FUNDIÁRIO\\s*:',
+    'RISCO\\s*:',
+    'GRAU DE CRITICIDADE\\s*:',
+    'CRITICIDADE\\s*:',
+    'DOCUMENTO NECESSÁRIO PARA CONFIRMAÇÃO\\s*:',
+    'DOCUMENTO NECESSÁRIO\\s*:',
+    'DOCUMENTOS NECESSÁRIOS\\s*:',
+    'DOCUMENTAÇÃO NECESSÁRIA\\s*:',
+    'RECOMENDAÇÃO\\s*:',
+    'ACHADO IDENTIFICADO\\s*:'
+  ];
+  const pattern = new RegExp(`\\b(${markers.join('|')})`, 'i');
+  const match = text.match(pattern);
+  if (match && match.index !== undefined) {
+    return text.slice(0, match.index).trim();
+  }
+  return text;
+}
+
+/**
+ * Extract documentoNecessario trying multiple label variants.
+ */
+function extractDocumentoNecessario(block: string): string | null {
+  const patterns = [
+    'DOCUMENTO NECESSÁRIO PARA CONFIRMAÇÃO',
+    'DOCUMENTO NECESSÁRIO',
+    'DOCUMENTOS NECESSÁRIOS',
+    'DOCUMENTAÇÃO NECESSÁRIA'
+  ];
+  const terminators = [
+    'RECOMENDAÇÃO',
+    'ACHADO IDENTIFICADO',
+    'BASE DOCUMENTAL',
+    'RISCO JURÍDICO/FUNDIÁRIO',
+    'RISCO',
+    'GRAU DE CRITICIDADE',
+    'CRITICIDADE',
+    'DOCUMENTO NECESSÁRIO PARA CONFIRMAÇÃO',
+    'DOCUMENTO NECESSÁRIO',
+    'DOCUMENTOS NECESSÁRIOS',
+    'DOCUMENTAÇÃO NECESSÁRIA'
+  ];
+  for (const pattern of patterns) {
+    const result = extractField(block, pattern, terminators);
+    if (result) return result;
+  }
+  return null;
+}
+
 function parseProblemBlock(block: string): ReportProblem | null {
   const cleaned = normalizeText(block);
   const titulo = extractField(cleaned, 'ACHADO IDENTIFICADO', [
@@ -72,8 +128,13 @@ function parseProblemBlock(block: string): ReportProblem | null {
     'GRAU DE CRITICIDADE',
     'DOCUMENTO NECESSÁRIO PARA CONFIRMAÇÃO',
     'RECOMENDAÇÃO',
-    'ACHADO IDENTIFICADO'
-  ]) || cleaned.split(/\n/)[0]?.trim();
+    'ACHADO IDENTIFICADO',
+    'CRITICIDADE',
+    'RISCO',
+    'DOCUMENTO NECESSÁRIO',
+    'DOCUMENTOS NECESSÁRIOS',
+    'DOCUMENTAÇÃO NECESSÁRIA'
+  ]) || stripMarkersFromTitle(cleaned.split(/\n/)[0]?.trim() || '');
 
   if (!titulo) {
     return null;
@@ -81,19 +142,33 @@ function parseProblemBlock(block: string): ReportProblem | null {
 
   const baseDocumental = extractField(cleaned, 'BASE DOCUMENTAL', [
     'RISCO JURÍDICO/FUNDIÁRIO',
+    'RISCO',
     'GRAU DE CRITICIDADE',
+    'CRITICIDADE',
     'DOCUMENTO NECESSÁRIO PARA CONFIRMAÇÃO',
+    'DOCUMENTO NECESSÁRIO',
+    'DOCUMENTOS NECESSÁRIOS',
+    'DOCUMENTAÇÃO NECESSÁRIA',
     'RECOMENDAÇÃO',
     'ACHADO IDENTIFICADO'
   ]);
   const descricao = extractField(cleaned, 'RISCO JURÍDICO/FUNDIÁRIO', [
+    'RISCO',
     'GRAU DE CRITICIDADE',
+    'CRITICIDADE',
     'DOCUMENTO NECESSÁRIO PARA CONFIRMAÇÃO',
+    'DOCUMENTO NECESSÁRIO',
+    'DOCUMENTOS NECESSÁRIOS',
+    'DOCUMENTAÇÃO NECESSÁRIA',
     'RECOMENDAÇÃO',
     'ACHADO IDENTIFICADO'
   ]) || cleaned;
   const criticidade = extractField(cleaned, 'GRAU DE CRITICIDADE', [
+    'CRITICIDADE',
     'DOCUMENTO NECESSÁRIO PARA CONFIRMAÇÃO',
+    'DOCUMENTO NECESSÁRIO',
+    'DOCUMENTOS NECESSÁRIOS',
+    'DOCUMENTAÇÃO NECESSÁRIA',
     'RECOMENDAÇÃO',
     'ACHADO IDENTIFICADO'
   ]);
@@ -101,10 +176,7 @@ function parseProblemBlock(block: string): ReportProblem | null {
     'ACHADO IDENTIFICADO'
   ]);
 
-  const documentoNecessario = extractField(cleaned, 'DOCUMENTO NECESSÁRIO PARA CONFIRMAÇÃO', [
-    'RECOMENDAÇÃO',
-    'ACHADO IDENTIFICADO'
-  ]);
+  const documentoNecessario = extractDocumentoNecessario(cleaned);
 
   return {
     titulo: normalizeText(titulo),
