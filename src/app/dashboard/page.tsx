@@ -341,13 +341,22 @@ export default function DashboardPage() {
                             {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar parecer'}
                           </button>
                         ) : statusType === 'error' ? (
-                          analise.findings?.retry_exhausted === true ? (
-                            <div className="flex flex-col gap-1">
-                              <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wide inline-block w-fit">
+                        analise.findings?.retry_exhausted === true ? (
+                            <div className="flex flex-col gap-1.5 max-w-[260px]">
+                              <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wide w-fit">
                                 Exige processamento em etapas
                               </span>
-                              <span className="text-gray-500 text-[10px] max-w-[200px] leading-tight">
-                                A IA excedeu o tempo limite em múltiplas tentativas. Este documento provavelmente exige processamento em etapas.
+                              <span className="text-gray-500 text-[10px] leading-tight">
+                                Esta matrícula possui volume, complexidade ou inconsistências acima do limite de processamento único. Recomendamos dividir a auditoria em etapas:
+                              </span>
+                              <ol className="list-decimal pl-4 space-y-0.5">
+                                <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Análise de Matrícula Individual</strong> — revisar atos, averbações, ônus, inconsistências internas e riscos diretos do registro.</li>
+                                <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Cadeia Dominial Registral</strong> — reconstruir a origem e a sequência de transmissões do imóvel.</li>
+                                <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Auditoria de Origem Pública / Título Fundiário</strong> — verificar título originário, cláusulas resolutivas, INCRA/ITERINS/Estado e possível vício de origem.</li>
+                                <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Mapeamento de Nulidades e Indícios de Fraude</strong> — aprofundar inconsistências, simulação, sobreposição documental, fraude documental e pontos de impugnação.</li>
+                              </ol>
+                              <span className="text-gray-500 text-[10px] leading-tight mt-0.5">
+                                Execute essas etapas separadamente para obter um parecer mais robusto e reduzir risco de falha por excesso de complexidade.
                               </span>
                             </div>
                           ) : canRetryAnalysis ? (
