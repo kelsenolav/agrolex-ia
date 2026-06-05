@@ -16,6 +16,9 @@
 - **Validate** the public URL `https://agrolex-ia-qx32.vercel.app/dashboard` after deploy.
 - **Update** `PROJECT_CONTEXT_AGROLEX.md` and this `AGENTS.md` at the end of relevant tasks (record date, files changed, routes, buttons fixed, validation results, URL check, remaining issues).
 
+- **Regra de comunicação**: Não detalhar progresso técnico incremental na tela durante a tarefa (status de leitura de arquivos, validações intermediárias, etc.). Todo o histórico de ações executadas será consolidado no relatório final. Apenas informar conclusão de blocos críticos (build, lint, testes, deploy) quando solicitado.
+- **Relatório final**: Ao concluir qualquer tarefa, gerar relatório consolidado com todos os arquivos alterados, rotas afetadas, alterações implementadas, resultados de validação e pendências.
+
 *Do not add any other content.*
 
 ---

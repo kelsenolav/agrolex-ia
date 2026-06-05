@@ -222,26 +222,29 @@ function ResultadoContent() {
           <ArrowLeft size={20} /> Voltar ao painel
         </Link>
 
-        {/* Cabeçalho */}
-        <div className="bg-white p-8 rounded-t-2xl shadow-lg border border-gray-100 border-b-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:shadow-none print:border-b">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-3xl font-extrabold text-gray-800">Auditoria Forense IA</h1>
-              <span className="px-4 py-1.5 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm print:shadow-none">Concluído</span>
+        {/* Card Unificado do Relatório */}
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden print:shadow-none print:border print:rounded-none">
+          
+          {/* Cabeçalho */}
+          <div className="p-8 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:border-b">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-3xl font-extrabold text-gray-800">Auditoria Forense IA</h1>
+                <span className="px-4 py-1.5 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm print:shadow-none">Concluído</span>
+              </div>
+              <p className="text-gray-500 font-medium text-lg">{propName} • {propLocation}</p>
             </div>
-            <p className="text-gray-500 font-medium text-lg">{propName} • {propLocation}</p>
-          </div>
-          <div className={`text-center ${styles.bg} p-5 rounded-xl border ${styles.border} shadow-sm print:shadow-none print:border`}>
-            <p className={`text-xs font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
-            <div className={`flex items-center gap-2 ${styles.text} justify-center`}>
-              <AlertTriangle size={28} />
-              <span className="text-3xl font-black">{risco?.toUpperCase()}</span>
+            <div className={`text-center ${styles.bg} p-5 rounded-xl border ${styles.border} shadow-sm print:shadow-none print:border`}>
+              <p className={`text-xs font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
+              <div className={`flex items-center gap-2 ${styles.text} justify-center`}>
+                <AlertTriangle size={28} />
+                <span className="text-3xl font-black">{risco?.toUpperCase()}</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Corpo do Relatório */}
-        <div className="bg-white p-8 rounded-b-2xl shadow-lg border border-gray-100 space-y-10 print:shadow-none print:border-none print:p-4">
+          {/* Corpo do Relatório */}
+          <div className="p-8 space-y-10 print:p-4">
           
           {/* Resumo */}
           <section>
@@ -529,6 +532,7 @@ function ResultadoContent() {
             <Link href="/dashboard" className="px-8 py-4 bg-brand-green text-white rounded-xl font-bold hover:brightness-110 shadow-lg transition-all flex items-center justify-center gap-2">
               Concluir <ShieldCheck size={20} className="text-brand-gold" />
             </Link>
+          </div>
           </div>
         </div>
       </main>
