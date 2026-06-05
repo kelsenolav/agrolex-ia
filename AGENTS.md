@@ -1,4 +1,4 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 ## Agent Rules for AgroLex Project
 
@@ -18,6 +18,43 @@
 
 *Do not add any other content.*
 
+---
+
+- **Data**: 05/06/2026
+- **Bloco**: FASE 2 — Recommended Modules Acionáveis (sub-bloco 2.0.1, classe C, sem migration)
+- **Arquivos alterados**: `src/lib/recommendations.ts` (novo), `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`, `src/lib/__tests__/recommendations.test.ts` (novo), `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
+- **Rotas afetadas**: `/api/analyze`, `/dashboard`
+- **Alterações implementadas**:
+  1. Criado `src/lib/recommendations.ts` com `buildRecommendedModules()` aplicando 5 regras: risco crítico → nulidades_fraudes, múltiplas matrículas → cruzamento_matriculas, CAR/SIGEF sem geoespacial → geoespacial, origem pública não confirmada → origem_publica, faltam certidões cadeia → cadeia_dominial. Função pura, determinística, com exclusão de módulos já contratados e ordenação por prioridade.
+  2. Injetada chamada `buildRecommendedModules()` em `/api/analyze/route.ts` dentro de try/catch isolado (não afeta fluxo principal), persistindo `recommended_modules` em `case_file`.
+  3. Adicionada coluna "Módulos Sugeridos" no dashboard (somente leitura) com badges por prioridade (critica/alta/media/baixa), tooltip com nome + preço, limite de 3 badges + contador.
+  4. Testes Jest (17 novos, total 62/62) cobrindo todas as 5 regras + casos de exclusão + dedup + ordenação + limite de 5.
+- **Validações**: `npm run build` (21 rotas), `npx tsc --noEmit` (exit 0), `npm test` (62/62), `npm run lint` (aprovado)
+- **Commit**: Pendente
+- **Deploy**: Não efetuado (sem autorização para deploy)
+- **Próximos passos**: Sub-bloco 2.0.2 com migration `parent_analysis_id` + endpoint `/api/recommendations/accept` + CTA "Adicionar Módulo" (classe E, requer autorização do fundador)
+
+---
+
+- **Data**: 04/06/2026
+- **Bloco**: Deploy em produção do commit 94fe6ac (autorizado pelo usuário)
+- **Arquivos alterados**: `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
+- **Rotas afetadas**: `/`, `/login`, `/cadastro`, `/dashboard` (todas validadas com HTTP 200)
+- **Ação executada**: `vercel --prod --yes` após autorização explícita do usuário.
+- **Resultado do build remoto**: Next.js build concluído em 42s, 21 rotas geradas, alias `https://agrolex-ia-qx32.vercel.app` reapontado.
+- **Validação de URL**:
+  - `https://agrolex-ia-qx32.vercel.app/dashboard` → HTTP 200 (com redirect server-side para `/login?next=%2Fdashboard`).
+  - `https://agrolex-ia-qx32.vercel.app/login` → HTTP 200.
+  - `https://agrolex-ia-qx32.vercel.app/cadastro` → HTTP 200.
+  - `https://agrolex-ia-qx32.vercel.app/` → HTTP 200.
+- **Observação**: `/plans`, `/checkout` e `/report/mock-sprint-45-agrolex` retornam 404 (não existem no branch atual — removidas no rollback total de 01/06/2026). Rotas funcionais estão todas em `/dashboard/*`, `/login`, `/cadastro` e `/`.
+- **Problemas restantes**:
+  - Homologação manual em produção dos fluxos forceRetry, timeout adaptativo, Toast system e PDF A4.
+  - Limpeza do working tree (10 arquivos untracked experimentais + AGENTS.md modificada não commitada).
+  - Roadmap futuro: editor admin de prompts em camadas, OCR para PDFs escaneados.
+
+---
+
 - **Data**: 01/06/2026
 - **Arquivos alterados**: `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
 - **Rotas afetadas**: `/dashboard`
@@ -27,6 +64,8 @@
 - **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
 - **Problemas restantes**: Criar editor administrativo para manutenção dos prompts em camadas sem necessidade de alterar código.
 
+---
+
 - **Data**: 01/06/2026
 - **Arquivos alterados**: `src/app/dashboard/page.tsx`, `package.json`, `package-lock.json`, `tsconfig.json`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
 - **Rotas afetadas**: `/dashboard`, `/dashboard/auditorias/[auditId]` (movida para quarentena)
@@ -34,6 +73,9 @@
 - **Resultados de validação**: `npm run build`, `npm run lint` e `npm test` aprovados com 100% de sucesso.
 - **Deploy**: Efetuado com `vercel --prod --yes`.
 - **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
+
+---
+
 - **Data**: 01/06/2026
 - **Arquivos alterados**: `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/dashboard/page.tsx`, `src/app/dashboard/planos/page.tsx`, `src/app/dashboard/cofre/page.tsx`, `src/app/dashboard/nova-analise/page.tsx`, `src/app/dashboard/radar/page.tsx`, `src/app/dashboard/resultado/page.tsx`, `src/app/(auth)/cadastro/page.tsx`, `src/app/(auth)/login/page.tsx`, `src/app/api/analyze/route.ts`, `src/app/api/webhook/mercadopago/route.ts`, `src/app/cofre/view/[id]/page.tsx`, `src/lib/supabase.ts`, `package.json`, `package-lock.json`, `tsconfig.json`, `eslint.config.mjs`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
 - **Rotas afetadas**: `/`, `/dashboard`, `/dashboard/planos`, `/dashboard/cofre`, `/dashboard/nova-analise`, `/dashboard/radar`, `/dashboard/resultado`, `/login`, `/cadastro`
@@ -41,6 +83,9 @@
 - **Resultados de validação**: `npm run build` e `npm run lint` aprovados com 100% de sucesso.
 - **Deploy**: Efetuado com sucesso via `vercel --prod --yes`.
 - **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
+
+---
+
 - **Data**: 04/06/2026
 - **Bloco**: Correção de timeout de matrículas densas, retry forçado, sistema de Toast, PDF profissional A4 e suíte Jest
 - **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`, `src/app/dashboard/nova-analise/page.tsx`, `src/app/globals.css`, `package.json`, `package-lock.json`, `tsconfig.json`, `jest.config.ts` *(novo)*, `src/lib/__tests__/auditModules.test.ts` *(novo)*, `src/lib/__tests__/reportExtractors.test.ts` *(novo)*, `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
@@ -54,9 +99,11 @@
 - **Resultados de validação**: `npm run build` (21 rotas, 14.7s), `npm run lint`, `npx tsc --noEmit` e `npm test` (44/44 testes) aprovados com 100% de sucesso.
 - **Commit**: `94fe6ac — feat(bloco 04/06/2026): timeout adaptativo, forceRetry, Toast system, PDF A4 e Jest` (12 arquivos, +6849 / -2876).
 - **Push**: Efetuado para `origin/stable/rebuild-beta-01-laudo-compartilhavel` (ad9e4a4 → 94fe6ac).
-- **Deploy em produção**: **NÃO EFETUADO** — aguardando autorização explícita do usuário (regra CTO: deploy só com autorização).
-- **URL validada**: Não aplicável (commit apenas — deploy pendente).
-- **Problemas restantes**: Deploy pendente; homologação do fluxo de retry com forceRetry em produção após deploy.
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` (autorização explícita do usuário em 04/06/2026).
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard (HTTP 200, redirect server-side para `/login?next=/dashboard` funcional).
+- **Problemas restantes**: Homologação manual em produção dos fluxos forceRetry, timeout adaptativo, Toast system e PDF A4.
+
+---
 
 - **Data**: 02/06/2026
 - **Arquivos alterados**: `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
@@ -67,6 +114,8 @@
 - **URL validada**: Painel validado localmente.
 - **Problemas restantes**: Iniciar o Bloco 3 para restaurar de forma controlada o formulário de Nova Análise.
 
+---
+
 - **Data**: 02/06/2026
 - **Arquivos alterados**: `src/app/dashboard/resultado/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
 - **Rotas afetadas**: `/dashboard/resultado`
@@ -75,6 +124,8 @@
 - **Deploy**: Não aplicável (sem deploy neste bloco).
 - **URL validada**: Painel de laudo validado localmente.
 - **Problemas restantes**: Restabelecer a página de Nova Análise de forma controlada (Bloco 4).
+
+---
 
 - **Data**: 02/06/2026
 - **Arquivos alterados**: `src/app/dashboard/nova-analise/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
@@ -85,6 +136,8 @@
 - **URL validada**: Painel de Nova Análise validado localmente.
 - **Problemas restantes**: Restabelecer o processamento de laudos via IA em background de forma controlada (Bloco 5).
 
+---
+
 - **Data**: 02/06/2026
 - **Arquivos alterados**: `src/app/dashboard/nova-analise/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
 - **Rotas afetadas**: `/dashboard/nova-analise`
@@ -93,6 +146,8 @@
 - **Deploy**: Não aplicável (sem deploy neste bloco).
 - **URL validada**: Painel de Nova Análise validado localmente.
 - **Problemas restantes**: Restabelecer o processamento de laudos via IA em background de forma controlada (Bloco 5).
+
+---
 
 - **Data**: 02/06/2026
 - **Arquivos alterados**: `src/app/api/checkout/route.ts`, `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
@@ -103,6 +158,8 @@
 - **URL validada**: Painel do dashboard validado localmente.
 - **Problemas restantes**: Restabelecer o processamento de laudos via IA em background de forma controlada (Bloco 5 - execução da IA).
 
+---
+
 - **Data**: 02/06/2026
 - **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
 - **Rotas afetadas**: `/dashboard`, `/api/analyze`
@@ -111,6 +168,8 @@
 - **Deploy**: Não aplicável (sem deploy neste bloco).
 - **URL validada**: Painel do dashboard e resultado validado localmente.
 - **Problemas restantes**: Homologação geral do fluxo completo.
+
+---
 
 - **Data**: 02/06/2026
 - **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
@@ -121,6 +180,8 @@
 - **URL validada**: Painel do dashboard e visualização de resultados validados localmente.
 - **Problemas restantes**: Homologação geral em ambiente real de produção.
 
+---
+
 - **Data**: 02/06/2026
 - **Arquivos alterados**: `src/lib/auditModules.ts`, `src/app/dashboard/nova-analise/page.tsx`, `AGENTS.md`
 - **Rotas afetadas**: `/dashboard/nova-analise`
@@ -130,59 +191,10 @@
 - **URL validada**: Painel de Nova Análise validado localmente.
 - **Problemas restantes**: Realizar o mapeamento no motor da IA no próximo sub-bloco para processamento.
 
+---
+
 - **Data**: 02/06/2026
 - **Arquivos alterados**: `src/app/api/analyze/route.ts`, `AGENTS.md`
 - **Rotas afetadas**: `/api/analyze`
 - **Botões corrigidos**: Mapeamento do processamento da API do motor de IA para normalizar novos e antigos IDs de módulos fundiários de forma transparente e compatível. Introduzidas no prompt a seção obrigatória de 'Limitação do Escopo da Análise' e a estrutura padronizada de Achados (Achado -> Base -> Risco -> Criticidade -> Documento necessário -> Recomendação).
-- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
-- **Deploy**: Não aplicável (sem deploy neste bloco).
-- **URL validada**: Processamento validado em compilação de produção.
-- **Problemas restantes**: Implementar lógica de desabilitação e avisos de compatibilidade na interface de intake baseada em arquivos anexados (Bloco 7.2).
-
-- **Data**: 02/06/2026
-- **Arquivos alterados**: `src/lib/auditModules.ts`, `src/app/dashboard/nova-analise/page.tsx`, `AGENTS.md`
-- **Rotas afetadas**: `/dashboard/nova-analise`
-- **Botões corrigidos**: Atualizada a interface de intake de Nova Análise com lógica de desabilitação de cards incompatíveis, exibição de tooltips de razões de exclusão, avisos de ressalva para escopos preliminares, auto-filtração de módulos incompatíveis após mudanças nos uploads e adequação da ação "Selecionar módulos compatíveis".
-- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
-- **Deploy**: Não aplicável (sem deploy neste bloco).
-- **URL validada**: Intake com regras de compatibilidade validado localmente.
-- **Problemas restantes**: Homologar e testar o fluxo de processamento de ponta a ponta.
-
-- **Data**: 02/06/2026
-- **Bloco**: 7.3.5 — Corrigir Cálculo de Preço dos Módulos e Exclusividade do Cruzamento Total
-- **Arquivos alterados**: `src/lib/auditModules.ts`, `src/app/dashboard/nova-analise/page.tsx`
-- **Rotas afetadas**: `/dashboard/nova-analise`
-- **Alterações implementadas**: 1) Criada função central `calculateAuditModulesTotal()` em auditModules.ts; 2) Removido teto automático geral de R$ 499,90; 3) R$ 499,90 é agora preço exclusivo de `cruzamento_total`; 4) Módulos individuais somados sem teto; 5) Exclusividade de `cruzamento_total` implementada em `toggleModule()` (desseleciona outros ao clicar); 6) Botão "Selecionar recomendados" nunca seleciona `cruzamento_total` automaticamente.
-- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
-- **Deploy**: Não aplicável (sem deploy neste bloco; aguardando autorização explícita do usuário).
-- **URL validada**: Não aplicável.
-- **Commit**: b1a896d — "fix: calculate selected audit modules without global cap and enforce cruzamento_total exclusivity"
-- **Exemplos de preço validados**: ["matricula_individual"] = R$ 99,90; ["matricula_individual", "cadeia_dominial", "origem_publica", "nulidades_fraudes"] = R$ 749,60; ["cruzamento_total"] = R$ 499,90.
-- **Problemas restantes**: Teste manual recomendado (validar R$ 749,60 com 4 módulos e exclusividade de cruzamento_total).
-
-- **Data**: 02/06/2026
-- **Bloco**: 7.3.5.1 — Preço Server-side como Fonte da Verdade
-- **Arquivos alterados**: `src/app/api/checkout/route.ts`
-- **Rotas afetadas**: `/api/checkout`
-- **Alterações implementadas**: 1) Importação de `calculateAuditModulesTotal` e `MODULE_PRICES` de auditModules.ts; 2) Validação robusta de cada módulo selecionado (existência e preço válido); 3) Recálculo obrigatório do preço no servidor usando `calculateAuditModulesTotal(selectedModules)`; 4) Salvamento de `estimated_total` (calculado no servidor), `client_estimated_total` (do frontend, para auditoria), `price_source: "server"` e `price_checked_at` em findings; 5) Resposta JSON agora inclui `serverEstimatedTotal` e `clientEstimatedTotal` para comparação.
-- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
-- **Deploy**: Não aplicável (sem deploy neste bloco; aguardando autorização explícita do usuário).
-- **URL validada**: Não aplicável.
-- **Commit**: bf78042 — "fix: enforce server-side audit module pricing"
-- **Exemplos de preço validados (servidor)**: ["matricula_individual"] = R$ 99,90; ["matricula_individual", "cadeia_dominial", "origem_publica", "nulidades_fraudes"] = R$ 749,60; ["cruzamento_total"] = R$ 499,90.
-- **Segurança**: Frontend pode enviar qualquer `estimated_total`; servidor ignora e recalcula a verdade. Preço do pagamento é sempre o valor recalculado no servidor.
-- **Problemas restantes**: Teste manual recomendado (validar que backend recalcula mesmo que frontend envie valor incorreto).
-
-- **Data**: 03/06/2026
-- **Bloco**: 8.2.2 — Limitar Loop Infinito de Retry por Timeout da IA
-- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`
-- **Rotas afetadas**: `/api/analyze`, `/dashboard`
-- **Alterações implementadas**: 1) Adicionado teto de 3 tentativas para erros `ai_timeout`; 2) Ao atingir ou superar 3 tentativas, o status continua `error`, mas `retry_available` é setado para `false`, `retry_exhausted` para `true`, `retry_reason` para `"max_ai_timeout_attempts"`, e o passo de processamento (`current_step` / `userMessage`) indica que a análise exige processamento em etapas; 3) O dashboard oculta o botão "Tentar novamente" se `findings.retry_exhausted === true` e renderiza um badge informativo "Exige processamento em etapas" com descrição adequada.
-- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados com 100% de sucesso.
-- **Deploy**: Não aplicável (sem deploy neste bloco; aguardando autorização explícita do usuário).
-- **URL validada**: Não aplicável.
-- **Commit**: "fix: limit retry loop for ai timeouts"
-- **Problemas restantes**: Nenhum. Fluxo de retry por timeout de IA robusto e livre de loop infinito.
-
-
-
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados

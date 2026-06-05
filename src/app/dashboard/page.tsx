@@ -150,6 +150,26 @@ export default function DashboardPage() {
     return 'Vamos reprocessar esta análise sem reenviar os documentos.';
   };
 
+  // FASE 2 — Recommended Modules: extrai lista de módulos sugeridos do case_file
+  // (somente leitura no dashboard; sem CTA até Fase 2.0.2 com migration parent_analysis_id)
+  const getRecommendedModules = (analysis: Analysis): Array<{ module_id: string; title: string; priority?: string; price?: number | null }> => {
+    const recs = (analysis.findings as any)?.case_file?.recommended_modules;
+    if (!Array.isArray(recs) || recs.length === 0) return [];
+    return recs.map((r: any) => ({
+      module_id: String(r.module_id || ''),
+      title: String(r.title || r.module_id || ''),
+      priority: typeof r.priority === 'string' ? r.priority : undefined,
+      price: typeof r.price === 'number' ? r.price : null
+    }));
+  };
+
+  const priorityStyles: Record<string, string> = {
+    critica: 'bg-red-100 text-red-800 border-red-200',
+    alta: 'bg-amber-100 text-amber-800 border-amber-200',
+    media: 'bg-blue-100 text-blue-800 border-blue-200',
+    baixa: 'bg-gray-100 text-gray-800 border-gray-200'
+  };
+
   const handleStartAnalysis = async (analysisId: string, propertyId: string, retryOptions?: { retryMessage?: string; forceRetry?: boolean }) => {
     if (loadingAnalysisId) return;
     setLoadingAnalysisId(analysisId);
@@ -260,6 +280,7 @@ export default function DashboardPage() {
                   <th className="px-6 py-4 font-semibold">Documento</th>
                   <th className="px-6 py-4 font-semibold">Status da IA</th>
                   <th className="px-6 py-4 font-semibold">Risco</th>
+                  <th className="px-6 py-4 font-semibold">Módulos Sugeridos</th>
                   <th className="px-6 py-4 font-semibold">Ação</th>
                 </tr>
               </thead>
@@ -271,6 +292,9 @@ export default function DashboardPage() {
                   // Verificar se tem parecer (findings.resumo)
                   const hasParecer = analise.findings && analise.findings.resumo && String(analise.findings.resumo).trim().length > 0;
                   const canRetryAnalysis = statusType === 'error' && isRecoverableAnalysisError(analise);
+
+                  // Extrair módulos sugeridos (FASE 2 — Recommended Modules)
+                  const recommended = getRecommendedModules(analise);
 
                   return (
                     <tr key={analise.id} className="hover:bg-gray-50 transition-colors">
@@ -299,6 +323,26 @@ export default function DashboardPage() {
                           </span>
                         ) : (
                           <span className="text-gray-400 text-sm font-medium">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {recommended.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 max-w-[200px]">
+                            {recommended.slice(0, 3).map((mod) => (
+                              <span
+                                key={mod.module_id}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${priorityStyles[mod.priority || ''] || 'bg-gray-50 text-gray-600 border-gray-200'}`}
+                                title={`${mod.title}${mod.price ? ` — R$ ${mod.price.toFixed(2)}` : ''}`}
+                              >
+                                {mod.title.length > 18 ? mod.title.substring(0, 16) + '…' : mod.title}
+                              </span>
+                            ))}
+                            {recommended.length > 3 && (
+                              <span className="text-gray-400 text-[10px] font-medium self-center">+{recommended.length - 3}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-[11px] font-medium">-</span>
                         )}
                       </td>
                       <td className="px-6 py-4">

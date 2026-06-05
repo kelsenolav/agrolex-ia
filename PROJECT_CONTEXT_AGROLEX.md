@@ -623,6 +623,6 @@ Entregar informações de arquivos alterados, resultados e pendências.
 - **Resultados de validação**: `npm run build` (21 rotas, 14.7s), `npm run lint`, `npx tsc --noEmit` e `npm test` (44/44 testes) aprovados com 100% de sucesso.
 - **Commit**: `94fe6ac — feat(bloco 04/06/2026): timeout adaptativo, forceRetry, Toast system, PDF A4 e Jest` (12 arquivos, +6849 / -2876).
 - **Push**: Efetuado para `origin/stable/rebuild-beta-01-laudo-compartilhavel` (ad9e4a4 → 94fe6ac).
-- **Deploy em produção**: **NÃO EFETUADO** — aguardando autorização explícita do usuário (regra CTO: deploy só com autorização).
-- **URL validada**: Não aplicável (commit apenas — deploy pendente).
-- **Problemas restantes**: Deploy pendente; homologação do fluxo de retry com forceRetry em produção após deploy.
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` (autorização explícita do usuário em 04/06/2026).
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard (HTTP 200, redirect server-side para `/login?next=%2Fdashboard` funcional).
+- **Problemas restantes**: Homologação manual em produção dos fluxos forceRetry, timeout adaptativo, Toast system e PDF A4.

@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { buildLegalAuditPrompt } from '@/lib/auditPromptBuilder';
-import { MODULE_PRICES } from '@/lib/auditModules';
+import { MODULE_PRICES, buildDocumentProfile } from '@/lib/auditModules';
 import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRecommendationsFromReport } from '@/lib/reportExtractors';
-import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocument } from '@/lib/caseFile';
+import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocument, type CaseFileRecommendedModule } from '@/lib/caseFile';
+import { buildRecommendedModules } from '@/lib/recommendations';
 
 export const maxDuration = 120;
 
@@ -673,6 +674,31 @@ export async function POST(req: Request) {
           caseFileExtractError = ((caseFileError && (caseFileError.message || caseFileError.toString())) || 'Erro desconhecido no case_file')
             .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
           console.error('[CaseFile] Falha ao enriquecer fatos bÃ¡sicos:', caseFileExtractError);
+        }
+
+        // FASE 2 — Recommended Modules: calcular sugestões em try/catch próprio
+        // (não altera fluxo existente; falha aqui não bloqueia o postprocess)
+        let recommendedModules: CaseFileRecommendedModule[] = [];
+        let recommendationsError: string | null = null;
+        try {
+          const docProfile = buildDocumentProfile(documents);
+          recommendedModules = buildRecommendedModules({
+            caseFile: enrichedCaseFile,
+            docProfile,
+            selectedModules,
+            now: new Date().toISOString()
+          });
+          if (recommendedModules.length > 0) {
+            enrichedCaseFile = {
+              ...enrichedCaseFile,
+              recommended_modules: recommendedModules
+            };
+            console.log(`[Recommendations] ${recommendedModules.length} módulo(s) recomendado(s) para análise ${analysisId}.`);
+          }
+        } catch (recError: any) {
+          recommendationsError = ((recError && (recError.message || recError.toString())) || 'Erro desconhecido nas recomendações')
+            .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
+          console.error('[Recommendations] Falha ao calcular recomendações:', recommendationsError);
         }
 
         const patchedFindings = {
