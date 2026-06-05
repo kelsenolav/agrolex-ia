@@ -610,6 +610,23 @@ Entregar informações de arquivos alterados, resultados e pendências.
 - **URL validada localmente**: `/dashboard` e `/api/analyze`
 - **Pendências**: Homologação final do controle de loop de retry.
 
+- **Data**: 05/06/2026
+- **Tarefa**: FASE 3 — Módulos Acionáveis e Laudo Complementar (herança de case_file, filtro de módulos, mesclagem de resultados)
+- **Arquivos alterados**: `src/app/api/analyze/route.ts`, `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
+- **Rotas afetadas**: `/api/analyze`, `/dashboard`, `/dashboard/resultado`
+- **Comportamento implementado**:
+  1. **Lógica de herança no `/api/analyze`**: filtra `selected_modules` removendo módulos já concluídos no pai (`module_results` do `case_file` herdado); calcula `amountPaid` apenas para módulos novos (server-side); mescla `module_results` do pai com novos módulos processados.
+  2. **Integração com FASE 2**: `parent_analysis_id`, endpoint `/api/recommendations/accept`, modal de confirmação, seção "Histórico do Caso" no laudo, badge de profundidade (`analysis_depth`), CTAs de upsell pós-`retry_exhausted`.
+  3. **Testes**: 81 testes passando (4 suítes: auditModules, caseFile, reportExtractors, recommendations).
+- **Resultados de validação**: `npm run build` (22 rotas), `npm run lint` (aprovado), `npm test` (81/81), `npx tsc --noEmit` (exit 0)
+- **Commit**: `1794ad1 — feat(FASE 3): herança de case_file e filtro de módulos em análises complementares`
+- **Push**: Efetuado para `origin/stable/rebuild-beta-01-laudo-compartilhavel`
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` (autorização explícita do usuário em 05/06/2026)
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard (HTTP 307 redirect server-side para `/login?next=%2Fdashboard`); `/`, `/login`, `/cadastro` → HTTP 200
+- **Próximos passos**: FASE 4 — Checkout Modular (Pagamento Real)
+
+---
+
 - **Data**: 04/06/2026
 - **Tarefa**: Corrigir timeout de matrículas densas, retry forçado, sistema de Toast, PDF profissional A4 e suíte Jest
 - **Arquivos alterados**: `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`, `src/app/dashboard/nova-analise/page.tsx`, `src/app/globals.css`, `package.json`, `package-lock.json`, `tsconfig.json`, `jest.config.ts` *(novo)*, `src/lib/__tests__/auditModules.test.ts` *(novo)*, `src/lib/__tests__/reportExtractors.test.ts` *(novo)*, `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
