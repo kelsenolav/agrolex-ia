@@ -24,6 +24,30 @@
 ---
 
 - **Data**: 05/06/2026
+- **Bloco**: Hotfix — Correção de desalinhamento no layout do laudo (card unificado — FASE 3.1)
+- **Arquivos alterados**: `src/app/dashboard/resultado/page.tsx` (deploy do commit `9680d3e`), `AGENTS.md`
+- **Rotas afetadas**: `/dashboard/resultado`
+- **Alterações implementadas**: Deploy do commit `9680d3e` (FASE 3.1) que unificou o layout do laudo em um card único com `overflow-hidden`, corrigindo o desalinhamento visual entre os dois cards separados (cabeçalho `rounded-t-2xl` + corpo `rounded-b-2xl`) que criavam um gap/borda no layout antigo.
+- **Validações**: `npm run build` (22 rotas), `npm run lint` (aprovado), `npx tsc --noEmit` (exit 0), `npm test` (81/81)
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` (autorização explícita do usuário em 05/06/2026)
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard (HTTP 307 → `/login`)
+- **Problemas restantes**: Nenhum.
+
+---
+
+- **Data**: 05/06/2026
+- **Bloco**: Hotfix — Correção de desalinhamento do parecer na tela (CSS text-align: justify em div/span)
+- **Arquivos alterados**: `src/app/globals.css`, `AGENTS.md`
+- **Rotas afetadas**: `/dashboard/resultado`
+- **Alterações implementadas**: Removido `text-align: justify !important` das regras `.report-text div`, `.report-text span`, `section span`, `section div` e do bloco `.text-left/.text-center/.text-right`. O justify agora aplica-se apenas a `p` e `li`, restaurando o alinhamento correto de badges, ícones, grid e cards do parecer.
+- **Validações**: `npm run build` (22 rotas), `npm run lint` (aprovado), `npx tsc --noEmit` (exit 0)
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` (autorização explícita do usuário em 05/06/2026) — 42s
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard/resultado (HTTP 307 → `/login`)
+- **Problemas restantes**: Nenhum.
+
+---
+
+- **Data**: 05/06/2026
 - **Bloco**: FASE 3 — Módulos Acionáveis e Laudo Complementar (herança de case_file, filtro de módulos, mesclagem de resultados)
 - **Arquivos alterados**: `src/app/api/analyze/route.ts`, `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
 - **Rotas afetadas**: `/api/analyze`, `/dashboard`, `/dashboard/resultado`
@@ -36,7 +60,25 @@
 - **Push**: Efetuado para `origin/stable/rebuild-beta-01-laudo-compartilhavel`
 - **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` (autorização explícita do usuário em 05/06/2026)
 - **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard (HTTP 307 redirect server-side para `/login?next=%2Fdashboard`); `/`, `/login`, `/cadastro` → HTTP 200
-- **Próximos passos**: FASE 4 — Checkout Modular (Pagamento Real)
+- **Próximos passos**: FASE 5 — Processamento em Etapas (Anti-Timeout)
+
+---
+
+- **Data**: 05/06/2026
+- **Bloco**: FASE 4 — Checkout Modular (Pagamento Real — Mercado Pago Sandbox)
+- **Arquivos alterados**: `src/app/api/checkout/route.ts`, `src/app/api/webhook/mercadopago/route.ts`, `src/app/dashboard/page.tsx`, `src/lib/payments/mercadopago.ts` (novo), `supabase/migrations/20260605_orders_payments.sql` (novo), `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
+- **Rotas afetadas**: `/api/checkout`, `/api/webhook/mercadopago`, `/dashboard`
+- **Alterações implementadas**:
+  1. **Migration** `orders` + `payments`: tabelas para rastrear pedidos e transações do Mercado Pago, com RLS e índices.
+  2. **Lib `src/lib/payments/mercadopago.ts`**: integração com API do Mercado Pago (sandbox). Funções `createPreference` (cria checkout) e `getPayment` (consulta status). Fallback automático para simulação quando token não configurado.
+  3. **Endpoint `/api/checkout`**: substitui simulação por integração real com Mercado Pago. Cria preferência de pagamento, registra ordem no banco, retorna URL de checkout. Fallback dev quando `MERCADOPAGO_ACCESS_TOKEN` ausente.
+  4. **Webhook `/api/webhook/mercadopago`**: processa notificações de pagamento (aprovação/rejeição/cancelamento). Atualiza `orders`, `payments` e status da análise (`payment_pending → ready_for_processing`).
+  5. **Dashboard**: botão "Liberar processamento" substituído por "Pagar". Função `handlePayNow` redireciona ao checkout do Mercado Pago (ou simula em dev). Texto do modal atualizado para "realize o pagamento".
+- **Validações**: `npm run build` (22 rotas), `npm run lint` (aprovado), `npx tsc --noEmit` (exit 0), `npm test` (81/81)
+- **Commit**: Pendente
+- **Deploy em produção**: **NÃO EFETUADO** (sandbox — aguardando autorização explícita do usuário para produção)
+- **URL validada**: Build local OK
+- **Próximos passos**: Configurar `MERCADOPAGO_ACCESS_TOKEN` no .env para testes em sandbox; FASE 5 — Processamento em Etapas
 
 ---
 

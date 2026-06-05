@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { calculateAuditModulesTotal, MODULE_PRICES } from '@/lib/auditModules';
+import { createPreference } from '@/lib/payments/mercadopago';
 
 export async function POST(req: Request) {
   try {
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
 
     const { data: analysis, error: fetchError } = await supabaseAdmin
       .from('analyses')
-      .select('id, user_id, status, findings')
+      .select('id, user_id, status, findings, property_id, properties(name, city, state)')
       .eq('id', analysisId)
       .single();
 
@@ -58,13 +59,13 @@ export async function POST(req: Request) {
     // Validação de status atual
     const currentStatus = (analysis.status || '').toLowerCase().trim();
     if (currentStatus !== 'payment_pending' && currentStatus !== 'pending') {
-      return NextResponse.json({ error: 'Status atual inválido para liberação de processamento' }, { status: 400 });
+      return NextResponse.json({ error: 'Status atual inválido para pagamento' }, { status: 400 });
     }
 
     // Validação de selected_modules em findings
     const findings = analysis.findings || {};
-    const selectedModules = findings.selected_modules;
-    if (!selectedModules || !Array.isArray(selectedModules) || selectedModules.length === 0) {
+    const selectedModules: string[] = findings.selected_modules || [];
+    if (!Array.isArray(selectedModules) || selectedModules.length === 0) {
       return NextResponse.json({ error: 'A análise não possui módulos de auditoria válidos' }, { status: 400 });
     }
 
@@ -80,48 +81,142 @@ export async function POST(req: Request) {
 
     // Recalcular o preço no servidor (fonte da verdade)
     const serverEstimatedTotal = calculateAuditModulesTotal(selectedModules);
-    
-    // Capturar o preço enviado pelo cliente para auditoria/comparação
     const clientEstimatedTotal = typeof findings.estimated_total === 'number' ? findings.estimated_total : null;
 
-    // Atualização simulada (sem Mercado Pago, sem IA iniciada)
+    // Informações da propriedade para o item do checkout
+    const propertyName = (analysis.properties as any)?.name || 'Análise Fundiária';
+    const moduleNames = selectedModules.map((mId: string) => {
+      const price = MODULE_PRICES[mId];
+      return `${mId.replace(/_/g, ' ')} (R$ ${price?.toFixed(2)})`;
+    }).join(' + ');
+
+    // Criar preferência no Mercado Pago
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || `https://${process.env.VERCEL_URL}` || 'http://localhost:3000';
+
+    let checkoutUrl: string;
+    let preferenceId: string;
+
+    try {
+      const preference = await createPreference({
+        items: [
+          {
+            id: analysisId,
+            title: `AgroLex — Auditoria Fundiária: ${propertyName}`,
+            description: `Módulos: ${moduleNames}`,
+            quantity: 1,
+            unit_price: serverEstimatedTotal,
+            currency_id: 'BRL',
+          },
+        ],
+        external_reference: analysisId,
+        payer: {
+          name: user.user_metadata?.full_name || user.email || 'Cliente AgroLex',
+          email: user.email || '',
+        },
+        notification_url: `${baseUrl}/api/webhook/mercadopago`,
+        back_urls: {
+          success: `${baseUrl}/dashboard?payment=success&analysis=${analysisId}`,
+          failure: `${baseUrl}/dashboard?payment=failure&analysis=${analysisId}`,
+          pending: `${baseUrl}/dashboard?payment=pending&analysis=${analysisId}`,
+        },
+        auto_return: 'approved',
+      });
+
+      preferenceId = preference.preferenceId;
+      checkoutUrl = preference.checkoutUrl;
+    } catch (mpError: any) {
+      console.error('Erro ao criar preferência no Mercado Pago:', mpError);
+      
+      // Fallback: se MP falhar, ainda permitir simulação para desenvolvimento
+      const mpConfigured = !!process.env.MERCADOPAGO_ACCESS_TOKEN;
+      if (!mpConfigured) {
+        // Sem token MP configurado, usar simulação (modo dev)
+        console.warn('Mercado Pago não configurado — usando modo simulado (dev)');
+        const updatedFindings = {
+          ...findings,
+          estimated_total: serverEstimatedTotal,
+          client_estimated_total: clientEstimatedTotal,
+          price_source: 'server',
+          price_checked_at: new Date().toISOString(),
+          payment_mode: 'simulated_dev',
+          payment_status: 'approved',
+          current_step: 'Pagamento simulado aprovado (Mercado Pago não configurado).',
+          ready_for_processing_at: new Date().toISOString(),
+        };
+
+        await supabaseAdmin
+          .from('analyses')
+          .update({
+            status: 'ready_for_processing',
+            findings: updatedFindings,
+          })
+          .eq('id', analysisId);
+
+        return NextResponse.json({
+          mode: 'simulated_dev',
+          status: 'approved',
+          analysisStatus: 'ready_for_processing',
+          analysisId,
+          serverEstimatedTotal,
+          clientEstimatedTotal,
+          checkoutUrl: null,
+          message: 'Mercado Pago não configurado. Pagamento simulado aprovado automaticamente.',
+        });
+      }
+
+      return NextResponse.json({ error: 'Erro ao processar pagamento. Tente novamente.' }, { status: 502 });
+    }
+
+    // Criar registro de ordem no banco
+    const { error: orderError } = await supabaseAdmin
+      .from('orders')
+      .insert({
+        user_id: user.id,
+        analysis_id: analysisId,
+        amount: serverEstimatedTotal,
+        status: 'pending',
+        preference_id: preferenceId,
+        sandbox: true,
+      });
+
+    if (orderError) {
+      console.error('Erro ao criar ordem:', orderError);
+      // Não bloquear — a preferência já foi criada no MP
+    }
+
+    // Atualizar findings da análise com info do pagamento
     const updatedFindings = {
       ...findings,
-      // Preço recalculado e rastreado no servidor
       estimated_total: serverEstimatedTotal,
       client_estimated_total: clientEstimatedTotal,
-      price_source: "server",
+      price_source: 'server',
       price_checked_at: new Date().toISOString(),
-      // Status e fluxo de liberação
-      payment_mode: "simulated",
-      payment_status: "approved",
-      current_step: "Análise liberada para processamento. Aguardando início da IA.",
-      ready_for_processing_at: new Date().toISOString()
+      payment_mode: 'mercadopago',
+      payment_status: 'pending',
+      preference_id: preferenceId,
+      current_step: 'Aguardando pagamento via Mercado Pago.',
     };
 
-    const { error: updateError } = await supabaseAdmin
+    await supabaseAdmin
       .from('analyses')
       .update({
-        status: 'ready_for_processing',
-        findings: updatedFindings
+        findings: updatedFindings,
       })
       .eq('id', analysisId);
 
-    if (updateError) {
-      return NextResponse.json({ error: 'Erro ao atualizar a análise: ' + updateError.message }, { status: 500 });
-    }
-
     return NextResponse.json({
-      mode: "simulated",
-      status: "approved",
-      analysisStatus: "ready_for_processing",
-      analysisId: analysis.id,
-      serverEstimatedTotal: serverEstimatedTotal,
-      clientEstimatedTotal: clientEstimatedTotal
+      mode: 'mercadopago',
+      status: 'pending',
+      analysisStatus: 'payment_pending',
+      analysisId,
+      serverEstimatedTotal,
+      clientEstimatedTotal,
+      checkoutUrl,
+      preferenceId,
     });
 
   } catch (error: any) {
-    console.error('Erro no checkout de simulação:', error);
+    console.error('Erro no checkout:', error);
     return NextResponse.json({ error: error.message || 'Erro interno do servidor' }, { status: 500 });
   }
 }

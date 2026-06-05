@@ -623,7 +623,25 @@ Entregar informações de arquivos alterados, resultados e pendências.
 - **Push**: Efetuado para `origin/stable/rebuild-beta-01-laudo-compartilhavel`
 - **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` (autorização explícita do usuário em 05/06/2026)
 - **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard (HTTP 307 redirect server-side para `/login?next=%2Fdashboard`); `/`, `/login`, `/cadastro` → HTTP 200
-- **Próximos passos**: FASE 4 — Checkout Modular (Pagamento Real)
+- **Próximos passos**: FASE 5 — Processamento em Etapas (Anti-Timeout)
+
+---
+
+- **Data**: 05/06/2026
+- **Bloco**: FASE 4 — Checkout Modular (Pagamento Real — Mercado Pago Sandbox)
+- **Arquivos alterados**: `src/app/api/checkout/route.ts`, `src/app/api/webhook/mercadopago/route.ts`, `src/app/dashboard/page.tsx`, `src/lib/payments/mercadopago.ts` (novo), `supabase/migrations/20260605_orders_payments.sql` (novo), `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
+- **Rotas afetadas**: `/api/checkout`, `/api/webhook/mercadopago`, `/dashboard`
+- **Alterações implementadas**:
+  1. **Migration** `orders` + `payments`: tabelas para rastrear pedidos e transações do Mercado Pago, com RLS e índices.
+  2. **Lib `src/lib/payments/mercadopago.ts`**: integração com API do Mercado Pago (sandbox). Funções `createPreference` (cria checkout) e `getPayment` (consulta status). Fallback automático para simulação quando token não configurado.
+  3. **Endpoint `/api/checkout`**: substitui simulação por integração real com Mercado Pago. Cria preferência de pagamento, registra ordem no banco (`orders`), retorna URL de checkout. Fallback dev quando `MERCADOPAGO_ACCESS_TOKEN` ausente (modo simulado automático).
+  4. **Webhook `/api/webhook/mercadopago`**: processa notificações de pagamento (aprovação/rejeição/cancelamento). Atualiza `orders`, `payments` e status da análise (`payment_pending → ready_for_processing`). Registra transações completas em `payments`.
+  5. **Dashboard**: botão "Liberar processamento" substituído por "Pagar". Função `handlePayNow` redireciona ao checkout do Mercado Pago (ou simula em dev quando token ausente). Texto do modal de confirmação atualizado para "realize o pagamento".
+- **Validações**: `npm run build` (22 rotas), `npm run lint` (aprovado), `npx tsc --noEmit` (exit 0), `npm test` (81/81)
+- **Commit**: Pendente
+- **Deploy em produção**: **NÃO EFETUADO** (sandbox — aguardando autorização explícita do usuário para produção)
+- **URL validada**: Build local OK
+- **Próximos passos**: Configurar `MERCADOPAGO_ACCESS_TOKEN` no .env para testes em sandbox; FASE 5 — Processamento em Etapas
 
 ---
 

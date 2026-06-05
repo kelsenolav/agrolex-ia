@@ -101,7 +101,8 @@ export default function DashboardPage() {
     router.refresh();
   };
 
-  const handleReleaseProcessing = async (analysisId: string) => {
+  // FASE 4 — Pagamento via Mercado Pago (sandbox) com fallback dev
+  const handlePayNow = async (analysisId: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -121,15 +122,23 @@ export default function DashboardPage() {
 
       if (!res.ok) {
         const result = await res.json();
-        throw new Error(result.error || 'Erro ao liberar análise');
+        throw new Error(result.error || 'Erro ao iniciar pagamento');
       }
 
-      showToast("Análise liberada com sucesso para processamento!", 'success');
-      await refreshAnalises();
+      const data = await res.json();
+
+      // Se o checkout retornou URL do Mercado Pago, redirecionar
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        // Fallback dev: MP não configurado, pagamento simulado
+        showToast('Pagamento aprovado! Análise liberada para processamento.', 'success');
+        await refreshAnalises();
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.error('Erro ao liberar:', err);
-      showToast("Erro ao liberar processamento: " + message, 'error');
+      console.error('Erro ao iniciar pagamento:', err);
+      showToast("Erro ao processar pagamento: " + message, 'error');
     }
   };
 
@@ -527,10 +536,10 @@ export default function DashboardPage() {
                           )
                         ) : statusType === 'pending' ? (
                           <button
-                            onClick={() => handleReleaseProcessing(analise.id)}
+                            onClick={() => handlePayNow(analise.id)}
                             className="bg-brand-gold text-brand-green px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow"
                           >
-                            Liberar processamento
+                            Pagar
                           </button>
                         ) : (
                           <span className="text-gray-400 text-sm font-medium">-</span>
@@ -594,7 +603,7 @@ export default function DashboardPage() {
             </div>
             <div className="text-xs text-gray-500 mb-4 leading-relaxed">
               <p className="mb-1"><strong>Tempo estimado:</strong> 3-5 minutos por módulo.</p>
-              <p>Uma nova análise será criada com status "Pendente". Acesse-a pelo painel, libere o processamento e aguarde o parecer complementar.</p>
+              <p>Uma nova análise será criada com status "Pendente". Acesse-a pelo painel, realize o pagamento e aguarde o parecer complementar.</p>
             </div>
             <div className="flex gap-3">
               <button
