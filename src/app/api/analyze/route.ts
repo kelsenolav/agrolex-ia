@@ -6,6 +6,15 @@ import { MODULE_PRICES, buildDocumentProfile } from '@/lib/auditModules';
 import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRecommendationsFromReport } from '@/lib/reportExtractors';
 import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocument, type CaseFileRecommendedModule } from '@/lib/caseFile';
 import { buildRecommendedModules } from '@/lib/recommendations';
+import {
+  initializeProcessingStages,
+  getCurrentStage,
+  markStageProcessing,
+  markStageCompleted,
+  markStageError,
+  isProcessingFinished,
+  type ProcessingStages,
+} from '@/lib/processingStages';
 
 export const maxDuration = 120;
 
@@ -433,10 +442,49 @@ export async function POST(req: Request) {
       documents: caseFileDocuments
     });
 
+    // FASE 5 — Inicializar processing_stages se não existir
+    const hasProcessingStages = findingsWithCaseFile.case_file.processing_stages?.enabled === true
+      && Array.isArray(findingsWithCaseFile.case_file.processing_stages.stages)
+      && findingsWithCaseFile.case_file.processing_stages.stages.length > 0;
+
+    let effectiveModulesToProcess = modulesToProcess;
+    let currentStageId: string | null = null;
+    let processingStages: ProcessingStages;
+
+    if (!hasProcessingStages) {
+      // Inicializar a estrutura de processing_stages a partir dos módulos a processar
+      processingStages = initializeProcessingStages(modulesToProcess);
+    } else {
+      processingStages = findingsWithCaseFile.case_file.processing_stages! as ProcessingStages;
+    }
+
+    // Obter etapa atual (se houver processing_stages ativo)
+    const currentStage = getCurrentStage(processingStages);
+    if (currentStage) {
+      currentStageId = currentStage.stage_id;
+      // Filtrar módulos para processar APENAS o módulo da etapa atual
+      effectiveModulesToProcess = modulesToProcess.filter((m) => m === currentStageId);
+      if (effectiveModulesToProcess.length === 0) {
+        // O módulo da etapa atual não está em modulesToProcess; pular para próxima etapa
+        // Mas isso não deveria ocorrer em fluxo normal; logar e continuar com o que tem
+        console.warn(`[ProcessingStages] Etapa atual ${currentStageId} não encontrada em modulesToProcess. Prosseguindo sem stage.`);
+        currentStageId = null;
+        effectiveModulesToProcess = modulesToProcess;
+      }
+    }
+
     const processingStartedAt = new Date().toISOString();
     const retryStartState = isRecoverableRetry
       ? buildRetryState(findingsWithCaseFile, retryReason || 'ai_timeout', processingStartedAt)
       : null;
+
+    // FASE 5 — Marcar etapa atual como "processing" se houver stage
+    if (currentStageId) {
+      processingStages = {
+        ...processingStages,
+        stages: markStageProcessing(processingStages, currentStageId, processingStartedAt),
+      };
+    }
 
     // 1. Atualizar para "processing" e iniciar log
     const updatedFindings = {
@@ -446,9 +494,13 @@ export async function POST(req: Request) {
       ...(retryStartState ? { retry_state: retryStartState } : {}),
       case_file: {
         ...findingsWithCaseFile.case_file,
-        ...(retryStartState ? { retry_state: retryStartState } : {})
+        ...(retryStartState ? { retry_state: retryStartState } : {}),
+        // FASE 5 — Salvar processing_stages no case_file
+        processing_stages: processingStages,
       },
-      current_step: "Processamento de IA iniciado.",
+      current_step: currentStageId
+        ? `Processamento da etapa: ${processingStages.stages.find(s => s.stage_id === currentStageId)?.stage_name || currentStageId}`
+        : "Processamento de IA iniciado.",
       processing_started_at: processingStartedAt
     };
 
@@ -626,6 +678,64 @@ export async function POST(req: Request) {
         markdownResponse = markdownResponse.replace(/COORDS:\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+/i, '').trim();
       }
 
+      // FASE 5 — Marcar etapa atual como concluída (se houver stage)
+      const stageCompletedAt = new Date().toISOString();
+      let allStagesCompleted = false;
+      let hasMoreStages = false;
+
+      if (currentStageId) {
+        // Extrair resumo curto (primeiras 200 chars do primeiro parágrafo relevante)
+        const stageSummary = markdownResponse
+          .replace(/^#+\s+/gm, '')
+          .split(/\n\n/)[0]
+          ?.slice(0, 200)
+          ?.trim() || `Etapa ${currentStageId} concluída`;
+
+        processingStages = {
+          ...processingStages,
+          stages: markStageCompleted(processingStages, currentStageId, stageSummary, stageCompletedAt),
+        };
+
+        allStagesCompleted = isProcessingFinished(processingStages);
+        hasMoreStages = !allStagesCompleted && getCurrentStage(processingStages) !== null;
+      }
+
+      // Se há mais etapas pendentes, salvar progresso e voltar para ready_for_processing
+      if (hasMoreStages) {
+        const partialFindings = {
+          ...updatedFindings,
+          current_step: `Etapa ${currentStageId} concluída. Aguardando processamento da próxima etapa.`,
+          processing_stage_completed_at: stageCompletedAt,
+          case_file: {
+            ...updatedFindings.case_file,
+            processing_stages: processingStages,
+          },
+        };
+
+        const { error: partialUpdateError } = await supabaseAdmin
+          .from('analyses')
+          .update({
+            status: 'ready_for_processing',
+            findings: partialFindings
+          })
+          .eq('id', analysisId);
+
+        if (partialUpdateError) {
+          throw new Error("Erro ao salvar progresso da etapa: " + partialUpdateError.message);
+        }
+
+        return NextResponse.json({
+          success: true,
+          simulador: false,
+          analysisId: analysisId,
+          status: 'processing_stage_completed',
+          stage_id: currentStageId,
+          message: `Etapa concluída. Próxima etapa disponível para processamento.`,
+          stages: processingStages,
+        });
+      }
+
+      // Fluxo normal: todas as etapas concluídas (ou sem stage)
       const completedAt = new Date().toISOString();
       const postprocessStartAt = Date.now();
       const resultJson = {
@@ -649,7 +759,11 @@ export async function POST(req: Request) {
         processing_metrics: {
           gemini_ms: geminiMs,
           total_ms: Date.now() - startedAt
-        }
+        },
+        case_file: {
+          ...updatedFindings.case_file,
+          processing_stages: processingStages,
+        },
       };
 
       const { error: dbError } = await supabaseAdmin
@@ -860,6 +974,15 @@ export async function POST(req: Request) {
         retryState = buildRetryState(updatedFindings, recoverableFailureType, failedAt);
       }
 
+      // FASE 5 — Marcar etapa atual como erro (se houver stage)
+      let stageAwareProcessingStages = updatedFindings.case_file.processing_stages;
+      if (currentStageId) {
+        stageAwareProcessingStages = {
+          ...(stageAwareProcessingStages || processingStages),
+          stages: markStageError(stageAwareProcessingStages || processingStages, currentStageId, sanitizedMessage || 'Erro desconhecido', failedAt),
+        };
+      }
+
       const failedFindings = {
         ...updatedFindings,
         current_step: findingsCurrentStep,
@@ -872,7 +995,9 @@ export async function POST(req: Request) {
         ...(retryState ? { retry_state: retryState } : {}),
         case_file: {
           ...updatedFindings.case_file,
-          ...(retryState ? { retry_state: retryState } : {})
+          ...(retryState ? { retry_state: retryState } : {}),
+          // FASE 5 — Preservar processing_stages com erro da etapa atual
+          processing_stages: stageAwareProcessingStages,
         }
       };
 

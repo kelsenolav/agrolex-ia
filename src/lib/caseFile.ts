@@ -1,3 +1,5 @@
+import { type ProcessingStages } from '@/lib/processingStages';
+
 export type CaseFileStatus = "created" | "processing" | "completed" | "error";
 
 export interface CaseFileDocument {
@@ -79,6 +81,8 @@ export interface CaseFile {
   report_composition: Record<string, unknown>;
   processing_metrics: Record<string, unknown>;
   retry_state: Record<string, unknown>;
+  /** FASE 5 — Estrutura de processamento em etapas (anti-timeout) */
+  processing_stages?: ProcessingStages;
 }
 
 export interface CreateInitialCaseFileInput {
@@ -155,7 +159,7 @@ export function createInitialCaseFile(input: CreateInitialCaseFileInput = {}): C
     recommended_modules: [],
     report_composition: {},
     processing_metrics: {},
-    retry_state: {}
+    retry_state: {},
   };
 }
 
@@ -200,7 +204,9 @@ export function ensureCaseFile(
     module_results: existing.module_results && typeof existing.module_results === "object" ? existing.module_results : initial.module_results,
     report_composition: existing.report_composition && typeof existing.report_composition === "object" ? existing.report_composition : initial.report_composition,
     processing_metrics: existing.processing_metrics && typeof existing.processing_metrics === "object" ? existing.processing_metrics : initial.processing_metrics,
-    retry_state: existing.retry_state && typeof existing.retry_state === "object" ? existing.retry_state : initial.retry_state
+    retry_state: existing.retry_state && typeof existing.retry_state === "object" ? existing.retry_state : initial.retry_state,
+    // FASE 5: preservar processing_stages se existir no JSONB
+    processing_stages: existing.processing_stages && typeof existing.processing_stages === "object" ? existing.processing_stages : undefined,
   };
 }
 

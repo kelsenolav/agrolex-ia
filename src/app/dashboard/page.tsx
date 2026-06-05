@@ -17,6 +17,10 @@ export default function DashboardPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // FASE 5 — Proteção contra loop infinito no encadeamento automático
+  const chainCountRef = useRef<Record<string, number>>({});
+  const MAX_AUTO_CHAIN = 8;
+
   // FASE 2.0.2 — Modal de recomendação
   const [recommendModal, setRecommendModal] = useState<{
     analysisId: string;
@@ -187,9 +191,27 @@ export default function DashboardPage() {
     baixa: 'bg-gray-100 text-gray-800 border-gray-200'
   };
 
-  const handleStartAnalysis = async (analysisId: string, propertyId: string, retryOptions?: { retryMessage?: string; forceRetry?: boolean }) => {
+  const handleStartAnalysis = async (analysisId: string, propertyId: string, retryOptions?: { retryMessage?: string; forceRetry?: boolean; isAutoChain?: boolean }) => {
     if (loadingAnalysisId) return;
+
+    const isAutoChain = retryOptions?.isAutoChain === true;
+    const currentChainCount = chainCountRef.current[analysisId] || 0;
+
+    // FASE 5 — Proteção contra loop infinito
+    if (isAutoChain && currentChainCount >= MAX_AUTO_CHAIN) {
+      showToast("Processamento pausado por segurança. Clique em iniciar novamente.", 'error');
+      delete chainCountRef.current[analysisId];
+      await refreshAnalises();
+      return;
+    }
+
     setLoadingAnalysisId(analysisId);
+
+    // FASE 5 — Incrementar contador de encadeamento
+    if (isAutoChain) {
+      chainCountRef.current[analysisId] = currentChainCount + 1;
+    }
+
     try {
       if (retryOptions?.retryMessage) {
         showToast(retryOptions.retryMessage, 'success');
@@ -199,6 +221,7 @@ export default function DashboardPage() {
       if (!session) {
         showToast("Sua sessão expirou, faça login novamente.", 'error');
         setTimeout(() => router.push('/login'), 2000);
+        delete chainCountRef.current[analysisId];
         return;
       }
 
@@ -216,12 +239,37 @@ export default function DashboardPage() {
         throw new Error(result.error || 'Erro ao processar análise com IA');
       }
 
-      showToast("Auditoria finalizada com sucesso!", 'success');
-      router.push(`/dashboard/resultado?id=${analysisId}`);
+      const data = await res.json();
+
+      // FASE 5 — Encadeamento automático: etapa concluída, há mais pendentes
+      if (data.status === 'processing_stage_completed') {
+        showToast("Etapa concluída. Continuando próxima etapa...", 'success');
+        await refreshAnalises();
+        // Diferir para o próximo tick para evitar que o finally limpe o loading da recursão
+        setTimeout(() => handleStartAnalysis(analysisId, propertyId, { isAutoChain: true }), 0);
+        return;
+      }
+
+      // FASE 5 — Processamento concluído (todas as etapas finalizadas ou análise única)
+      if (data.status === 'completed') {
+        // Resetar contador de encadeamento ao finalizar com sucesso
+        delete chainCountRef.current[analysisId];
+        showToast("Auditoria finalizada com sucesso!", 'success');
+        router.push(`/dashboard/resultado?id=${analysisId}`);
+        return;
+      }
+
+      // FASE 5 — Status inesperado (ex: processing, pending, etc.)
+      // Resetar contador e informar o usuário sem redirecionar
+      delete chainCountRef.current[analysisId];
+      showToast("Processamento em andamento. Atualize o painel para acompanhar.", 'success');
+      await refreshAnalises();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Não foi possível concluir agora. A análise pode ser reprocessada.";
       console.error('Erro ao processar:', err);
       showToast("Falha ao processar parecer com IA: " + message, 'error');
+      // Resetar contador de encadeamento no erro
+      delete chainCountRef.current[analysisId];
       await refreshAnalises();
     } finally {
       setLoadingAnalysisId(null);
