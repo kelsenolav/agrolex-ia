@@ -77,10 +77,12 @@ body {
     break-after: avoid;
   }
 
-  /* Paragraphs and lists: compact */
+  /* Paragraphs and lists: compact and justified */
   p, li, span, div {
     font-size: 10pt !important;
     line-height: 1.4 !important;
+    text-align: justify !important;
+    text-justify: inter-word !important;
   }
 
   /* Remove large web spacing (display:none APENAS em wrappers vazios;
