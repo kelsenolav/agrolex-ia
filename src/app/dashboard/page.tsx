@@ -17,6 +17,14 @@ export default function DashboardPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // FASE 2.0.2 — Modal de recomendação
+  const [recommendModal, setRecommendModal] = useState<{
+    analysisId: string;
+    propertyName: string;
+    modules: Array<{ module_id: string; title: string; priority?: string; price?: number | null }>;
+  } | null>(null);
+  const [acceptingModules, setAcceptingModules] = useState(false);
+
   const showToast = (message: string, type: 'success' | 'error') => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToast({ message, type });
@@ -211,6 +219,45 @@ export default function DashboardPage() {
     }
   };
 
+  const handleAcceptModules = async () => {
+    if (!recommendModal || acceptingModules) return;
+    setAcceptingModules(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        showToast("Sua sessão expirou, faça login novamente.", 'error');
+        setTimeout(() => router.push('/login'), 2000);
+        return;
+      }
+
+      const moduleIds = recommendModal.modules.map((m) => m.module_id);
+
+      const res = await fetch('/api/recommendations/accept', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ analysisId: recommendModal.analysisId, moduleIds })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro ao criar análise complementar');
+      }
+
+      showToast('Módulos complementares adicionados! Acesse a nova análise no painel.', 'success');
+      setRecommendModal(null);
+      await refreshAnalises();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      console.error('Erro ao aceitar módulos:', err);
+      showToast('Erro: ' + message, 'error');
+    } finally {
+      setAcceptingModules(false);
+    }
+  };
+
   const analisesConcluidas = analises.filter(a => a.status === 'completed').length;
   const analisesEmAndamento = analises.filter(a => a.status === 'processing' || a.status === 'pending' || a.status === 'payment_pending' || a.status === 'ready_for_processing').length;
   const riscosAltos = analises.filter(a => a.risk_level?.toLowerCase() === 'alto').length;
@@ -293,8 +340,19 @@ export default function DashboardPage() {
                   const hasParecer = analise.findings && analise.findings.resumo && String(analise.findings.resumo).trim().length > 0;
                   const canRetryAnalysis = statusType === 'error' && isRecoverableAnalysisError(analise);
 
+                  // FASE 3 — Profundidade da análise (analysis_depth)
+                  const analysisDepth = (analise.findings as any)?.analysis_depth ?? 1;
+                  const depthLabel = analysisDepth === 1
+                    ? null
+                    : analysisDepth === 2
+                      ? 'Complementar 1'
+                      : `Complementar ${analysisDepth - 1}`;
+
                   // Extrair módulos sugeridos (FASE 2 — Recommended Modules)
                   const recommended = getRecommendedModules(analise);
+
+                  // FASE 3 — Complementary children info
+                  const complementaryChildren = (analise.findings as any)?.complementary_children as Array<{ child_analysis_id: string; created_at: string; modules: string[]; total: number }> | undefined;
 
                   return (
                     <tr key={analise.id} className="hover:bg-gray-50 transition-colors">
@@ -302,8 +360,23 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-2">
                           <MapPin size={18} className="text-brand-green" />
                           <span className="font-semibold text-gray-800">{analise.properties?.name}</span>
+                          {depthLabel && (
+                            <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
+                              {depthLabel}
+                            </span>
+                          )}
                         </div>
                         <span className="text-sm text-gray-500 ml-6">{analise.properties?.city}, {analise.properties?.state}</span>
+                        {/* FASE 3 — Indicador visual de análises complementares vinculadas */}
+                        {complementaryChildren && complementaryChildren.length > 0 && (
+                          <div className="mt-1 ml-6 flex flex-wrap gap-1">
+                            {complementaryChildren.map((child, idx) => (
+                              <span key={idx} className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-medium">
+                                +{child.modules.length} módulo(s) complementar(es)
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-gray-700 flex items-center gap-2 mt-2">
                         <FileText size={18} className="text-brand-gold" /> {analise.documents?.[0]?.document_type}
@@ -345,15 +418,31 @@ export default function DashboardPage() {
                           <span className="text-gray-400 text-[11px] font-medium">-</span>
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                    <td className="px-6 py-4">
                         {statusType === 'completed' ? (
-                          hasParecer ? (
-                            <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm">
-                              Ver Parecer
-                            </Link>
-                          ) : (
-                            <span className="text-red-500 text-xs font-semibold">Anomalia: parecer não localizado</span>
-                          )
+                          <div className="flex flex-col gap-1.5">
+                            {hasParecer ? (
+                              <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm">
+                                Ver Parecer
+                              </Link>
+                            ) : (
+                              <span className="text-red-500 text-xs font-semibold">Anomalia: parecer não localizado</span>
+                            )}
+                            {recommended.length > 0 && (
+                              <button
+                                onClick={() =>
+                                  setRecommendModal({
+                                    analysisId: analise.id,
+                                    propertyName: analise.properties?.name || 'Propriedade',
+                                    modules: recommended
+                                  })
+                                }
+                                className="text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 px-2.5 py-1 rounded text-[10px] font-bold transition-colors w-fit"
+                              >
+                                + Adicionar Módulo
+                              </button>
+                            )}
+                          </div>
                         ) : statusType === 'processing' ? (
                           <span className="text-gray-400 text-sm font-medium">Aguarde...</span>
                         ) : statusType === 'ready_for_processing' ? (
@@ -366,26 +455,64 @@ export default function DashboardPage() {
                           </button>
                         ) : statusType === 'error' ? (
                         analise.findings?.retry_exhausted === true ? (
-                            <div className="flex flex-col gap-1.5 max-w-[280px]">
+                            <div className="flex flex-col gap-2 max-w-[300px]">
                               <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wide w-fit">
                                 Exige processamento em etapas
                               </span>
                               <span className="text-gray-500 text-[10px] leading-tight">
-                                Esta matrícula possui volume ou complexidade acima do limite de processamento único. Você pode tentar reprocessar ou dividir a auditoria em etapas:
+                                Esta matrícula possui volume ou complexidade acima do limite de processamento único. Adquira as etapas abaixo para uma auditoria completa:
                               </span>
-                              <ol className="list-decimal pl-4 space-y-0.5">
-                                <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Análise de Matrícula Individual</strong> — revisar atos, averbações, ônus, inconsistências internas e riscos diretos do registro.</li>
-                                <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Cadeia Dominial Registral</strong> — reconstruir a origem e a sequência de transmissões do imóvel.</li>
-                                <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Auditoria de Origem Pública / Título Fundiário</strong> — verificar título originário, cláusulas resolutivas, INCRA/ITERINS/Estado e possível vício de origem.</li>
-                                <li className="text-gray-500 text-[10px] leading-tight"><strong className="text-gray-700">Mapeamento de Nulidades e Indícios de Fraude</strong> — aprofundar inconsistências, simulação, sobreposição documental, fraude documental e pontos de impugnação.</li>
-                              </ol>
-                              <button
-                                disabled={loadingAnalysisId !== null}
-                                onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: 'Tentando reprocessar com tempo estendido...', forceRetry: true })}
-                                className="bg-amber-600 text-white px-3 py-1.5 rounded text-[11px] font-bold hover:brightness-110 transition-all shadow disabled:opacity-50 mt-1 w-fit"
-                              >
-                                {loadingAnalysisId === analise.id ? 'Reprocessando...' : 'Tentar novamente'}
-                              </button>
+                              <div className="flex flex-col gap-1.5 mt-1">
+                                {[
+                                  { id: 'matricula_individual', name: 'Análise de Matrícula Individual', price: 99.90 },
+                                  { id: 'cadeia_dominial', name: 'Cadeia Dominial Registral', price: 199.90 },
+                                  { id: 'origem_publica', name: 'Auditoria de Origem Pública', price: 199.90 },
+                                  { id: 'nulidades_fraudes', name: 'Mapeamento de Nulidades e Fraudes', price: 249.90 },
+                                ].map((etapa) => {
+                                  // Verificar se o módulo já existe na análise original
+                                  const selectedModules = (analise.findings as any)?.selected_modules || [];
+                                  const alreadyHasModule = selectedModules.includes(etapa.id);
+                                  return (
+                                    <div key={etapa.id} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${alreadyHasModule ? 'bg-green-500' : 'bg-amber-400'}`} />
+                                        <span className={`text-[10px] leading-tight ${alreadyHasModule ? 'text-gray-400 line-through' : 'text-gray-700 font-medium'}`}>
+                                          {etapa.name}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                                        {alreadyHasModule ? (
+                                          <span className="text-[9px] text-green-600 font-bold uppercase">Contratado</span>
+                                        ) : (
+                                          <>
+                                            <span className="text-[10px] font-bold text-brand-green">R$ {etapa.price.toFixed(2)}</span>
+                                            <button
+                                              onClick={() => {
+                                                // Abrir modal com módulo específico
+                                                setRecommendModal({
+                                                  analysisId: analise.id,
+                                                  propertyName: analise.properties?.name || 'Propriedade',
+                                                  modules: [{
+                                                    module_id: etapa.id,
+                                                    title: etapa.name,
+                                                    price: etapa.price
+                                                  }]
+                                                });
+                                              }}
+                                              className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold hover:brightness-110 transition-all"
+                                            >
+                                              Comprar
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <span className="text-gray-400 text-[9px] leading-tight mt-1">
+                                * Cada etapa gera uma nova análise complementar vinculada a esta. Preço total estimado: <strong className="text-gray-700">R$ 749,60</strong>.
+                              </span>
                             </div>
                           ) : canRetryAnalysis ? (
                             <button
@@ -417,6 +544,87 @@ export default function DashboardPage() {
           )}
         </div>
       </main>
+
+      {/* Modal de confirmação de módulos complementares — FASE 2.0.2 */}
+      {recommendModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-6">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-lg font-bold text-gray-800">
+                Adicionar Módulos Complementares
+              </h3>
+              <button
+                onClick={() => !acceptingModules && setRecommendModal(null)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                disabled={acceptingModules}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              A análise de <strong>{recommendModal.propertyName}</strong> detectou oportunidades de aprofundamento. Os seguintes módulos serão adicionados a uma nova análise complementar:
+            </p>
+            <div className="space-y-2 mb-4">
+              {recommendModal.modules.map((mod) => (
+                <div
+                  key={mod.module_id}
+                  className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`w-2 h-2 rounded-full ${
+                      mod.priority === 'critica' ? 'bg-red-500' :
+                      mod.priority === 'alta' ? 'bg-amber-500' :
+                      mod.priority === 'media' ? 'bg-blue-500' : 'bg-gray-400'
+                    }`} />
+                    <span className="text-sm font-semibold text-gray-800">{mod.title}</span>
+                  </div>
+                  {mod.price != null && (
+                    <span className="text-sm font-bold text-brand-green">
+                      R$ {mod.price.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between bg-amber-50 rounded-lg px-4 py-3 border border-amber-200 mb-6">
+              <span className="text-sm font-semibold text-amber-800">Valor total estimado</span>
+              <span className="text-lg font-bold text-amber-800">
+                R$ {recommendModal.modules.reduce((sum, m) => sum + (m.price || 0), 0).toFixed(2)}
+              </span>
+            </div>
+            <div className="text-xs text-gray-500 mb-4 leading-relaxed">
+              <p className="mb-1"><strong>Tempo estimado:</strong> 3-5 minutos por módulo.</p>
+              <p>Uma nova análise será criada com status "Pendente". Acesse-a pelo painel, libere o processamento e aguarde o parecer complementar.</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setRecommendModal(null)}
+                disabled={acceptingModules}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAcceptModules}
+                disabled={acceptingModules}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-brand-green text-white font-bold text-sm hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {acceptingModules ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Criando...
+                  </>
+                ) : (
+                  'Confirmar e Criar'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast de notificação */}
       {toast && (

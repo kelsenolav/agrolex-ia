@@ -380,14 +380,90 @@ function ResultadoContent() {
             </div>
           </section>
 
+          {/* FASE 3 — Histórico do Caso (análises complementares vinculadas) */}
+          {(findings as any)?.parent_findings_summary || (findings as any)?.complementary_children ? (
+            <section className="print:break-inside-avoid border-b-2 border-gray-100 pb-10">
+              <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
+                <ShieldCheck className="text-brand-gold" size={28} /> Histórico do Caso
+              </h2>
+
+              {/* Se esta análise é filha de outra (parent_findings_summary) */}
+              {(findings as any)?.parent_findings_summary && (
+                <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 mb-4">
+                  <p className="text-sm font-bold text-gray-700 mb-1">Análise Principal</p>
+                  <p className="text-sm text-gray-600">
+                    {(findings as any)?.parent_findings_summary?.original_modules?.length > 0
+                      ? `Módulos: ${(findings as any).parent_findings_summary.original_modules.join(', ')}`
+                      : 'Análise original'}
+                    {(findings as any)?.parent_findings_summary?.completed_at && (
+                      <> — Concluída em {new Date((findings as any).parent_findings_summary.completed_at).toLocaleDateString('pt-BR')}</>
+                    )}
+                    {(findings as any)?.parent_findings_summary?.risk_level && (
+                      <> — Risco: <strong>{(findings as any).parent_findings_summary.risk_level}</strong></>
+                    )}
+                  </p>
+                  <span className="mt-2 inline-block px-2 py-0.5 bg-brand-green/10 text-brand-green text-[10px] font-bold uppercase rounded">
+                    Análise principal
+                  </span>
+                </div>
+              )}
+
+              {/* Se esta análise gerou análises complementares */}
+              {(findings as any)?.complementary_children && Array.isArray((findings as any).complementary_children) && (findings as any).complementary_children.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-bold text-gray-700 mb-1">Análises Complementares</p>
+                  {(findings as any).complementary_children.map((child: any, idx: number) => (
+                    <div key={idx} className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-gray-800">
+                          Análise complementar {idx + 1}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                          Complementar {idx + 1}
+                        </span>
+                      </div>
+                      {child.modules?.length > 0 && (
+                        <p className="text-xs text-gray-600 mt-1">
+                          Módulos: {child.modules.join(', ')}
+                        </p>
+                      )}
+                      {child.created_at && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Criada em: {new Date(child.created_at).toLocaleDateString('pt-BR')}
+                        </p>
+                      )}
+                      {child.total != null && (
+                        <p className="text-xs text-gray-600 mt-0.5">
+                          Valor: R$ {child.total.toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Se esta análise tem analysis_depth > 1 (é ela mesma complementar) */}
+              {(findings as any)?.analysis_depth > 1 && !(findings as any)?.parent_findings_summary && (
+                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                  <p className="text-sm text-gray-700">
+                    Esta é uma <strong>análise complementar</strong> (profundidade {(findings as any).analysis_depth}).
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Os módulos desta análise complementam a avaliação original, aprofundando pontos específicos.
+                  </p>
+                </div>
+              )}
+            </section>
+          ) : null}
+
           {/* CHECKLIST DA CADEIA DOMINIAL (CAMADA 3) */}
-          {findings!.checklist && findings!.checklist.length > 0 && (
+          {(findings as any)?.checklist && (findings as any).checklist.length > 0 && (
             <section className="print:break-inside-avoid pt-4">
               <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
                 <ShieldCheck className="text-brand-gold" size={28} /> Auditoria da Cadeia Dominial & Princípios Registrais
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
-                {findings!.checklist.map((item: ChecklistItem, i: number) => {
+                {((findings as any)?.checklist || []).map((item: ChecklistItem, i: number) => {
                   const isReprovado = item.status?.toLowerCase().includes('reprovado') || item.status?.toLowerCase().includes('violado');
                   const isAlerta = item.status?.toLowerCase().includes('alerta');
                   

@@ -21,18 +21,19 @@
 ---
 
 - **Data**: 05/06/2026
-- **Bloco**: FASE 2 — Recommended Modules Acionáveis (sub-bloco 2.0.1, classe C, sem migration)
-- **Arquivos alterados**: `src/lib/recommendations.ts` (novo), `src/app/api/analyze/route.ts`, `src/app/dashboard/page.tsx`, `src/lib/__tests__/recommendations.test.ts` (novo), `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
-- **Rotas afetadas**: `/api/analyze`, `/dashboard`
+- **Bloco**: FASE 2 — Recommended Modules Acionáveis (sub-bloco 2.0.2, classe E — migration + novo endpoint + modal)
+- **Arquivos alterados**: `supabase/migrations/20260605_parent_analysis_id.sql` (novo), `src/app/api/recommendations/accept/route.ts` (novo), `src/app/dashboard/page.tsx`, `.github/workflows/ci.yml` (novo), `AGENTS.md`, `PROJECT_CONTEXT_AGROLEX.md`
+- **Rotas afetadas**: `/api/recommendations/accept` (nova), `/dashboard`
 - **Alterações implementadas**:
-  1. Criado `src/lib/recommendations.ts` com `buildRecommendedModules()` aplicando 5 regras: risco crítico → nulidades_fraudes, múltiplas matrículas → cruzamento_matriculas, CAR/SIGEF sem geoespacial → geoespacial, origem pública não confirmada → origem_publica, faltam certidões cadeia → cadeia_dominial. Função pura, determinística, com exclusão de módulos já contratados e ordenação por prioridade.
-  2. Injetada chamada `buildRecommendedModules()` em `/api/analyze/route.ts` dentro de try/catch isolado (não afeta fluxo principal), persistindo `recommended_modules` em `case_file`.
-  3. Adicionada coluna "Módulos Sugeridos" no dashboard (somente leitura) com badges por prioridade (critica/alta/media/baixa), tooltip com nome + preço, limite de 3 badges + contador.
-  4. Testes Jest (17 novos, total 62/62) cobrindo todas as 5 regras + casos de exclusão + dedup + ordenação + limite de 5.
-- **Validações**: `npm run build` (21 rotas), `npx tsc --noEmit` (exit 0), `npm test` (62/62), `npm run lint` (aprovado)
+  1. **Migration** `parent_analysis_id`: adiciona `parent_analysis_id` (UUID FK), `analysis_depth` (INT DEFAULT 1) e `complementary_modules` (TEXT[]) à tabela `analyses`.
+  2. **Endpoint** `POST /api/recommendations/accept`: autentica sessão, valida ownership, verifica status "completed" da análise pai, cria análise filha com `case_file` herdado (cópia profunda), recalcula preço server-side, registra `complementary_children` na análise pai.
+  3. **Modal de confirmação** no dashboard: botão "+ Adicionar Módulo" ao lado de análises concluídas com recomendações → modal mostrando módulos, preços, prioridade (bolinha colorida), total estimado, tempo estimado → CTA "Confirmar e Criar" → chamada ao endpoint → toast de sucesso → refresh da lista.
+  4. **CI/CD**: GitHub Actions com build/lint/tsc/test em todo push para `stable/**`.
+  5. Hotfixes verificados (nenhuma ação necessária): MODULE_PRICES já centralizado no bloco 04/06, return duplicado já removido, `refreshAnalises()` já substituiu `window.location.reload()`.
+- **Validações**: `npm run build` (22 rotas!), `npm run lint` (aprovado), `npm test` (62/62), `npx tsc --noEmit` (exit 0)
 - **Commit**: Pendente
 - **Deploy**: Não efetuado (sem autorização para deploy)
-- **Próximos passos**: Sub-bloco 2.0.2 com migration `parent_analysis_id` + endpoint `/api/recommendations/accept` + CTA "Adicionar Módulo" (classe E, requer autorização do fundador)
+- **Próximos passos**: FASE 3 — Módulos Acionáveis e Laudo Complementar (herança de case_file, upsell pós-retry, histórico do caso no laudo)
 
 ---
 

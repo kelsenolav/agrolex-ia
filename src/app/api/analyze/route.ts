@@ -375,6 +375,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nenhum módulo selecionado para auditoria' }, { status: 400 });
     }
 
+    // FASE 3 — Se esta é uma análise filha (tem parent_analysis_id), filtrar módulos já processados no pai
+    const parentCaseFile = findings.case_file;
+    const parentModuleResults = parentCaseFile?.module_results || {};
+    const parentCompletedModules = Object.keys(parentModuleResults).filter(
+      (modId) => parentModuleResults[modId]?.status === 'completed'
+    );
+    
+    // Filtrar selected_modules para remover módulos já concluídos na análise pai
+    const modulesToProcess = selectedModules.filter(
+      (modId: string) => !parentCompletedModules.includes(modId)
+    );
+    
+    if (modulesToProcess.length === 0) {
+      return NextResponse.json({ 
+        error: 'Todos os módulos selecionados já foram processados na análise pai. Nenhum módulo novo para processar.' 
+      }, { status: 400 });
+    }
+
     const { data: propertyData } = await supabaseAdmin
       .from('properties')
       .select('name, state, city, area, cpf_cnpj, car_number')
@@ -501,7 +519,8 @@ export async function POST(req: Request) {
         throw new Error('Documentos ilegíveis ou insuficientes para análise fundiária');
       }
 
-      const amountPaid = selectedModules.reduce((acc: number, mod: string) => acc + (MODULE_PRICES[mod] || 0), 0);
+      // FASE 3 — Calcular amountPaid apenas para módulos novos (não processados no pai)
+      const amountPaid = modulesToProcess.reduce((acc: number, mod: string) => acc + (MODULE_PRICES[mod] || 0), 0);
 
       // Normalização em memória para montagem do prompt
       const normalizedModules = Array.from(new Set(selectedModules.map((m: string) => {
@@ -675,6 +694,25 @@ export async function POST(req: Request) {
             .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
           console.error('[CaseFile] Falha ao enriquecer fatos bÃ¡sicos:', caseFileExtractError);
         }
+
+        // FASE 3 — Mesclar module_results do pai com os novos módulos processados
+        // O case_file herdado já contém module_results do pai; adicionamos os novos
+        const parentModuleResults = parentCaseFile?.module_results || {};
+        const newModuleResults: Record<string, { status: string; summary: string; completed_at: string }> = {};
+        for (const modId of modulesToProcess) {
+          newModuleResults[modId] = {
+            status: 'completed',
+            summary: `Módulo ${modId} processado na análise complementar`,
+            completed_at: completedAt
+          };
+        }
+        enrichedCaseFile = {
+          ...enrichedCaseFile,
+          module_results: {
+            ...parentModuleResults,
+            ...newModuleResults
+          }
+        };
 
         // FASE 2 — Recommended Modules: calcular sugestões em try/catch próprio
         // (não altera fluxo existente; falha aqui não bloqueia o postprocess)
