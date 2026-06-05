@@ -30,14 +30,14 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
 
 type RiskLevel = 'Baixo' | 'Médio' | 'Alto' | 'Crítico';
 type RiskLevelSource = 'ai_section' | 'ai_text' | 'fallback';
-type RecoverableErrorType = 'ai_timeout' | 'ai_unavailable' | 'ai_incomplete_response';
+type RecoverableErrorType = 'ai_timeout' | 'ai_unavailable' | 'ai_incomplete_response' | 'ai_quota_exceeded';
 
 interface DerivedRiskLevel {
   level: RiskLevel;
   source: RiskLevelSource;
 }
 
-const RECOVERABLE_ERROR_TYPES: RecoverableErrorType[] = ['ai_timeout', 'ai_unavailable', 'ai_incomplete_response'];
+const RECOVERABLE_ERROR_TYPES: RecoverableErrorType[] = ['ai_timeout', 'ai_unavailable', 'ai_incomplete_response', 'ai_quota_exceeded'];
 
 function isRecoverableErrorType(value: unknown): value is RecoverableErrorType {
   return typeof value === 'string' && RECOVERABLE_ERROR_TYPES.includes(value as RecoverableErrorType);
@@ -929,6 +929,19 @@ export async function POST(req: Request) {
 
       const isAiUnavailable = aiUnavailableIndicators.some(p => messageLower.includes(p));
 
+      const aiQuotaIndicators = [
+        '429',
+        'too many requests',
+        'quota',
+        'resource exhausted',
+        'resource has been exhausted',
+        'rate limit',
+        'rate exceeded',
+        'quota exceeded'
+      ];
+
+      const isAiQuotaExceeded = aiQuotaIndicators.some(p => messageLower.includes(p));
+
       let technicalErrorType = 'processing_failed';
       let userMessage = 'Não foi possível concluir o parecer técnico neste momento. Tente novamente ou contate o suporte.';
       let findingsCurrentStep = 'Falha no processamento do parecer técnico.';
@@ -937,6 +950,10 @@ export async function POST(req: Request) {
         technicalErrorType = 'ai_incomplete_response';
         findingsCurrentStep = innerError?.findingsCurrentStep || 'A IA retornou um parecer incompleto. Tente reprocessar.';
         userMessage = innerError?.userMessage || 'A IA retornou um parecer incompleto. Tente reprocessar.';
+      } else if (isAiQuotaExceeded) {
+        technicalErrorType = 'ai_quota_exceeded';
+        findingsCurrentStep = 'Limite temporário da IA atingido. Tente novamente mais tarde.';
+        userMessage = 'Limite temporário da IA atingido. Tente novamente mais tarde.';
       } else if (isTimeout) {
         technicalErrorType = 'ai_timeout';
         findingsCurrentStep = 'A IA demorou mais que o esperado para concluir. Voce pode tentar novamente sem reenviar os documentos.';

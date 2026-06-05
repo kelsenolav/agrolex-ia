@@ -154,7 +154,8 @@ export default function DashboardPage() {
     return analysis.findings?.retry_available === true ||
       technicalErrorType === 'ai_timeout' ||
       technicalErrorType === 'ai_unavailable' ||
-      technicalErrorType === 'ai_incomplete_response';
+      technicalErrorType === 'ai_incomplete_response' ||
+      technicalErrorType === 'ai_quota_exceeded';
   };
 
   const getRetryMessage = (analysis: Analysis): string => {
@@ -167,6 +168,9 @@ export default function DashboardPage() {
     }
     if (technicalErrorType === 'ai_incomplete_response') {
       return 'A IA retornou um parecer incompleto. Vamos reprocessar esta análise.';
+    }
+    if (technicalErrorType === 'ai_quota_exceeded') {
+      return 'Limite temporário da IA atingido. Tente novamente mais tarde.';
     }
     return 'Vamos reprocessar esta análise sem reenviar os documentos.';
   };
