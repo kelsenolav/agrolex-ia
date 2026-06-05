@@ -244,7 +244,7 @@ function ResultadoContent() {
           </div>
 
           {/* Corpo do Relatório */}
-          <div className="p-8 space-y-10 print:p-4">
+          <div className="p-8 space-y-10 print:p-4 report-text">
           
           {/* Resumo */}
           <section>
@@ -253,11 +253,11 @@ function ResultadoContent() {
             </h2>
             {findings!.isHtmlResumo ? (
               <div 
-                className="text-gray-700 leading-relaxed bg-gray-50 p-6 rounded-xl border border-gray-200 text-lg print:bg-white"
+                className="text-gray-700 leading-relaxed bg-gray-50 p-6 rounded-xl border border-gray-200 text-lg print:bg-white text-justify"
                 dangerouslySetInnerHTML={{ __html: sanitizedResumo }} 
               />
             ) : (
-              <p className="text-gray-700 leading-relaxed bg-gray-50 p-6 rounded-xl border border-gray-200 text-lg print:bg-white whitespace-pre-wrap">
+              <p className="text-gray-700 leading-relaxed bg-gray-50 p-6 rounded-xl border border-gray-200 text-lg print:bg-white whitespace-pre-line text-justify hyphens-auto">
                 {findings!.resumo}
               </p>
             )}

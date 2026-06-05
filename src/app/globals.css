@@ -18,6 +18,16 @@ body {
 }
 
 /* ============================================================
+   REPORT TEXT JUSTIFICATION — Screen + Print
+   ============================================================ */
+.report-text p,
+.report-text li {
+  text-align: justify !important;
+  hyphens: auto !important;
+  -webkit-hyphens: auto !important;
+}
+
+/* ============================================================
    PRINT / PDF EXPORT — A4 Professional
    ============================================================ */
 @media print {
@@ -77,12 +87,24 @@ body {
     break-after: avoid;
   }
 
-  /* Paragraphs and lists: compact and justified */
-  p, li, span, div {
+  /* Paragraphs and lists: compact, justified, with hyphenation */
+  .report-text p,
+  .report-text li {
     font-size: 10pt !important;
     line-height: 1.4 !important;
     text-align: justify !important;
-    text-justify: inter-word !important;
+    hyphens: auto !important;
+    -webkit-hyphens: auto !important;
+  }
+
+  /* Fallback: text elements inside report sections */
+  section p,
+  section li {
+    font-size: 10pt !important;
+    line-height: 1.4 !important;
+    text-align: justify !important;
+    hyphens: auto !important;
+    -webkit-hyphens: auto !important;
   }
 
   /* Remove large web spacing (display:none APENAS em wrappers vazios;
@@ -120,4 +142,5 @@ body {
   img {
     max-width: 100% !important;
   }
+
 }
