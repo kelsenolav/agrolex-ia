@@ -466,8 +466,8 @@ function ResultadoContent() {
         {/* Card Principal do Dossiê */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden print:shadow-none print:border print:rounded-none">
           
-          {/* HEADER PROFISSIONAL */}
-          <div className="p-8 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:border-b bg-gradient-to-r from-gray-50 to-white">
+          {/* HEADER PROFISSIONAL — oculto no print para não gerar página 2 vazia após a capa */}
+          <div className="p-8 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden print:border-b bg-gradient-to-r from-gray-50 to-white">
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <h1 className="text-2xl md:text-3xl font-extrabold text-gray-800">Dossiê Técnico de Auditoria Fundiária</h1>
