@@ -242,6 +242,15 @@ export default function DashboardPage() {
 
       const data = await res.json();
 
+      if (data.status === 'modules_already_processed') {
+        // HOTFIX P0 — Módulos já processados no pai: não é erro, redirecionar para dossiê existente
+        delete chainCountRef.current[analysisId];
+        const targetId = data.parentAnalysisId || data.currentAnalysisId || analysisId;
+        showToast('Esses módulos já foram processados. Você pode acessar o dossiê existente.', 'success');
+        router.push(`/dashboard/resultado?id=${targetId}`);
+        return;
+      }
+
       if (data.status === 'processing_stage_completed') {
         showToast("Etapa concluída. Continuando próxima etapa...", 'success');
         await refreshAnalises();
@@ -525,6 +534,16 @@ export default function DashboardPage() {
                   const recommended = getRecommendedModules(analise);
                   const complementaryChildren = (analise.findings as any)?.complementary_children as Array<{ child_analysis_id: string; created_at: string; modules: string[]; total: number }> | undefined;
                   
+                  // HOTFIX UI — Detectar análise complementar com módulos já processados no pai
+                  const findingsAny = analise.findings as any;
+                  const isComplementarJaProcessado = 
+                    findingsAny.parent_analysis_id != null &&
+                    Array.isArray(findingsAny.selected_modules) &&
+                    findingsAny.selected_modules.length > 0 &&
+                    findingsAny.selected_modules.every(
+                      (modId: string) => findingsAny.case_file?.module_results?.[modId]?.status === 'completed'
+                    );
+                  
                   // Score individual
                   const scoreData = calcularScoreAgroLex(analise.findings, analise.risk_level);
 
@@ -636,6 +655,10 @@ export default function DashboardPage() {
                           <span className="text-gray-400 text-sm font-medium flex items-center gap-1">
                             <span className="animate-pulse w-2 h-2 bg-blue-500 rounded-full inline-block" /> Aguarde...
                           </span>
+                        ) : statusType === 'ready_for_processing' && isComplementarJaProcessado ? (
+                          <Link href={`/dashboard/resultado?id=${(analise.findings as any).parent_analysis_id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm flex items-center gap-1">
+                            Ver Dossiê <ArrowUpRight size={14} />
+                          </Link>
                         ) : statusType === 'ready_for_processing' ? (
                           <button
                             disabled={loadingAnalysisId !== null}
