@@ -303,7 +303,7 @@ function ResultadoContent() {
         <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
           <Search className="text-brand-gold" size={24} /> Radar de Risco AgroLex
         </h2>
-        <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm print:shadow-none print:bg-white print:border">
+        <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm print:shadow-none print:bg-white print:border print-radar-risk">
           <div className="space-y-4">
             {riscos.map((r, i) => (
               <div key={i} className="radar-risco-bar">
@@ -354,7 +354,7 @@ function ResultadoContent() {
         <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
           <FileSignature className="text-brand-gold" size={24} /> Checklist Documental
         </h2>
-        <div className="space-y-3">
+        <div className="space-y-3 print-checklist">
           {documentosBase.map((doc, i) => {
             const { presente, indicio } = verificarDocumento(doc.chave);
             let statusClass = 'ausente';
@@ -495,8 +495,8 @@ function ResultadoContent() {
 
             {/* 1. SCORE AGROLEX + RESUMO EXECUTIVO */}
             <section className="print:break-inside-avoid">
-              <div className="grid md:grid-cols-5 gap-8 items-start mb-8 print:flex print:flex-col print:items-center print:gap-4">
-                <div className="md:col-span-2 flex justify-center print:w-full print:max-w-sm">
+                  <div className="grid md:grid-cols-5 gap-8 items-start mb-8 print:flex print:flex-col print:items-center print:gap-4">
+                <div className="md:col-span-2 flex justify-center print:hidden print:w-full print:max-w-sm">
                   <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} size="lg" />
                 </div>
                 <div className="md:col-span-3 print:w-full">
