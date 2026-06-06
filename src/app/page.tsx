@@ -75,7 +75,7 @@ export default function Home() {
       {/* Background */}
       <div 
         className="absolute top-0 left-0 w-full h-full bg-cover bg-center bg-no-repeat fixed"
-        style={{ backgroundImage: "url('https://images.unsplash.com/photo-1589829545856-d10d557cf95f?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80')", zIndex: -20 }}
+      style={{ backgroundImage: "url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80')", zIndex: -20 }}
       ></div>
       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-[#051F15]/50 via-[#051F15]/75 to-[#051F15]/95 fixed pointer-events-none" style={{ zIndex: -10 }}></div>
 
