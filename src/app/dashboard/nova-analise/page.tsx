@@ -8,6 +8,61 @@ import { supabase } from '@/lib/supabase';
 import { AUDIT_MODULES, getModulePrice, buildDocumentProfile, getModuleCompatibility, calculateAuditModulesTotal } from "@/lib/auditModules";
 import { createInitialCaseFile, type CaseFileDocument } from "@/lib/caseFile";
 
+// ─── Constantes de validação documental ────────────────────────────────────
+const MAX_FILE_SIZE_MB = 20;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const MAX_FILE_COUNT = 10;
+
+/**
+ * Valida um único arquivo PDF antes do envio ao pipeline.
+ * Retorna null se o arquivo for válido, ou uma string com a mensagem de erro.
+ */
+async function validateFile(file: File): Promise<string | null> {
+  // 1. Arquivo vazio
+  if (file.size === 0) {
+    return "O arquivo enviado está vazio.";
+  }
+
+  // 2. Tipo MIME inválido
+  if (file.type !== "application/pdf") {
+    return "Formato não suportado. Apenas arquivos PDF são aceitos.";
+  }
+
+  // 3. Arquivo maior que limite configurado
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return `O documento excede o limite permitido de ${MAX_FILE_SIZE_MB} MB.`;
+  }
+
+  // 4. PDF corrompido — verifica magic bytes "%PDF" nos primeiros 5 bytes
+  try {
+    const buffer = await file.slice(0, 5).arrayBuffer();
+    const header = new Uint8Array(buffer);
+    const magicBytes = String.fromCharCode(...header);
+    if (!magicBytes.startsWith("%PDF")) {
+      return "O PDF parece corrompido.";
+    }
+  } catch {
+    return "Não foi possível verificar o arquivo PDF.";
+  }
+
+  // 5. PDF sem páginas — lê os primeiros 8 KB e procura "/Type"
+  //    (PDFs válidos sempre contêm ao menos um dicionário /Type)
+  try {
+    const sampleSize = Math.min(file.size, 8192);
+    const sampleBuffer = await file.slice(0, sampleSize).arrayBuffer();
+    const sampleBytes = new Uint8Array(sampleBuffer);
+    const sampleText = new TextDecoder("utf-8", { fatal: false }).decode(sampleBytes);
+    // PDFs sem páginas não contêm /Type no início do arquivo
+    if (!sampleText.includes("/Type")) {
+      return "O PDF não contém páginas válidas.";
+    }
+  } catch {
+    return "Não foi possível verificar o conteúdo do PDF.";
+  }
+
+  return null;
+}
+
 function parseDeclaredAreaHa(value: string | null): number | null {
   const normalizedValue = (value || "").trim().replace(/\s+/g, "");
   if (!normalizedValue) return null;
@@ -130,18 +185,34 @@ export default function NovaAnalisePage() {
     setSelectedModules(recommendedModules);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       if (!currentDocType) {
         showToast("Selecione o tipo de documento antes de anexar os arquivos.", 'error');
         return;
       }
-      
-      const newFiles = Array.from(e.target.files).map(f => ({ file: f, type: currentDocType }));
+
+      // Validação 6: Quantidade máxima de arquivos
+      if (files.length + e.target.files.length > MAX_FILE_COUNT) {
+        showToast(`Limite máximo de ${MAX_FILE_COUNT} arquivos atingido. Remova arquivos antes de adicionar novos.`, 'error');
+        return;
+      }
+
+      const newFiles: { file: File; type: string }[] = [];
+
+      for (const f of Array.from(e.target.files)) {
+        const errorMsg = await validateFile(f);
+        if (errorMsg) {
+          showToast(errorMsg, 'error');
+          return;
+        }
+        newFiles.push({ file: f, type: currentDocType });
+      }
+
       const nextFiles = [...files, ...newFiles];
       setFiles(nextFiles);
       setSelectedModules(prev => retainCompatibleModules(prev, nextFiles));
-      
+
       // Reset doc type for next
       setCurrentDocType("");
       e.target.value = "";
@@ -165,6 +236,15 @@ export default function NovaAnalisePage() {
     if (selectedModules.length === 0) {
       showToast("Selecione ao menos um módulo de auditoria.", 'error');
       return;
+    }
+
+    // Pré-validação documental: re-validar todos os arquivos antes do envio
+    for (const item of files) {
+      const errorMsg = await validateFile(item.file);
+      if (errorMsg) {
+        showToast(errorMsg, 'error');
+        return;
+      }
     }
 
     // Validação de compatibilidade extra antes do envio
