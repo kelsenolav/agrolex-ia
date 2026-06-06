@@ -106,6 +106,26 @@ body {
     margin: 15mm 12mm;
   }
 
+  /* 1st page (cover): NO margin so logo fills properly */
+  @page cover-page {
+    margin: 0;
+  }
+
+  /* Cover page: remove margin from first page */
+  .cover-page {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 297mm !important;
+    height: 297mm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    page-break-after: always;
+    break-after: page;
+    page: cover-page;
+  }
+
   html, body {
     background: #ffffff !important;
     color: #0f172a !important;
@@ -146,8 +166,8 @@ body {
   .report-section, .compact-print-section {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin-bottom: 6mm !important;
-    padding: 6mm !important;
+    margin-bottom: 4mm !important;
+    padding: 4mm !important;
     box-shadow: none !important;
   }
 
@@ -186,9 +206,35 @@ body {
     padding: 0 !important;
   }
 
+  /* Remove space-y-10 excess vertical gaps in print */
+  .space-y-10 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.5rem !important;
+  }
+
+  /* Compact p-8 to p-4 on print for main content */
+  .p-8 {
+    padding: 1rem !important;
+  }
+
+  /* Reduce gap between grid items on print */
+  .gap-8 {
+    gap: 0.5rem !important;
+  }
+
+  .gap-4 {
+    gap: 0.25rem !important;
+  }
+
   /* Remove background colors that waste ink, keep text contrast */
   .bg-gray-50, .bg-gray-100, .bg-green-50, .bg-blue-50 {
     background: #ffffff !important;
+  }
+
+  /* Score + risk on cover: keep visible but subtle */
+  .cover-page .bg-red-50,
+  .cover-page .bg-green-50,
+  .cover-page .bg-yellow-50 {
+    background: transparent !important;
   }
 
   /* Risk badge colors for print */

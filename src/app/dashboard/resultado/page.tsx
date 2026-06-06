@@ -233,16 +233,58 @@ function ResultadoContent() {
         </div>
       </nav>
 
-      {/* Cabeçalho exclusivo para Impressão PDF */}
-      <div className="hidden print:flex justify-between items-center border-b-2 border-brand-green pb-6 mb-6">
-        <div className="flex items-center gap-2 text-brand-green">
-          <ShieldCheck size={36} />
-          <span className="text-3xl font-bold text-gray-900">AgroLex</span>
+      {/* CAPA PREMIUM — exclusiva para impressão PDF */}
+      <div className="hidden print:flex print:flex-col print:items-center print:justify-between print:min-h-[270mm] print:w-full print:px-16 print:py-12 cover-page">
+        {/* TOPO — Logo + Marca (25-35% altura) */}
+        <div className="flex flex-col items-center justify-center flex-1 min-h-[30vh]">
+          <div className="w-44 h-44 bg-brand-green rounded-[32px] flex items-center justify-center shadow-2xl shadow-brand-green/20">
+            <ShieldCheck size={108} className="text-brand-gold" />
+          </div>
+          <h1 className="text-5xl font-black text-gray-900 mt-8 tracking-tight">AgroLex</h1>
+          <p className="text-xl text-brand-green font-semibold mt-2 tracking-wider">Inteligência Fundiária</p>
         </div>
-        <div className="text-right text-gray-500 text-sm">
-          <p>Dossiê Técnico de Auditoria Fundiária</p>
-          <p>Ref: ALX-{analise.id?.slice(0, 8).toUpperCase() || '00000000'}</p>
-          <p>Emitido em: {new Date().toLocaleDateString('pt-BR')}</p>
+
+        <div className="border-t-2 border-brand-gold w-32 mx-auto my-6" />
+
+        {/* TÍTULO DO DOCUMENTO */}
+        <div className="text-center">
+          <h2 className="text-3xl font-extrabold text-gray-800 leading-snug">
+            Dossiê Técnico<br/>de Auditoria Fundiária
+          </h2>
+        </div>
+
+        {/* DADOS DO IMÓVEL */}
+        <div className="mt-6 text-center space-y-2">
+          <p className="text-xl text-gray-700 font-medium flex items-center justify-center gap-2">
+            <MapPin size={20} className="text-brand-gold" />
+            {propName} • {propLocation}
+          </p>
+          <p className="text-base text-gray-500">
+            {new Date().toLocaleDateString('pt-BR')}
+          </p>
+          <p className="text-sm text-gray-400 font-mono">
+            Ref: ALX-{analise.id?.slice(0, 8).toUpperCase() || '00000000'}
+          </p>
+        </div>
+
+        {/* SCORE + RISCO */}
+        <div className="mt-8 flex items-center gap-8">
+          <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} size="md" />
+          <div className={`${styles.bg} px-6 py-4 rounded-xl border ${styles.border} min-w-[140px] text-center`}>
+            <p className={`text-[10px] font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
+            <div className={`flex items-center gap-2 ${styles.text} justify-center`}>
+              <AlertTriangle size={22} />
+              <span className="text-2xl font-black">{risco?.toUpperCase()}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* RODAPÉ INSTITUCIONAL */}
+        <div className="w-full mt-8 pt-6 border-t border-gray-200 text-center">
+          <p className="text-xs text-gray-400 leading-relaxed">
+            AgroLex Inteligência Fundiária • CNPJ: XX.XXX.XXX/XXXX-XX<br/>
+            Documento confidencial e de uso interno • Protegido por LGPD
+          </p>
         </div>
       </div>
 
@@ -290,11 +332,11 @@ function ResultadoContent() {
 
             {/* 1. SCORE AGROLEX + RESUMO EXECUTIVO */}
             <section className="print:break-inside-avoid">
-              <div className="grid md:grid-cols-5 gap-8 items-start mb-8">
-                <div className="md:col-span-2 flex justify-center">
+              <div className="grid md:grid-cols-5 gap-8 items-start mb-8 print:flex print:flex-col print:items-center print:gap-4">
+                <div className="md:col-span-2 flex justify-center print:w-full print:max-w-sm">
                   <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} size="lg" />
                 </div>
-                <div className="md:col-span-3">
+                <div className="md:col-span-3 print:w-full">
                   <h2 className="text-2xl font-bold text-brand-dark mb-4 border-b-2 border-gray-100 pb-3 flex items-center gap-2">
                     <FileText className="text-brand-gold" size={24} /> Resumo Executivo
                   </h2>
