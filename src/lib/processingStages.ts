@@ -30,6 +30,12 @@ export interface ProcessingStage {
   completed_at?: string;
   summary?: string;
   error_message?: string;
+  /** FASE 5.1 — Provedor de IA usado nesta etapa ('gemini' ou 'openai') */
+  provider_used?: 'gemini' | 'openai';
+  /** FASE 5.1 — Se true, o fallback foi acionado nesta etapa */
+  fallback_triggered?: boolean;
+  /** FASE 5.1 — Motivo do fallback (ex: 'ai_quota_exceeded') */
+  fallback_reason?: string | null;
 }
 
 export interface ProcessingStages {
@@ -232,6 +238,35 @@ export function countStagesByStatus(stages: ProcessingStages | null | undefined)
  * Se newStages for fornecido, atualiza o array de stages.
  * Se apenas o container for atualizado (ex: enabled, total_stages), mantém os stages existentes.
  */
+/**
+ * FASE 5.1 — Registra informações do provedor de IA em um stage específico.
+ * Usado após generateWithFallback() para persistir provider_used, fallback_triggered e fallback_reason.
+ * Retorna uma NOVA cópia do array de stages (não muta o original).
+ */
+export function markStageProviderInfo(
+  stages: ProcessingStages | null | undefined,
+  stageId: string,
+  providerInfo: {
+    provider_used: 'gemini' | 'openai';
+    fallback_triggered: boolean;
+    fallback_reason: string | null;
+  }
+): ProcessingStage[] {
+  if (!stages || !Array.isArray(stages.stages)) {
+    return [];
+  }
+
+  return stages.stages.map((stage) => {
+    if (stage.stage_id !== stageId) return stage;
+    return {
+      ...stage,
+      provider_used: providerInfo.provider_used,
+      fallback_triggered: providerInfo.fallback_triggered,
+      fallback_reason: providerInfo.fallback_reason,
+    };
+  });
+}
+
 export function mergeProcessingStages(
   existing: ProcessingStages | null | undefined,
   updates: Partial<ProcessingStages>

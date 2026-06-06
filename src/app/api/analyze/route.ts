@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { buildLegalAuditPrompt } from '@/lib/auditPromptBuilder';
 import { MODULE_PRICES, buildDocumentProfile } from '@/lib/auditModules';
 import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRecommendationsFromReport } from '@/lib/reportExtractors';
 import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocument, type CaseFileRecommendedModule } from '@/lib/caseFile';
 import { buildRecommendedModules } from '@/lib/recommendations';
+import { generateWithFallback, type FallbackResult } from '@/lib/aiProviders';
 import {
   initializeProcessingStages,
   getCurrentStage,
   markStageProcessing,
   markStageCompleted,
   markStageError,
+  markStageProviderInfo,
   isProcessingFinished,
   type ProcessingStages,
 } from '@/lib/processingStages';
@@ -303,7 +304,6 @@ export async function POST(req: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  const geminiKey = process.env.GEMINI_API_KEY || '';
 
   if (!supabaseServiceKey) {
     return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada no servidor' }, { status: 500 });
@@ -596,41 +596,34 @@ export async function POST(req: Request) {
       }
 
       let markdownResponse = "";
+      let providerUsed: 'gemini' | 'openai' = 'gemini';
+      let fallbackTriggered = false;
+      let fallbackReason: string | null = null;
+
       if (geminiParts.length > 1) {
-      // Chamada Gemini com timeout explícito global (adaptativo para documentos densos)
         await supabaseAdmin
           .from('analyses')
           .update({ findings: { ...updatedFindings, current_step: "Sintetizando Parecer Técnico Forense com Inteligência Artificial..." } })
           .eq('id', analysisId);
 
-        const genAI = new GoogleGenerativeAI(geminiKey);
-        const modelName = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          ...(isFastChainOfTitleOnly ? { generationConfig: { maxOutputTokens: 4096 } } : {})
-        });
-
-        const genStartAt = Date.now();
-
         // Detectar documentos densos: múltiplos PDFs ou muitos parts (>6 indica matrícula densa)
         const pdfPartsCount = geminiParts.filter(p => p.inlineData?.mimeType === 'application/pdf').length;
         const isDenseDocument = pdfPartsCount >= 3 || geminiParts.length > 12;
 
-        const aiPromise = model.generateContent(geminiParts).then(async (result) => {
-          const response = await result.response;
-          return response.text();
-        });
-
         // Timeout adaptativo: 110s para documentos densos, 90s para documentos simples
         const aiTimeoutMs = isDenseDocument ? 110000 : 90000;
-        markdownResponse = await withTimeout(aiPromise, aiTimeoutMs, "gemini_generation");
-        geminiMs = Date.now() - genStartAt;
 
-        if (markdownResponse.startsWith('\`\`\`markdown')) {
-          markdownResponse = markdownResponse.replace(/^\`\`\`markdown\n?/, '').replace(/\n?\`\`\`$/, '');
-        } else if (markdownResponse.startsWith('\`\`\`')) {
-          markdownResponse = markdownResponse.replace(/^\`\`\`\n?/, '').replace(/\n?\`\`\`$/, '');
-        }
+        const result: FallbackResult = await generateWithFallback(geminiParts, {
+          geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+          ...(isFastChainOfTitleOnly ? { maxOutputTokens: 4096 } : {}),
+          timeoutMs: aiTimeoutMs,
+        });
+
+        markdownResponse = result.text;
+        geminiMs = result.duration_ms;
+        providerUsed = result.provider_used;
+        fallbackTriggered = result.fallback_triggered;
+        fallbackReason = result.fallback_reason;
       } else {
         markdownResponse = `### PARECER TÉCNICO GEOESPACIAL (APENAS GEOMETRIA KML/GPX)\n\nFoi efetuado o upload de arquivo de geometria de limites físicos e georreferenciamento em formato digital nativo. Não foram inseridas matrículas textuais em PDF para análise textual.\n\n* **Limite Físico Importado:** ${polygonCoords.length} pontos de curva detectados.\n* **Status de Integração:** Geometria disponível no visualizador de mapas 3D.`;
       }
@@ -684,6 +677,16 @@ export async function POST(req: Request) {
       let hasMoreStages = false;
 
       if (currentStageId) {
+        // FASE 5.1 — Registrar provider info no stage
+        processingStages = {
+          ...processingStages,
+          stages: markStageProviderInfo(processingStages, currentStageId, {
+            provider_used: providerUsed,
+            fallback_triggered: fallbackTriggered,
+            fallback_reason: fallbackReason,
+          }),
+        };
+
         // Extrair resumo curto (primeiras 200 chars do primeiro parágrafo relevante)
         const stageSummary = markdownResponse
           .replace(/^#+\s+/gm, '')
@@ -708,6 +711,9 @@ export async function POST(req: Request) {
           processing_stage_completed_at: stageCompletedAt,
           case_file: {
             ...updatedFindings.case_file,
+            provider_used: providerUsed,
+            fallback_triggered: fallbackTriggered,
+            fallback_reason: fallbackReason,
             processing_stages: processingStages,
           },
         };
@@ -762,6 +768,9 @@ export async function POST(req: Request) {
         },
         case_file: {
           ...updatedFindings.case_file,
+          provider_used: providerUsed,
+          fallback_triggered: fallbackTriggered,
+          fallback_reason: fallbackReason,
           processing_stages: processingStages,
         },
       };

@@ -83,6 +83,12 @@ export interface CaseFile {
   retry_state: Record<string, unknown>;
   /** FASE 5 — Estrutura de processamento em etapas (anti-timeout) */
   processing_stages?: ProcessingStages;
+  /** FASE 5.1 — Provedor de IA usado na análise ('gemini' ou 'openai') */
+  provider_used?: 'gemini' | 'openai';
+  /** FASE 5.1 — Se true, o fallback foi acionado */
+  fallback_triggered?: boolean;
+  /** FASE 5.1 — Motivo do fallback (ex: 'ai_quota_exceeded') */
+  fallback_reason?: string | null;
 }
 
 export interface CreateInitialCaseFileInput {
