@@ -523,15 +523,22 @@ export async function POST(req: Request) {
       let geminiParts: any[] = [];
       let polygonCoords: [number, number][] = [];
 
-      for (const doc of documents) {
-        // Baixar documentos com timeout de 10s por arquivo
-        const downloadPromise = supabaseAdmin.storage.from('documents').download(doc.file_path);
-        const { data: fileData, error: downloadError } = await withTimeout(
-          downloadPromise,
-          10000,
-          `download_${doc.file_path}`
-        );
+      // Downloads paralelos com timeout individual de 10s por arquivo
+      // Mantém a ordem lógica original dos documentos
+      const downloadResults = await Promise.all(
+        documents.map(async (doc) => {
+          const downloadPromise = supabaseAdmin.storage.from('documents').download(doc.file_path);
+          const { data: fileData, error: downloadError } = await withTimeout(
+            downloadPromise,
+            10000,
+            `download_${doc.file_path}`
+          );
+          return { doc, fileData, downloadError };
+        })
+      );
 
+      // Verificar falhas e processar resultados na ordem original
+      for (const { doc, fileData, downloadError } of downloadResults) {
         if (downloadError || !fileData) {
           throw new Error(`Falha ou tempo limite excedido no download do arquivo: ${doc.file_path}`);
         }
