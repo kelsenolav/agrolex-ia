@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock, ArrowUpRight, Search, Filter, BarChart3, Layers } from 'lucide-react';
+import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock, ArrowUpRight, Search, Filter, BarChart3, Layers, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Analysis, AnalysisFindings } from '@/types/analise';
 import { normalizeStatus, calcularScoreAgroLex } from '@/types/analise';
@@ -18,6 +18,8 @@ export default function DashboardPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 5;
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // FASE 5 — Proteção contra loop infinito no encadeamento automático
@@ -179,11 +181,30 @@ export default function DashboardPage() {
   const getRecommendedModules = (analysis: Analysis): Array<{ module_id: string; title: string; priority?: string; price?: number | null }> => {
     const recs = (analysis.findings as any)?.case_file?.recommended_modules;
     if (!Array.isArray(recs) || recs.length === 0) return [];
+    
+    // HOTFIX P0 — Verificar módulos já processados no pai (module_results) e filhos existentes (complementary_children)
+    const moduleResults = (analysis.findings as any)?.case_file?.module_results || {};
+    const completedModules = new Set<string>(
+      Object.keys(moduleResults).filter((modId) => moduleResults[modId]?.status === 'completed')
+    );
+    
+    const complementaryChildren = Array.isArray((analysis.findings as any)?.complementary_children)
+      ? (analysis.findings as any).complementary_children
+      : [];
+    for (const child of complementaryChildren) {
+      if (Array.isArray(child.modules)) {
+        for (const modId of child.modules) {
+          completedModules.add(modId);
+        }
+      }
+    }
+    
     return recs.map((r: any) => ({
       module_id: String(r.module_id || ''),
       title: String(r.title || r.module_id || ''),
       priority: typeof r.priority === 'string' ? r.priority : undefined,
-      price: typeof r.price === 'number' ? r.price : null
+      price: typeof r.price === 'number' ? r.price : null,
+      already_processed: completedModules.has(String(r.module_id || ''))
     }));
   };
 
@@ -290,7 +311,16 @@ export default function DashboardPage() {
         return;
       }
 
-      const moduleIds = recommendModal.modules.map((m) => m.module_id);
+      // HOTFIX P0 — Filtrar apenas módulos não processados antes de enviar
+      const moduleIds = recommendModal.modules
+        .filter((m) => !(m as any).already_processed)
+        .map((m) => m.module_id);
+
+      if (moduleIds.length === 0) {
+        showToast('Todos os módulos selecionados já foram processados anteriormente.', 'error');
+        setAcceptingModules(false);
+        return;
+      }
 
       const res = await fetch('/api/recommendations/accept', {
         method: 'POST',
@@ -303,7 +333,24 @@ export default function DashboardPage() {
 
       if (!res.ok) {
         const err = await res.json();
+        // HOTFIX P0 — Tratar modules_already_processed como informação, não erro
+        if (err.status === 'modules_already_processed') {
+          showToast(err.message || 'Módulos já processados. Acesse o dossiê existente.', 'success');
+          setRecommendModal(null);
+          await refreshAnalises();
+          return;
+        }
         throw new Error(err.error || 'Erro ao criar análise complementar');
+      }
+
+      const data = await res.json();
+      
+      // HOTFIX P0 — Tratar modules_already_processed no retorno 200 também
+      if (data.status === 'modules_already_processed') {
+        showToast(data.message || 'Módulos já processados. Acesse o dossiê existente.', 'success');
+        setRecommendModal(null);
+        await refreshAnalises();
+        return;
       }
 
       showToast('Módulos complementares adicionados! Acesse a nova análise no painel.', 'success');
@@ -344,6 +391,13 @@ export default function DashboardPage() {
     const matchStatus = !statusFilter || a.status === statusFilter;
     return matchSearch && matchStatus;
   });
+
+  // Paginação — 5 registros por página, considera resultado filtrado
+  const totalPaginas = Math.max(1, Math.ceil(analisesFiltradas.length / ITEMS_PER_PAGE));
+  const paginaAtual = Math.min(currentPage, totalPaginas);
+  const inicio = (paginaAtual - 1) * ITEMS_PER_PAGE;
+  const fim = inicio + ITEMS_PER_PAGE;
+  const analisesPaginadas = analisesFiltradas.slice(inicio, fim);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -470,7 +524,7 @@ export default function DashboardPage() {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
           <div>
             <h2 className="text-xl font-bold text-gray-800">Suas Auditorias</h2>
-            <p className="text-gray-500 text-sm">{analisesFiltradas.length} registro(s) encontrado(s)</p>
+            <p className="text-gray-500 text-sm">{analisesFiltradas.length} registro(s) encontrado(s){analisesFiltradas.length > 0 && ` — Página ${paginaAtual} de ${totalPaginas}`}</p>
           </div>
           <div className="flex gap-3 w-full md:w-auto">
             <div className="relative flex-1 md:flex-none">
@@ -479,13 +533,13 @@ export default function DashboardPage() {
                 type="text"
                 placeholder="Buscar por propriedade..."
                 value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
+                onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                 className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-brand-gold"
               />
             </div>
             <select
               value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
+              onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold"
             >
               <option value="">Todos os Status</option>
@@ -521,7 +575,7 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {analisesFiltradas.map((analise) => {
+                {analisesPaginadas.map((analise) => {
                   const { text: statusText, colorClass: statusColorClass, type: statusType } = normalizeStatus(analise.status || '');
                   const hasParecer = analise.findings && analise.findings.resumo && String(analise.findings.resumo).trim().length > 0;
                   const canRetryAnalysis = statusType === 'error' && isRecoverableAnalysisError(analise);
@@ -755,6 +809,36 @@ export default function DashboardPage() {
             </table>
           )}
         </div>
+
+        {/* Paginação — Anterior / Próxima com página atual e total */}
+        {analisesFiltradas.length > ITEMS_PER_PAGE && (
+          <div className="flex items-center justify-between mt-4 px-2">
+            <div className="text-sm text-gray-500">
+              Exibindo {inicio + 1}–{Math.min(fim, analisesFiltradas.length)} de {analisesFiltradas.length}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(paginaAtual - 1)}
+                disabled={paginaAtual <= 1}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft size={16} />
+                Anterior
+              </button>
+              <span className="px-3 py-1.5 text-sm font-bold text-brand-green bg-green-50 rounded-lg border border-green-200">
+                {paginaAtual} / {totalPaginas}
+              </span>
+              <button
+                onClick={() => setCurrentPage(paginaAtual + 1)}
+                disabled={paginaAtual >= totalPaginas}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Próxima
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Modal de confirmação de módulos complementares */}
@@ -777,26 +861,41 @@ export default function DashboardPage() {
               A análise de <strong>{recommendModal.propertyName}</strong> detectou oportunidades de aprofundamento. Os seguintes módulos serão adicionados a uma nova análise complementar:
             </p>
             <div className="space-y-2 mb-4">
-              {recommendModal.modules.map((mod) => (
-                <div
-                  key={mod.module_id}
-                  className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className={`w-2 h-2 rounded-full ${
-                      mod.priority === 'critica' ? 'bg-red-500' :
-                      mod.priority === 'alta' ? 'bg-amber-500' :
-                      mod.priority === 'media' ? 'bg-blue-500' : 'bg-gray-400'
-                    }`} />
-                    <span className="text-sm font-semibold text-gray-800">{mod.title}</span>
+              {recommendModal.modules.map((mod) => {
+                const isProcessed = (mod as any).already_processed === true;
+                return (
+                  <div
+                    key={mod.module_id}
+                    className={`flex items-center justify-between rounded-lg px-4 py-3 border ${
+                      isProcessed
+                        ? 'bg-green-50 border-green-200 opacity-70'
+                        : 'bg-gray-50 border-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`w-2 h-2 rounded-full ${
+                        isProcessed ? 'bg-green-500' :
+                        mod.priority === 'critica' ? 'bg-red-500' :
+                        mod.priority === 'alta' ? 'bg-amber-500' :
+                        mod.priority === 'media' ? 'bg-blue-500' : 'bg-gray-400'
+                      }`} />
+                      <span className={`text-sm font-semibold ${
+                        isProcessed ? 'text-gray-400 line-through' : 'text-gray-800'
+                      }`}>{mod.title}</span>
+                      {isProcessed && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-green-200 text-green-800 border border-green-300">
+                          Já processado
+                        </span>
+                      )}
+                    </div>
+                    {mod.price != null && !isProcessed && (
+                      <span className="text-sm font-bold text-brand-green">
+                        R$ {mod.price.toFixed(2)}
+                      </span>
+                    )}
                   </div>
-                  {mod.price != null && (
-                    <span className="text-sm font-bold text-brand-green">
-                      R$ {mod.price.toFixed(2)}
-                    </span>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="flex items-center justify-between bg-amber-50 rounded-lg px-4 py-3 border border-amber-200 mb-6">
               <span className="text-sm font-semibold text-amber-800">Valor total estimado</span>
