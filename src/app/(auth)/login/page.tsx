@@ -1,14 +1,29 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showSuccessToast, setShowSuccessToast] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('cadastro') === 'sucesso';
+    }
+    return false;
+  });
+
+  const dismissToast = useCallback(() => setShowSuccessToast(false), []);
+
+  useEffect(() => {
+    if (showSuccessToast) {
+      const timer = setTimeout(dismissToast, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [showSuccessToast, dismissToast]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -111,6 +126,14 @@ export default function LoginPage() {
               </div>
             </div>
 
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                <Link href="mailto:suporte@agrolex.com.br?subject=Esqueci%20minha%20senha" className="font-medium text-gray-400 hover:text-brand-gold transition-colors">
+                  Esqueceu sua senha?
+                </Link>
+              </div>
+            </div>
+
             <div>
               <button
                 type="submit"
@@ -123,6 +146,25 @@ export default function LoginPage() {
           </form>
         </div>
       </div>
+
+      {/* Toast de cadastro realizado com sucesso */}
+      {showSuccessToast && (
+        <div className="fixed top-6 right-6 z-50 px-6 py-4 rounded-xl shadow-2xl bg-green-600 text-white font-medium transition-all duration-300">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 size={22} />
+            <div>
+              <p className="font-bold">Cadastro realizado com sucesso!</p>
+              <p className="text-green-100 text-sm">Faça login para acessar sua conta.</p>
+            </div>
+            <button
+              onClick={dismissToast}
+              className="ml-2 text-white/80 hover:text-white transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,10 @@
   --color-brand-gold: #D4AF37;
   --color-brand-light: #F9FAFB;
   --color-brand-dark: #111827;
+  --color-premium-green: #059669;
+  --color-premium-amber: #F59E0B;
+  --color-premium-red: #DC2626;
+  --color-premium-blue: #2563EB;
 }
 
 :root {
@@ -15,6 +19,72 @@ body {
   background-color: var(--color-brand-light);
   color: var(--color-brand-dark);
   font-family: var(--font-sans);
+}
+
+/* ============================================================
+   PREMIUM UTILITIES
+   ============================================================ */
+.premium-card {
+  @apply bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+.premium-card:hover {
+  box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+}
+
+.premium-badge {
+  @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider;
+}
+
+.premium-divider {
+  @apply h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent my-6;
+}
+
+.premium-section-title {
+  @apply text-2xl font-bold text-brand-dark border-b-2 border-gray-100 pb-3 flex items-center gap-2;
+}
+
+/* Score badge colors */
+.score-critico { background-color: #FEE2E2; color: #DC2626; }
+.score-atencao { background-color: #FEF3C7; color: #F59E0B; }
+.score-seguro { background-color: #D1FAE5; color: #059669; }
+
+/* Semaphore dots */
+.semaforo-verde { @apply w-2.5 h-2.5 rounded-full bg-emerald-500; }
+.semaforo-amarelo { @apply w-2.5 h-2.5 rounded-full bg-amber-500; }
+.semaforo-vermelho { @apply w-2.5 h-2.5 rounded-full bg-red-500; }
+
+/* Matriz de risco grid */
+.matriz-risco {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr);
+  gap: 2px;
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 1;
+}
+.matriz-risco-cell {
+  border-radius: 2px;
+  min-height: 8px;
+}
+.matriz-risco-cell.risco-baixo { background-color: #D1FAE5; }
+.matriz-risco-cell.risco-medio { background-color: #FEF3C7; }
+.matriz-risco-cell.risco-alto { background-color: #FEE2E2; }
+.matriz-risco-cell.risco-critico { background-color: #FECACA; }
+
+/* Timeline premium */
+.timeline-premium {
+  @apply relative border-l-2 border-gray-200 ml-4 space-y-6;
+}
+.timeline-premium-item {
+  @apply relative pl-8;
+}
+.timeline-premium-dot {
+  @apply absolute -left-[7px] top-1 w-3.5 h-3.5 rounded-full border-4 border-brand-green bg-white;
+}
+.timeline-premium-content {
+  @apply bg-white p-4 rounded-xl border border-gray-100 shadow-sm;
 }
 
 /* ============================================================
@@ -107,8 +177,7 @@ body {
     -webkit-hyphens: auto !important;
   }
 
-  /* Remove large web spacing (display:none APENAS em wrappers vazios;
-     .min-h-screen é o container raiz do laudo e DEVE permanecer visível) */
+  /* Remove large web spacing */
   .large-web-spacing, .spacer, .empty-space {
     display: none !important;
     height: auto !important;
@@ -142,5 +211,4 @@ body {
   img {
     max-width: 100% !important;
   }
-
 }

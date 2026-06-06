@@ -36,8 +36,8 @@ export default function CadastroPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      alert('Cadastro realizado com sucesso! Você será redirecionado para fazer login.');
-      router.push('/login');
+      // Substituído alert() por redirecionamento com toast integrado
+      router.push('/login?cadastro=sucesso');
     }
   };
 

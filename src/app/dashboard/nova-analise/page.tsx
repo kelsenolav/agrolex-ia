@@ -315,15 +315,6 @@ export default function NovaAnalisePage() {
           <h1 className="text-3xl font-extrabold text-gray-800 mb-2">Nova Auditoria Fundiária</h1>
           <p className="text-gray-600 mb-8 text-lg">Envie uma ou mais matrículas da área e selecione a profundidade da auditoria.</p>
 
-          {/* Alerta de Transição */}
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3 text-blue-800 text-sm">
-            <AlertCircle className="flex-shrink-0 mt-0.5" size={20} />
-            <div>
-              <p className="font-bold">Nota de Transição</p>
-              <p className="mt-0.5">Os módulos foram reorganizados. A análise será processada conforme o escopo selecionado e os documentos anexados.</p>
-            </div>
-          </div>
-
           {/* Caixa de Compatibilidade Documental Informativa */}
           <div className="mb-8 p-5 bg-gray-50 border border-gray-200 rounded-2xl">
             <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Info size={16} className="text-brand-gold"/> Compatibilidade Documental</h3>
@@ -534,8 +525,8 @@ export default function NovaAnalisePage() {
             <div className="pt-6">
               <div className="mb-6 border border-gray-200 rounded-xl p-5 bg-gray-50 text-center">
                 <p className="text-gray-700 font-bold text-lg">Valor estimado da auditoria: R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
-                <p className="text-sm text-amber-600 mt-2 font-medium">
-                  Análise criada como pendente. A liberação para processamento será restaurada no próximo bloco.
+                <p className="text-sm text-gray-500 mt-2">
+                  Após a confirmação, a análise será criada como pendente. Realize o pagamento para liberar o processamento.
                 </p>
               </div>
 

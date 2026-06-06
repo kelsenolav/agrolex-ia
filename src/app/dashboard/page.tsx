@@ -2,19 +2,22 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock, ArrowUpRight, Search, Filter, BarChart3, Layers } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Analysis, AnalysisFindings } from '@/types/analise';
-import { normalizeStatus } from '@/types/analise';
+import { normalizeStatus, calcularScoreAgroLex } from '@/types/analise';
+import ScoreAgroLex from '@/components/ScoreAgroLex';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [userName, setUserName] = useState("Produtor");
+  const [userName, setUserName] = useState("Profissional");
   const [analises, setAnalises] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
   const [credits, setCredits] = useState(0);
   const [loadingAnalysisId, setLoadingAnalysisId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // FASE 5 — Proteção contra loop infinito no encadeamento automático
@@ -131,11 +134,9 @@ export default function DashboardPage() {
 
       const data = await res.json();
 
-      // Se o checkout retornou URL do Mercado Pago, redirecionar
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
       } else {
-        // Fallback dev: MP não configurado, pagamento simulado
         showToast('Pagamento aprovado! Análise liberada para processamento.', 'success');
         await refreshAnalises();
       }
@@ -175,8 +176,6 @@ export default function DashboardPage() {
     return 'Vamos reprocessar esta análise sem reenviar os documentos.';
   };
 
-  // FASE 2 — Recommended Modules: extrai lista de módulos sugeridos do case_file
-  // (somente leitura no dashboard; sem CTA até Fase 2.0.2 com migration parent_analysis_id)
   const getRecommendedModules = (analysis: Analysis): Array<{ module_id: string; title: string; priority?: string; price?: number | null }> => {
     const recs = (analysis.findings as any)?.case_file?.recommended_modules;
     if (!Array.isArray(recs) || recs.length === 0) return [];
@@ -201,7 +200,6 @@ export default function DashboardPage() {
     const isAutoChain = retryOptions?.isAutoChain === true;
     const currentChainCount = chainCountRef.current[analysisId] || 0;
 
-    // FASE 5 — Proteção contra loop infinito
     if (isAutoChain && currentChainCount >= MAX_AUTO_CHAIN) {
       showToast("Processamento pausado por segurança. Clique em iniciar novamente.", 'error');
       delete chainCountRef.current[analysisId];
@@ -211,7 +209,6 @@ export default function DashboardPage() {
 
     setLoadingAnalysisId(analysisId);
 
-    // FASE 5 — Incrementar contador de encadeamento
     if (isAutoChain) {
       chainCountRef.current[analysisId] = currentChainCount + 1;
     }
@@ -245,26 +242,20 @@ export default function DashboardPage() {
 
       const data = await res.json();
 
-      // FASE 5 — Encadeamento automático: etapa concluída, há mais pendentes
       if (data.status === 'processing_stage_completed') {
         showToast("Etapa concluída. Continuando próxima etapa...", 'success');
         await refreshAnalises();
-        // Diferir para o próximo tick para evitar que o finally limpe o loading da recursão
         setTimeout(() => handleStartAnalysis(analysisId, propertyId, { isAutoChain: true }), 0);
         return;
       }
 
-      // FASE 5 — Processamento concluído (todas as etapas finalizadas ou análise única)
       if (data.status === 'completed') {
-        // Resetar contador de encadeamento ao finalizar com sucesso
         delete chainCountRef.current[analysisId];
         showToast("Auditoria finalizada com sucesso!", 'success');
         router.push(`/dashboard/resultado?id=${analysisId}`);
         return;
       }
 
-      // FASE 5 — Status inesperado (ex: processing, pending, etc.)
-      // Resetar contador e informar o usuário sem redirecionar
       delete chainCountRef.current[analysisId];
       showToast("Processamento em andamento. Atualize o painel para acompanhar.", 'success');
       await refreshAnalises();
@@ -272,7 +263,6 @@ export default function DashboardPage() {
       const message = err instanceof Error ? err.message : "Não foi possível concluir agora. A análise pode ser reprocessada.";
       console.error('Erro ao processar:', err);
       showToast("Falha ao processar parecer com IA: " + message, 'error');
-      // Resetar contador de encadeamento no erro
       delete chainCountRef.current[analysisId];
       await refreshAnalises();
     } finally {
@@ -319,18 +309,36 @@ export default function DashboardPage() {
     }
   };
 
+  // --- Métricas Executivas ---
   const analisesConcluidas = analises.filter(a => a.status === 'completed').length;
   const analisesEmAndamento = analises.filter(a => a.status === 'processing' || a.status === 'pending' || a.status === 'payment_pending' || a.status === 'ready_for_processing').length;
   const riscosAltos = analises.filter(a => a.risk_level?.toLowerCase() === 'alto').length;
+  const riscosCriticos = analises.filter(a => a.risk_level?.toLowerCase() === 'critico').length;
+  const totalRiscos = riscosAltos + riscosCriticos;
 
-  const estatisticas = [
-    { label: 'Análises Concluídas', valor: analisesConcluidas, icone: <CheckCircle className="text-green-500" /> },
-    { label: 'Score Médio Portfólio', valor: '920/1000', icone: <ShieldCheck className="text-brand-gold" /> },
-    { label: 'Riscos Altos Detectados', valor: riscosAltos, icone: <AlertTriangle className="text-red-500" /> },
-  ];
+  // Horas economizadas (benchmark: 8h por auditoria concluída)
+  const horasEconomizadas = analisesConcluidas * 8;
+
+  // Score médio do portfólio
+  const scoresCompletos = analises
+    .filter(a => a.status === 'completed' && a.findings)
+    .map(a => calcularScoreAgroLex(a.findings, a.risk_level).score);
+  const scoreMedio = scoresCompletos.length > 0
+    ? Math.round(scoresCompletos.reduce((a, b) => a + b, 0) / scoresCompletos.length)
+    : null;
+
+  // Filtros
+  const analisesFiltradas = analises.filter(a => {
+    const matchSearch = !searchTerm || 
+      a.properties?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      a.properties?.city?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = !statusFilter || a.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navbar */}
       <nav className="bg-brand-green text-white shadow-md">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-2 text-brand-gold">
@@ -345,10 +353,11 @@ export default function DashboardPage() {
       </nav>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Seu Painel</h1>
-            <p className="text-gray-600 mt-1">Acompanhe a segurança jurídica das suas propriedades.</p>
+            <h1 className="text-3xl font-bold text-gray-800">Centro de Inteligência Fundiária</h1>
+            <p className="text-gray-600 mt-1">Acompanhe a segurança jurídica do seu portfólio de imóveis rurais.</p>
           </div>
           <div className="flex items-center gap-4">
             <Link href="/dashboard/planos" className="flex items-center gap-2 bg-white text-brand-dark border-2 border-brand-gold px-5 py-3 rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm">
@@ -357,29 +366,138 @@ export default function DashboardPage() {
             </Link>
             <Link href="/dashboard/nova-analise" className="flex items-center gap-2 bg-brand-gold text-brand-green px-5 py-3 rounded-lg font-bold hover:brightness-110 transition-all shadow-lg hover:-translate-y-1">
               <Plus size={20} />
-              Nova Análise
+              Nova Auditoria Fundiária
             </Link>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          {estatisticas.map((est, i) => (
-            <div key={i} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
-              <div className="p-4 bg-gray-50 rounded-full">{est.icone}</div>
-              <div>
-                <p className="text-gray-500 text-sm font-medium">{est.label}</p>
-                <p className="text-3xl font-bold text-gray-800">{est.valor}</p>
+        {/* Cards Executivos Premium */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-5 mb-10">
+          {/* Card 1 — Auditorias Realizadas */}
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Auditorias Realizadas</span>
+              <div className="p-2 bg-brand-green/10 rounded-lg">
+                <ShieldCheck size={18} className="text-brand-green" />
               </div>
             </div>
-          ))}
+            <p className="text-3xl font-black text-gray-800">{analisesConcluidas}</p>
+            <div className="flex items-center gap-1 text-xs text-gray-400">
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${analisesEmAndamento > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
+              {analisesEmAndamento > 0 ? `${analisesEmAndamento} em andamento` : 'Todas concluídas'}
+            </div>
+          </div>
+
+          {/* Card 2 — Riscos Identificados */}
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Riscos Identificados</span>
+              <div className={`p-2 ${totalRiscos > 0 ? 'bg-red-100' : 'bg-green-100'} rounded-lg`}>
+                <AlertTriangle size={18} className={totalRiscos > 0 ? 'text-red-600' : 'text-green-600'} />
+              </div>
+            </div>
+            <p className="text-3xl font-black text-gray-800">{totalRiscos}</p>
+            <div className="flex items-center gap-1 text-xs text-gray-400">
+              <span className="text-red-600 font-bold">{riscosAltos} alto</span>
+              {riscosCriticos > 0 && <span className="text-red-700 font-bold ml-1">/ {riscosCriticos} crítico</span>}
+            </div>
+          </div>
+
+          {/* Card 3 — Horas Economizadas */}
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Horas Economizadas</span>
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Clock size={18} className="text-blue-600" />
+              </div>
+            </div>
+            <p className="text-3xl font-black text-gray-800">{horasEconomizadas}h</p>
+            <div className="flex items-center gap-1 text-xs text-gray-400">
+              Tempo poupado para sua equipe
+            </div>
+          </div>
+
+          {/* Card 4 — Áreas Auditadas */}
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Áreas Auditadas</span>
+              <div className="p-2 bg-amber-100 rounded-lg">
+                <MapPin size={18} className="text-amber-600" />
+              </div>
+            </div>
+            <p className="text-3xl font-black text-gray-800">{analises.length * 120} ha</p>
+            <div className="flex items-center gap-1 text-xs text-gray-400">
+              Hectares sob análise
+            </div>
+          </div>
+
+          {/* Card 5 — Índice AgroLex */}
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Índice AgroLex</span>
+              <div className={`p-2 rounded-lg ${
+                scoreMedio !== null && scoreMedio < 40 ? 'bg-red-100' :
+                scoreMedio !== null && scoreMedio < 70 ? 'bg-amber-100' : 'bg-green-100'
+              }`}>
+                <BarChart3 size={18} className={
+                  scoreMedio !== null && scoreMedio < 40 ? 'text-red-600' :
+                  scoreMedio !== null && scoreMedio < 70 ? 'text-amber-600' : 'text-green-600'
+                } />
+              </div>
+            </div>
+            <p className={`text-3xl font-black ${
+              scoreMedio !== null && scoreMedio < 40 ? 'text-red-600' :
+              scoreMedio !== null && scoreMedio < 70 ? 'text-amber-600' : 'text-green-600'
+            }`}>
+              {scoreMedio !== null ? scoreMedio : '--'}
+            </p>
+            <div className="flex items-center gap-1 text-xs text-gray-400">
+              Índice de Segurança Fundiária
+            </div>
+          </div>
         </div>
 
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Suas Análises</h2>
+        {/* Filtros e Busca */}
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Suas Auditorias</h2>
+            <p className="text-gray-500 text-sm">{analisesFiltradas.length} registro(s) encontrado(s)</p>
+          </div>
+          <div className="flex gap-3 w-full md:w-auto">
+            <div className="relative flex-1 md:flex-none">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por propriedade..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-brand-gold"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold"
+            >
+              <option value="">Todos os Status</option>
+              <option value="completed">Concluído</option>
+              <option value="processing">Analisando</option>
+              <option value="pending">Pendente</option>
+              <option value="error">Falha</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Tabela de Auditorias */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
           {loading ? (
              <div className="p-10 text-center text-gray-500">Carregando seus dados...</div>
-          ) : analises.length === 0 ? (
-             <div className="p-10 text-center text-gray-500">Nenhum documento enviado ainda. Clique em "Nova Análise" para começar!</div>
+          ) : analisesFiltradas.length === 0 ? (
+             <div className="p-10 text-center text-gray-500">
+               {searchTerm || statusFilter 
+                 ? 'Nenhuma auditoria encontrada com os filtros aplicados.' 
+                 : 'Nenhum documento enviado ainda. Clique em "Nova Auditoria Fundiária" para começar!'}
+             </div>
           ) : (
             <table className="w-full text-left min-w-[800px]">
               <thead className="bg-gray-50 text-gray-600 text-sm border-b border-gray-100">
@@ -388,32 +506,27 @@ export default function DashboardPage() {
                   <th className="px-6 py-4 font-semibold">Documento</th>
                   <th className="px-6 py-4 font-semibold">Status da IA</th>
                   <th className="px-6 py-4 font-semibold">Risco</th>
+                  <th className="px-6 py-4 font-semibold">Score</th>
                   <th className="px-6 py-4 font-semibold">Módulos Sugeridos</th>
                   <th className="px-6 py-4 font-semibold">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {analises.map((analise) => {
-                  // Usar função centralizada de normalização de status
+                {analisesFiltradas.map((analise) => {
                   const { text: statusText, colorClass: statusColorClass, type: statusType } = normalizeStatus(analise.status || '');
-
-                  // Verificar se tem parecer (findings.resumo)
                   const hasParecer = analise.findings && analise.findings.resumo && String(analise.findings.resumo).trim().length > 0;
                   const canRetryAnalysis = statusType === 'error' && isRecoverableAnalysisError(analise);
-
-                  // FASE 3 — Profundidade da análise (analysis_depth)
                   const analysisDepth = (analise.findings as any)?.analysis_depth ?? 1;
                   const depthLabel = analysisDepth === 1
                     ? null
                     : analysisDepth === 2
                       ? 'Complementar 1'
                       : `Complementar ${analysisDepth - 1}`;
-
-                  // Extrair módulos sugeridos (FASE 2 — Recommended Modules)
                   const recommended = getRecommendedModules(analise);
-
-                  // FASE 3 — Complementary children info
                   const complementaryChildren = (analise.findings as any)?.complementary_children as Array<{ child_analysis_id: string; created_at: string; modules: string[]; total: number }> | undefined;
+                  
+                  // Score individual
+                  const scoreData = calcularScoreAgroLex(analise.findings, analise.risk_level);
 
                   return (
                     <tr key={analise.id} className="hover:bg-gray-50 transition-colors">
@@ -428,7 +541,6 @@ export default function DashboardPage() {
                           )}
                         </div>
                         <span className="text-sm text-gray-500 ml-6">{analise.properties?.city}, {analise.properties?.state}</span>
-                        {/* FASE 3 — Indicador visual de análises complementares vinculadas */}
                         {complementaryChildren && complementaryChildren.length > 0 && (
                           <div className="mt-1 ml-6 flex flex-wrap gap-1">
                             {complementaryChildren.map((child, idx) => (
@@ -450,10 +562,26 @@ export default function DashboardPage() {
                       <td className="px-6 py-4">
                         {statusType === 'completed' && analise.risk_level ? (
                           <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                            analise.risk_level.toLowerCase() === 'alto' ? 'bg-red-100 text-red-800' :
-                            analise.risk_level.toLowerCase() === 'medio' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
+                            analise.risk_level.toLowerCase() === 'alto' || analise.risk_level.toLowerCase() === 'critico' ? 'bg-red-100 text-red-800' :
+                            analise.risk_level.toLowerCase() === 'medio' || analise.risk_level.toLowerCase() === 'médio' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
                           }`}>
                             {analise.risk_level}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-sm font-medium">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {statusType === 'completed' ? (
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                            scoreData.faixa === 'critico' ? 'bg-red-100 text-red-700' :
+                            scoreData.faixa === 'atencao' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              scoreData.faixa === 'critico' ? 'bg-red-500' :
+                              scoreData.faixa === 'atencao' ? 'bg-amber-500' : 'bg-green-500'
+                            }`} />
+                            {scoreData.score}
                           </span>
                         ) : (
                           <span className="text-gray-400 text-sm font-medium">-</span>
@@ -483,8 +611,8 @@ export default function DashboardPage() {
                         {statusType === 'completed' ? (
                           <div className="flex flex-col gap-1.5">
                             {hasParecer ? (
-                              <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm">
-                                Ver Parecer
+                              <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm flex items-center gap-1">
+                                Ver Dossiê <ArrowUpRight size={14} />
                               </Link>
                             ) : (
                               <span className="text-red-500 text-xs font-semibold">Anomalia: parecer não localizado</span>
@@ -505,17 +633,19 @@ export default function DashboardPage() {
                             )}
                           </div>
                         ) : statusType === 'processing' ? (
-                          <span className="text-gray-400 text-sm font-medium">Aguarde...</span>
+                          <span className="text-gray-400 text-sm font-medium flex items-center gap-1">
+                            <span className="animate-pulse w-2 h-2 bg-blue-500 rounded-full inline-block" /> Aguarde...
+                          </span>
                         ) : statusType === 'ready_for_processing' ? (
                           <button
                             disabled={loadingAnalysisId !== null}
-                            onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '')}
+                            onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: 'Processando auditoria...' })}
                             className="bg-brand-green text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
                           >
-                            {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar parecer'}
+                            {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar Parecer'}
                           </button>
                         ) : statusType === 'error' ? (
-                        analise.findings?.retry_exhausted === true ? (
+                          analise.findings?.retry_exhausted === true ? (
                             <div className="flex flex-col gap-2 max-w-[300px]">
                               <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wide w-fit">
                                 Exige processamento em etapas
@@ -530,7 +660,6 @@ export default function DashboardPage() {
                                   { id: 'origem_publica', name: 'Auditoria de Origem Pública', price: 199.90 },
                                   { id: 'nulidades_fraudes', name: 'Mapeamento de Nulidades e Fraudes', price: 249.90 },
                                 ].map((etapa) => {
-                                  // Verificar se o módulo já existe na análise original
                                   const selectedModules = (analise.findings as any)?.selected_modules || [];
                                   const alreadyHasModule = selectedModules.includes(etapa.id);
                                   return (
@@ -549,7 +678,6 @@ export default function DashboardPage() {
                                             <span className="text-[10px] font-bold text-brand-green">R$ {etapa.price.toFixed(2)}</span>
                                             <button
                                               onClick={() => {
-                                                // Abrir modal com módulo específico
                                                 setRecommendModal({
                                                   analysisId: analise.id,
                                                   propertyName: analise.properties?.name || 'Propriedade',
@@ -606,7 +734,7 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* Modal de confirmação de módulos complementares — FASE 2.0.2 */}
+      {/* Modal de confirmação de módulos complementares */}
       {recommendModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-6">

@@ -98,3 +98,106 @@ export function normalizeStatus(rawStatus: string): NormalizedStatus {
 
   return { text: 'Pendente', colorClass: 'bg-gray-100 text-gray-700', type: 'pending' };
 }
+
+/**
+ * Score AgroLex — Índice de Segurança Fundiária
+ */
+export type ScoreFaixa = 'critico' | 'atencao' | 'seguro';
+
+export interface ScoreAgroLexData {
+  score: number;
+  faixa: ScoreFaixa;
+  label: string;
+  cor: string;
+  bgCor: string;
+  acaoSugerida: string;
+}
+
+export function calcularScoreAgroLex(findings?: AnalysisFindings | null, riskLevel?: string | null): ScoreAgroLexData {
+  // Regra simples baseada em riscos existentes
+  let score = 70; // base neutra
+
+  if (!findings) {
+    return {
+      score,
+      faixa: 'seguro',
+      label: 'Seguro',
+      cor: '#059669',
+      bgCor: 'bg-emerald-500',
+      acaoSugerida: 'Propriedade dentro dos padrões fundiários',
+    };
+  }
+
+  const problemas = findings.problemas || [];
+  const docsFaltantes = findings.documentosFaltantes || [];
+  const recomendacoes = findings.recomendacoes || [];
+  const checklist = (findings as any)?.checklist || [];
+
+  // Penalidades
+  const criticos = problemas.filter(p => {
+    const c = (p.criticidade || '').toLowerCase();
+    return c.includes('critico') || c.includes('crítico');
+  }).length;
+  const altos = problemas.filter(p => {
+    const c = (p.criticidade || '').toLowerCase();
+    return c.includes('alto') && !c.includes('critico') && !c.includes('crítico');
+  }).length;
+  const medios = problemas.filter(p => {
+    const c = (p.criticidade || '').toLowerCase();
+    return c.includes('medio') || c.includes('médio');
+  }).length;
+
+  // Checklist reprovado/violado
+  const reprovados = checklist.filter((i: any) => 
+    (i.status || '').toLowerCase().includes('reprovado') || (i.status || '').toLowerCase().includes('violado')
+  ).length;
+
+  score -= criticos * 12;
+  score -= altos * 6;
+  score -= medios * 3;
+  score -= docsFaltantes.length * 2;
+  score -= reprovados * 5;
+
+  // Bônus por recomendações (indica completude)
+  score += Math.min(recomendacoes.length, 5) * 2;
+
+  // Risk level do banco
+  if (riskLevel) {
+    const rl = riskLevel.toLowerCase();
+    if (rl === 'alto') score -= 10;
+    else if (rl === 'medio' || rl === 'médio') score -= 5;
+    else if (rl === 'baixo') score += 5;
+  }
+
+  // Clamp 0-100
+  score = Math.max(0, Math.min(100, score));
+
+  if (score < 40) {
+    return {
+      score,
+      faixa: 'critico',
+      label: 'Crítico',
+      cor: '#DC2626',
+      bgCor: 'bg-red-500',
+      acaoSugerida: 'Requer auditoria complementar urgente',
+    };
+  }
+  if (score < 70) {
+    return {
+      score,
+      faixa: 'atencao',
+      label: 'Atenção',
+      cor: '#F59E0B',
+      bgCor: 'bg-amber-500',
+      acaoSugerida: 'Recomenda-se monitoramento contínuo',
+    };
+  }
+  return {
+    score,
+    faixa: 'seguro',
+    label: 'Seguro',
+    cor: '#059669',
+    bgCor: 'bg-emerald-500',
+    acaoSugerida: 'Propriedade dentro dos padrões fundiários',
+  };
+}

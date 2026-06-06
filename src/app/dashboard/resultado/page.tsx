@@ -2,9 +2,11 @@
 import { useEffect, useState, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { ShieldCheck, ArrowLeft, AlertTriangle, FileCheck, Info, CheckCircle2, Loader2, Clock } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, AlertTriangle, FileCheck, Info, CheckCircle2, Loader2, Clock, ArrowUpRight, FileText, MapPin, Scale, Landmark, ChevronRight, TrendingUp, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Analysis, AnalysisFindings, ReportProblem, TimelineEvent, ChecklistItem } from '@/types/analise';
+import { calcularScoreAgroLex } from '@/types/analise';
+import ScoreAgroLex from '@/components/ScoreAgroLex';
 import DOMPurify from 'dompurify';
 
 const POLLING_MAX_RETRIES = 30;
@@ -25,6 +27,18 @@ function parseMarkdown(md: string) {
     .replace(/\n5\. (.*?)/g, '<br/><span class="text-brand-gold font-bold mr-2">5.</span> $1')
     .replace(/\n\n/g, '<br/><br/>')
     .replace(/---/g, '<hr class="my-6 border-gray-300"/>');
+}
+
+function matrizRiscoGrid() {
+  const cells: Array<{ row: number; col: number; risco: string }> = [];
+  const niveis = ['baixo', 'baixo', 'medio', 'alto', 'critico'];
+  for (let row = 0; row < 5; row++) {
+    for (let col = 0; col < 5; col++) {
+      const idx = Math.min(row + col, 4);
+      cells.push({ row, col, risco: niveis[idx] });
+    }
+  }
+  return cells;
 }
 
 function ResultadoContent() {
@@ -107,10 +121,10 @@ function ResultadoContent() {
           <div className="w-20 h-20 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <AlertTriangle size={40} />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Parecer não encontrado</h2>
-          <p className="text-gray-600 mb-6">A análise solicitada não foi localizada em nossa base de dados.</p>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Dossiê não encontrado</h2>
+          <p className="text-gray-600 mb-6">O dossiê técnico solicitado não foi localizado em nossa base de dados.</p>
           <Link href="/dashboard" className="inline-block bg-brand-green text-white px-6 py-2.5 rounded-lg font-bold hover:brightness-110 transition-all">
-            Voltar ao Painel
+            Retornar ao Centro de Inteligência
           </Link>
         </div>
       </div>
@@ -129,12 +143,12 @@ function ResultadoContent() {
           <div className="w-20 h-20 bg-brand-green text-white rounded-full flex items-center justify-center mx-auto mb-6">
             <Loader2 size={40} className="animate-spin" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Análise em processamento</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Auditoria em processamento</h2>
           <p className="text-gray-600 mb-6">
-            O sistema está auditando as páginas e extraindo os dados. Aguarde...
+            O sistema está auditando as páginas e extraindo os dados. Em instantes o dossiê técnico será disponibilizado.
           </p>
           <Link href="/dashboard" className="text-sm font-semibold text-brand-green hover:underline">
-            Voltar ao painel e aguardar
+            Retornar ao Centro de Inteligência
           </Link>
         </div>
       </div>
@@ -148,10 +162,10 @@ function ResultadoContent() {
           <div className="w-20 h-20 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
             <AlertTriangle size={40} />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Parecer técnico indisponível</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Dossiê técnico indisponível</h2>
           <p className="text-gray-600 mb-6">Ocorreu um erro no processamento deste documento. Por favor, reenvie o arquivo.</p>
           <Link href="/dashboard" className="inline-block bg-brand-green text-white px-6 py-2.5 rounded-lg font-bold hover:brightness-110 transition-all">
-            Voltar ao Painel
+            Retornar ao Centro de Inteligência
           </Link>
         </div>
       </div>
@@ -171,31 +185,45 @@ function ResultadoContent() {
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Anomalia: parecer não localizado</h2>
           <p className="text-gray-600 mb-6">O processamento consta como concluído, mas o parecer descritivo não pôde ser localizado.</p>
           <Link href="/dashboard" className="inline-block bg-brand-green text-white px-6 py-2.5 rounded-lg font-bold hover:brightness-110 transition-all">
-            Voltar ao Painel
+            Retornar ao Centro de Inteligência
           </Link>
         </div>
       </div>
     );
   }
 
-  const propName = analise.properties?.name;
-  const propLocation = `${analise.properties?.city}, ${analise.properties?.state}`;
+  const propName = analise.properties?.name || 'Propriedade';
+  const propLocation = `${analise.properties?.city || ''}, ${analise.properties?.state || ''}`;
   const risco = analise.risk_level || "Pendente";
   
   let finalResumo = findings!.isHtmlResumo ? findings!.resumo : parseMarkdown(findings!.resumo);
   const sanitizedResumo = DOMPurify.sanitize(finalResumo);
 
+  const scoreData = calcularScoreAgroLex(findings, analise.risk_level);
+
   const getRiscoStyle = (r: string) => {
     const rLower = r?.toLowerCase();
-    if (rLower === 'alto') return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600', labelText: 'text-red-800' };
+    if (rLower === 'alto' || rLower === 'critico') return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600', labelText: 'text-red-800' };
     if (rLower === 'medio' || rLower === 'médio') return { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-600', labelText: 'text-yellow-800' };
     return { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600', labelText: 'text-green-800' };
   };
   const styles = getRiscoStyle(risco);
 
+  // Contagem de achados por criticidade
+  const problemas = (Array.isArray(findings!.problemas) ? findings!.problemas : []) as ReportProblem[];
+  const achadosCriticos = problemas.filter(p => String(p.criticidade || '').toLowerCase().includes('critico')).length;
+  const achadosAltos = problemas.filter(p => {
+    const c = String(p.criticidade || '').toLowerCase();
+    return c.includes('alto') && !c.includes('critico');
+  }).length;
+  const achadosMedios = problemas.filter(p => {
+    const c = String(p.criticidade || '').toLowerCase();
+    return c.includes('medio') || c.includes('médio');
+  }).length;
+
   return (
     <div className="min-h-screen bg-gray-50 print:bg-white">
-      {/* Esconder a barra de navegação na impressão */}
+      {/* Navbar */}
       <nav className="bg-brand-green text-white shadow-md print:hidden">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
@@ -212,134 +240,219 @@ function ResultadoContent() {
           <span className="text-3xl font-bold text-gray-900">AgroLex</span>
         </div>
         <div className="text-right text-gray-500 text-sm">
-          <p>Laudo Pericial Oficial - IA</p>
+          <p>Dossiê Técnico de Auditoria Fundiária</p>
+          <p>Ref: ALX-{analise.id?.slice(0, 8).toUpperCase() || '00000000'}</p>
           <p>Emitido em: {new Date().toLocaleDateString('pt-BR')}</p>
         </div>
       </div>
 
       <main className="container mx-auto px-4 py-8 max-w-4xl print:py-0">
-        <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-brand-green mb-6 transition-colors w-fit font-medium print:hidden">
-          <ArrowLeft size={20} /> Voltar ao painel
-        </Link>
+        <div className="flex items-center justify-between mb-6 print:hidden">
+          <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-brand-green transition-colors w-fit font-medium print:hidden">
+            <ArrowLeft size={20} /> Centro de Inteligência
+          </Link>
+          <div className="flex gap-3">
+            <button onClick={handleExportPDF} className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-colors text-sm flex items-center gap-2">
+              <FileText size={16} /> Exportar PDF
+            </button>
+          </div>
+        </div>
 
-        {/* Card Unificado do Relatório */}
+        {/* Card Principal do Dossiê */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden print:shadow-none print:border print:rounded-none">
           
-          {/* Cabeçalho */}
-          <div className="p-8 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:border-b">
+          {/* HEADER PROFISSIONAL */}
+          <div className="p-8 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:border-b bg-gradient-to-r from-gray-50 to-white">
             <div>
               <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-3xl font-extrabold text-gray-800">Auditoria Forense IA</h1>
-                <span className="px-4 py-1.5 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm print:shadow-none">Concluído</span>
+                <h1 className="text-2xl md:text-3xl font-extrabold text-gray-800">Dossiê Técnico de Auditoria Fundiária</h1>
+                <span className="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-sm print:shadow-none flex items-center gap-1">
+                  <CheckCircle2 size={12} /> Parecer Final
+                </span>
               </div>
-              <p className="text-gray-500 font-medium text-lg">{propName} • {propLocation}</p>
+              <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
+                <span className="flex items-center gap-1"><MapPin size={14} className="text-brand-gold" /> {propName} • {propLocation}</span>
+                <span className="flex items-center gap-1"><Clock size={14} className="text-brand-gold" /> {new Date().toLocaleDateString('pt-BR')}</span>
+                <span className="flex items-center gap-1"><ShieldCheck size={14} className="text-brand-gold" /> ALX-{analise.id?.slice(0, 8).toUpperCase() || '00000000'}</span>
+              </div>
             </div>
-            <div className={`text-center ${styles.bg} p-5 rounded-xl border ${styles.border} shadow-sm print:shadow-none print:border`}>
-              <p className={`text-xs font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
+            <div className={`text-center ${styles.bg} p-4 rounded-xl border ${styles.border} shadow-sm print:shadow-none print:border min-w-[130px]`}>
+              <p className={`text-[10px] font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
               <div className={`flex items-center gap-2 ${styles.text} justify-center`}>
-                <AlertTriangle size={28} />
-                <span className="text-3xl font-black">{risco?.toUpperCase()}</span>
+                <AlertTriangle size={22} />
+                <span className="text-2xl font-black">{risco?.toUpperCase()}</span>
               </div>
             </div>
           </div>
 
-          {/* Corpo do Relatório */}
+          {/* CORPO DO DOSSIÊ */}
           <div className="p-8 space-y-10 print:p-4 report-text">
-          
-          {/* Resumo */}
-          <section>
-            <h2 className="text-2xl font-bold text-brand-dark mb-4 border-b-2 border-gray-100 pb-3 flex items-center gap-2">
-              <Info className="text-brand-gold" size={28} /> Parecer Executivo
-            </h2>
-            {findings!.isHtmlResumo ? (
-              <div 
-                className="text-gray-700 leading-relaxed bg-gray-50 p-6 rounded-xl border border-gray-200 text-lg print:bg-white text-justify"
-                dangerouslySetInnerHTML={{ __html: sanitizedResumo }} 
-              />
-            ) : (
-              <p className="text-gray-700 leading-relaxed bg-gray-50 p-6 rounded-xl border border-gray-200 text-lg print:bg-white whitespace-pre-line text-justify hyphens-auto">
-                {findings!.resumo}
-              </p>
-            )}
-          </section>
 
-          {/* LINHA DO TEMPO (Renderizada apenas se existir) */}
-          {findings!.linhaDoTempo && findings!.linhaDoTempo.length > 0 && (
-            <section className="print:break-inside-avoid border-b-2 border-gray-100 pb-10">
-              <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
-                <Clock className="text-brand-gold" size={28} /> Linha do Tempo Registral
-              </h2>
-              <div className="relative border-l-2 border-brand-green/30 ml-3 md:ml-6 space-y-8">
-                {findings!.linhaDoTempo.map((item: TimelineEvent, i: number) => (
-                  <div key={i} className="relative pl-8 md:pl-10">
-                    <div className="absolute -left-[9px] top-1 bg-white border-4 border-brand-green w-4 h-4 rounded-full"></div>
-                    <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow print:bg-white print:shadow-none print:border-b">
-                      <span className="inline-block px-3 py-1 bg-brand-gold text-brand-green font-black text-sm rounded-md mb-2 shadow-sm print:border">{item.data}</span>
-                      <h3 className="text-lg font-bold text-gray-800 mb-1">{item.evento}</h3>
-                      <p className="text-gray-600 leading-relaxed">{item.detalhe}</p>
-                    </div>
-                  </div>
-                ))}
+            {/* 1. SCORE AGROLEX + RESUMO EXECUTIVO */}
+            <section className="print:break-inside-avoid">
+              <div className="grid md:grid-cols-5 gap-8 items-start mb-8">
+                <div className="md:col-span-2 flex justify-center">
+                  <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} size="lg" />
+                </div>
+                <div className="md:col-span-3">
+                  <h2 className="text-2xl font-bold text-brand-dark mb-4 border-b-2 border-gray-100 pb-3 flex items-center gap-2">
+                    <FileText className="text-brand-gold" size={24} /> Resumo Executivo
+                  </h2>
+                  {findings!.isHtmlResumo ? (
+                    <div 
+                      className="text-gray-700 leading-relaxed text-base print:bg-white text-justify"
+                      dangerouslySetInnerHTML={{ __html: sanitizedResumo }} 
+                    />
+                  ) : (
+                    <p className="text-gray-700 leading-relaxed text-base print:bg-white whitespace-pre-line text-justify hyphens-auto">
+                      {findings!.resumo}
+                    </p>
+                  )}
+                </div>
               </div>
             </section>
-          )}
 
-          <div className="grid md:grid-cols-2 gap-8 print:block print:space-y-8">
-            <section className="print:break-inside-avoid">
-              <h2 className="text-xl font-bold text-brand-dark mb-4 border-b-2 border-gray-100 pb-3 flex items-center gap-2">
-                <AlertTriangle className="text-red-500" size={24} /> Problemas / Divergências
+            {/* 2. ACHADOS CRÍTICOS — Indicadores */}
+            <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+              <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+                <AlertTriangle className="text-red-500" size={24} /> Achados Críticos
               </h2>
+              
+              {/* Cards de resumo de criticidade */}
+              <div className="grid grid-cols-4 gap-4 mb-8">
+                <div className="bg-red-50 rounded-xl p-4 border border-red-200 text-center">
+                  <p className="text-3xl font-black text-red-600">{achadosCriticos}</p>
+                  <p className="text-[11px] font-bold text-red-700 uppercase tracking-wider mt-1">Crítico</p>
+                </div>
+                <div className="bg-orange-50 rounded-xl p-4 border border-orange-200 text-center">
+                  <p className="text-3xl font-black text-orange-600">{achadosAltos}</p>
+                  <p className="text-[11px] font-bold text-orange-700 uppercase tracking-wider mt-1">Alto</p>
+                </div>
+                <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 text-center">
+                  <p className="text-3xl font-black text-yellow-600">{achadosMedios}</p>
+                  <p className="text-[11px] font-bold text-yellow-700 uppercase tracking-wider mt-1">Médio</p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4 border border-green-200 text-center">
+                  <p className="text-3xl font-black text-green-600">{problemas.length}</p>
+                  <p className="text-[11px] font-bold text-green-700 uppercase tracking-wider mt-1">Total</p>
+                </div>
+              </div>
+
+              {/* Matriz de Risco Visual */}
+              <div className="grid md:grid-cols-2 gap-8 mb-8">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider">Matriz de Risco</h3>
+                  <div className="matriz-risco">
+                    {matrizRiscoGrid().map((cell, i) => (
+                      <div key={i} className={`matriz-risco-cell risco-${cell.risco}`} title={`${cell.risco.charAt(0).toUpperCase() + cell.risco.slice(1)} — Probabilidade ${cell.col + 1}, Impacto ${cell.row + 1}`} />
+                    ))}
+                  </div>
+                  <div className="flex gap-4 mt-3 text-[10px] text-gray-500 font-medium">
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-200 inline-block" /> Baixo</span>
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-yellow-200 inline-block" /> Médio</span>
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-200 inline-block" /> Alto</span>
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-300 inline-block" /> Crítico</span>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider">Distribuição por Criticidade</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                        <span>Crítico</span>
+                        <span>{achadosCriticos}</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2">
+                        <div className="bg-red-500 h-2 rounded-full" style={{ width: `${problemas.length > 0 ? (achadosCriticos / problemas.length) * 100 : 0}%` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                        <span>Alto</span>
+                        <span>{achadosAltos}</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2">
+                        <div className="bg-orange-500 h-2 rounded-full" style={{ width: `${problemas.length > 0 ? (achadosAltos / problemas.length) * 100 : 0}%` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs font-medium text-gray-600 mb-1">
+                        <span>Médio</span>
+                        <span>{achadosMedios}</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2">
+                        <div className="bg-yellow-500 h-2 rounded-full" style={{ width: `${problemas.length > 0 ? (achadosMedios / problemas.length) * 100 : 0}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista de Achados */}
               <ul className="space-y-4">
-                {(Array.isArray(findings!.problemas) ? findings!.problemas : []).map((prob: ReportProblem, i: number) => {
-                  // Card executivo para objetos estruturados
+                {problemas.map((prob: ReportProblem, i: number) => {
                   const titulo = prob.titulo || prob.descricao || 'Problema identificado';
                   const descricao = prob.descricao && prob.descricao !== prob.titulo ? prob.descricao : null;
+                  const c = (prob.criticidade || '').toLowerCase();
+
+                  let cardBg = 'bg-green-50 border-green-200';
+                  let badgeBg = 'bg-green-200 text-green-900';
+                  let semaforo = 'bg-green-500';
+                  let Icon = CheckCircle2;
+
+                  if (c.includes('critico')) {
+                    cardBg = 'bg-red-50 border-red-200';
+                    badgeBg = 'bg-red-200 text-red-900';
+                    semaforo = 'bg-red-500';
+                    Icon = AlertTriangle;
+                  } else if (c.includes('alto')) {
+                    cardBg = 'bg-orange-50 border-orange-200';
+                    badgeBg = 'bg-orange-200 text-orange-900';
+                    semaforo = 'bg-orange-500';
+                    Icon = AlertCircle;
+                  } else if (c.includes('medio') || c.includes('médio')) {
+                    cardBg = 'bg-yellow-50 border-yellow-200';
+                    badgeBg = 'bg-yellow-200 text-yellow-900';
+                    semaforo = 'bg-yellow-500';
+                    Icon = AlertCircle;
+                  }
 
                   return (
-                    <li key={i} className="bg-red-50 p-4 rounded-xl border border-red-100 shadow-sm print:shadow-none print:bg-white">
-                      {/* Título */}
+                    <li key={i} className={`${cardBg} p-4 rounded-xl border shadow-sm print:shadow-none print:bg-white`}>
                       <div className="flex items-start gap-3 mb-2">
-                        <div className="mt-0.5 bg-red-200 rounded-full p-1.5 flex-shrink-0"><AlertTriangle size={14} className="text-red-700" /></div>
-                        <span className="text-sm font-bold text-red-900 leading-tight">
-                          {titulo.length > 160 ? titulo.slice(0, 160).trim() + '…' : titulo}
-                        </span>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${badgeBg}`}>
+                          <Icon size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-bold text-gray-900 leading-tight">{titulo}</span>
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${badgeBg}`}>
+                              <span className={`w-1 h-1 rounded-full ${semaforo}`} />
+                              {prob.criticidade}
+                            </span>
+                          </div>
+                          {descricao && (
+                            <p className="text-sm text-gray-600 mt-1">{descricao}</p>
+                          )}
+                        </div>
                       </div>
-
-                      {/* Campos executivos */}
-                      <div className="ml-8 space-y-1">
-                        {descricao && (
-                          <div>
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">Risco</span>
-                            <span className="text-sm text-gray-800">{descricao.length > 280 ? descricao.slice(0, 280).trim() + '…' : descricao}</span>
-                          </div>
-                        )}
-                        {prob.criticidade && (
-                          <div className="mt-1.5">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">Criticidade</span>
-                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
-                              String(prob.criticidade).toLowerCase().includes('critico') ? 'bg-red-200 text-red-900' :
-                              String(prob.criticidade).toLowerCase().includes('alto') ? 'bg-orange-200 text-orange-900' :
-                              String(prob.criticidade).toLowerCase().includes('medio') ? 'bg-yellow-200 text-yellow-900' :
-                              'bg-green-200 text-green-900'
-                            }`}>{prob.criticidade}</span>
-                          </div>
-                        )}
+                      <div className="ml-9 space-y-1.5">
                         {prob.baseDocumental && (
-                          <div className="mt-1.5">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">Base documental</span>
-                            <span className="text-sm text-gray-800">{prob.baseDocumental.length > 260 ? prob.baseDocumental.slice(0, 260).trim() + '…' : prob.baseDocumental}</span>
+                          <div className="flex items-start gap-2 text-xs">
+                            <span className="font-bold text-gray-500 flex-shrink-0">Base:</span>
+                            <span className="text-gray-600">{prob.baseDocumental}</span>
                           </div>
                         )}
                         {prob.documentoNecessario && (
-                          <div className="mt-1.5">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">Documento necessário</span>
-                            <span className="text-sm text-gray-800">{prob.documentoNecessario.length > 260 ? prob.documentoNecessario.slice(0, 260).trim() + '…' : prob.documentoNecessario}</span>
+                          <div className="flex items-start gap-2 text-xs">
+                            <span className="font-bold text-gray-500 flex-shrink-0">Documento:</span>
+                            <span className="text-gray-600">{prob.documentoNecessario}</span>
                           </div>
                         )}
                         {prob.recomendacao && (
-                          <div className="mt-1.5">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">Recomendação</span>
-                            <span className="text-sm text-gray-800">{prob.recomendacao.length > 280 ? prob.recomendacao.slice(0, 280).trim() + '…' : prob.recomendacao}</span>
+                          <div className="flex items-start gap-2 text-xs">
+                            <span className="font-bold text-gray-500 flex-shrink-0">Recomendação:</span>
+                            <span className="text-gray-600">{prob.recomendacao}</span>
                           </div>
                         )}
                       </div>
@@ -349,191 +462,227 @@ function ResultadoContent() {
               </ul>
             </section>
 
-            <section className="print:break-inside-avoid print:mt-8">
-              <h2 className="text-xl font-bold text-brand-dark mb-4 border-b-2 border-gray-100 pb-3 flex items-center gap-2">
-                <FileCheck className="text-orange-500" size={24} /> Documentos Faltantes
+            {/* 3. TIMELINE */}
+            {findings!.linhaDoTempo && findings!.linhaDoTempo.length > 0 && (
+              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+                <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+                  <Clock className="text-brand-gold" size={24} /> Timeline Registral
+                </h2>
+                <div className="timeline-premium">
+                  {findings!.linhaDoTempo.map((item: TimelineEvent, i: number) => (
+                    <div key={i} className="timeline-premium-item">
+                      <div className="timeline-premium-dot"></div>
+                      <div className="timeline-premium-content">
+                        <span className="inline-block px-2.5 py-1 bg-brand-gold text-brand-green font-black text-xs rounded-md mb-2 shadow-sm">{item.data}</span>
+                        <h3 className="text-base font-bold text-gray-800 mb-1">{item.evento}</h3>
+                        <p className="text-gray-600 text-sm leading-relaxed">{item.detalhe}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* 4. RECOMENDAÇÕES TÉCNICAS */}
+            <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+              <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
+                <CheckCircle2 className="text-brand-green" size={24} /> Recomendações Técnicas
               </h2>
-              <ul className="space-y-4">
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-200 shadow-sm print:shadow-none print:bg-white print:border">
+                <ul className="space-y-4">
+                  {findings!.recomendacoes?.map((rec: string, i: number) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-green-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <CheckCircle2 size={14} className="text-green-700" />
+                      </div>
+                      <span className="text-gray-800 font-medium">{rec}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+
+            {/* 5. DOCUMENTOS FALTANTES */}
+            <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+              <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
+                <FileText className="text-orange-500" size={24} /> Documentos Necessários
+              </h2>
+              <ul className="space-y-3">
                 {findings!.documentosFaltantes?.map((doc: string, i: number) => (
                   <li key={i} className="flex items-center gap-4 bg-orange-50 p-4 rounded-xl border border-orange-100 shadow-sm print:shadow-none print:bg-white">
-                    <div className="bg-orange-200 p-1.5 rounded-full"><Info size={16} className="text-orange-700" /></div>
+                    <div className="w-8 h-8 bg-orange-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <FileText size={16} className="text-orange-700" />
+                    </div>
                     <span className="text-orange-900 font-medium">{doc}</span>
                   </li>
                 ))}
                 {(!findings!.documentosFaltantes || findings!.documentosFaltantes.length === 0) && (
-                   <li className="text-gray-500 italic p-4">Nenhum documento listado.</li>
+                   <li className="text-gray-500 italic p-4">Nenhum documento pendente identificado.</li>
                 )}
               </ul>
             </section>
-          </div>
 
-          <section className="print:break-inside-avoid">
-            <h2 className="text-2xl font-bold text-brand-dark mb-4 border-b-2 border-gray-100 pb-3 flex items-center gap-2">
-              <CheckCircle2 className="text-brand-green" size={28} /> Recomendações Técnicas
-            </h2>
-            <div className="bg-green-50 p-8 rounded-2xl border border-green-200 shadow-sm print:shadow-none print:bg-white print:border">
-              <ul className="space-y-4 text-green-900 font-medium text-lg">
-                {findings!.recomendacoes?.map((rec: string, i: number) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <CheckCircle2 className="mt-1 flex-shrink-0 text-green-600" size={20} />
-                    <span>{rec}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
+            {/* 6. CHECKLIST DA CADEIA DOMINIAL */}
+            {(findings as any)?.checklist && (findings as any).checklist.length > 0 && (
+              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+                <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+                  <Scale className="text-brand-gold" size={24} /> Auditoria da Cadeia Dominial
+                </h2>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {((findings as any)?.checklist || []).map((item: ChecklistItem, i: number) => {
+                    const isReprovado = item.status?.toLowerCase().includes('reprovado') || item.status?.toLowerCase().includes('violado');
+                    const isAlerta = item.status?.toLowerCase().includes('alerta');
+                    
+                    let badgeColors = "bg-green-100 text-green-800 border-green-200";
+                    let Icon = CheckCircle2;
+                    let semaforo = 'bg-green-500';
+                    
+                    if (isReprovado) {
+                      badgeColors = "bg-red-100 text-red-800 border-red-200";
+                      Icon = AlertTriangle;
+                      semaforo = 'bg-red-500';
+                    } else if (isAlerta) {
+                      badgeColors = "bg-yellow-100 text-yellow-800 border-yellow-200";
+                      Icon = AlertTriangle;
+                      semaforo = 'bg-yellow-500';
+                    }
 
-          {/* FASE 3 — Histórico do Caso (análises complementares vinculadas) */}
-          {(findings as any)?.parent_findings_summary || (findings as any)?.complementary_children ? (
-            <section className="print:break-inside-avoid border-b-2 border-gray-100 pb-10">
-              <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
-                <ShieldCheck className="text-brand-gold" size={28} /> Histórico do Caso
-              </h2>
-
-              {/* Se esta análise é filha de outra (parent_findings_summary) */}
-              {(findings as any)?.parent_findings_summary && (
-                <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 mb-4">
-                  <p className="text-sm font-bold text-gray-700 mb-1">Análise Principal</p>
-                  <p className="text-sm text-gray-600">
-                    {(findings as any)?.parent_findings_summary?.original_modules?.length > 0
-                      ? `Módulos: ${(findings as any).parent_findings_summary.original_modules.join(', ')}`
-                      : 'Análise original'}
-                    {(findings as any)?.parent_findings_summary?.completed_at && (
-                      <> — Concluída em {new Date((findings as any).parent_findings_summary.completed_at).toLocaleDateString('pt-BR')}</>
-                    )}
-                    {(findings as any)?.parent_findings_summary?.risk_level && (
-                      <> — Risco: <strong>{(findings as any).parent_findings_summary.risk_level}</strong></>
-                    )}
-                  </p>
-                  <span className="mt-2 inline-block px-2 py-0.5 bg-brand-green/10 text-brand-green text-[10px] font-bold uppercase rounded">
-                    Análise principal
-                  </span>
-                </div>
-              )}
-
-              {/* Se esta análise gerou análises complementares */}
-              {(findings as any)?.complementary_children && Array.isArray((findings as any).complementary_children) && (findings as any).complementary_children.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-bold text-gray-700 mb-1">Análises Complementares</p>
-                  {(findings as any).complementary_children.map((child: any, idx: number) => (
-                    <div key={idx} className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-gray-800">
-                          Análise complementar {idx + 1}
-                        </span>
-                        <span className="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
-                          Complementar {idx + 1}
-                        </span>
+                    return (
+                      <div key={i} className={`p-4 rounded-xl border shadow-sm flex flex-col ${isReprovado ? 'bg-red-50' : isAlerta ? 'bg-yellow-50' : 'bg-white'}`}>
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="font-bold text-gray-800 text-sm">{item.quesito}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold border flex items-center gap-1 ${badgeColors}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${semaforo}`} />
+                            {item.status?.toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-gray-600 text-sm mt-auto">{item.justificativa}</p>
                       </div>
-                      {child.modules?.length > 0 && (
-                        <p className="text-xs text-gray-600 mt-1">
-                          Módulos: {child.modules.join(', ')}
-                        </p>
-                      )}
-                      {child.created_at && (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          Criada em: {new Date(child.created_at).toLocaleDateString('pt-BR')}
-                        </p>
-                      )}
-                      {child.total != null && (
-                        <p className="text-xs text-gray-600 mt-0.5">
-                          Valor: R$ {child.total.toFixed(2)}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-              )}
+              </section>
+            )}
 
-              {/* Se esta análise tem analysis_depth > 1 (é ela mesma complementar) */}
-              {(findings as any)?.analysis_depth > 1 && !(findings as any)?.parent_findings_summary && (
-                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
-                  <p className="text-sm text-gray-700">
-                    Esta é uma <strong>análise complementar</strong> (profundidade {(findings as any).analysis_depth}).
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Os módulos desta análise complementam a avaliação original, aprofundando pontos específicos.
-                  </p>
+            {/* 7. PEÇA JURÍDICA */}
+            {findings!.pecaJuridica && (
+              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+                <div className="bg-gray-900 text-white p-8 rounded-2xl shadow-xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 bg-brand-gold text-brand-green text-xs font-black px-4 py-2 rounded-bl-xl shadow-lg">PREMIUM</div>
+                  <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                    <Scale className="text-brand-gold" size={24} /> Peça Jurídica
+                  </h2>
+                  <p className="text-gray-300 mb-6">A Inteligência Artificial preparou uma minuta/parecer completo baseado nos apontamentos forenses desta auditoria.</p>
+                  
+                  <div className="bg-white text-gray-900 p-6 rounded-xl max-h-64 overflow-y-auto mb-6 shadow-inner text-sm font-serif">
+                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(findings!.pecaJuridica) }} />
+                  </div>
+                  
+                  <button onClick={() => {
+                    const blob = new Blob(['\ufeff', findings!.pecaJuridica || ''], { type: 'application/msword' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Peca_Juridica_${propName?.replace(/\s+/g, '_')}.doc`;
+                    a.click();
+                  }} className="w-full sm:w-auto px-8 py-4 bg-brand-gold text-brand-green rounded-xl font-bold hover:brightness-110 shadow-lg transition-all flex items-center justify-center gap-2 text-lg">
+                    Baixar Documento Word (.doc)
+                  </button>
                 </div>
-              )}
-            </section>
-          ) : null}
+              </section>
+            )}
 
-          {/* CHECKLIST DA CADEIA DOMINIAL (CAMADA 3) */}
-          {(findings as any)?.checklist && (findings as any).checklist.length > 0 && (
-            <section className="print:break-inside-avoid pt-4">
-              <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
-                <ShieldCheck className="text-brand-gold" size={28} /> Auditoria da Cadeia Dominial & Princípios Registrais
+            {/* 8. HISTÓRICO DO CASO */}
+            {(findings as any)?.parent_findings_summary || (findings as any)?.complementary_children ? (
+              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+                <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
+                  <ShieldCheck className="text-brand-gold" size={24} /> Histórico do Caso
+                </h2>
+
+                {(findings as any)?.parent_findings_summary && (
+                  <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 mb-4">
+                    <p className="text-sm font-bold text-gray-700 mb-1">Análise Principal</p>
+                    <p className="text-sm text-gray-600">
+                      {(findings as any)?.parent_findings_summary?.original_modules?.length > 0
+                        ? `Módulos: ${(findings as any).parent_findings_summary.original_modules.join(', ')}`
+                        : 'Análise original'}
+                    </p>
+                    <span className="mt-2 inline-block px-2 py-0.5 bg-brand-green/10 text-brand-green text-[10px] font-bold uppercase rounded">
+                      Análise principal
+                    </span>
+                  </div>
+                )}
+
+                {(findings as any)?.complementary_children && Array.isArray((findings as any).complementary_children) && (findings as any).complementary_children.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-bold text-gray-700 mb-1">Análises Complementares</p>
+                    {(findings as any).complementary_children.map((child: any, idx: number) => (
+                      <div key={idx} className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-800">
+                            Análise complementar {idx + 1}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                            Complementar {idx + 1}
+                          </span>
+                        </div>
+                        {child.modules?.length > 0 && (
+                          <p className="text-xs text-gray-600 mt-1">Módulos: {child.modules.join(', ')}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {(findings as any)?.analysis_depth > 1 && !(findings as any)?.parent_findings_summary && (
+                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                    <p className="text-sm text-gray-700">
+                      Esta é uma <strong>análise complementar</strong> (profundidade {(findings as any).analysis_depth}).
+                    </p>
+                  </div>
+                )}
+              </section>
+            ) : null}
+
+            {/* 9. RODAPÉ / PRÓXIMOS PASSOS */}
+            <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+              <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
+                <TrendingUp className="text-brand-gold" size={24} /> Próximos Passos
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
-                {((findings as any)?.checklist || []).map((item: ChecklistItem, i: number) => {
-                  const isReprovado = item.status?.toLowerCase().includes('reprovado') || item.status?.toLowerCase().includes('violado');
-                  const isAlerta = item.status?.toLowerCase().includes('alerta');
-                  
-                  let badgeColors = "bg-green-100 text-green-800 border-green-200";
-                  let Icon = CheckCircle2;
-                  
-                  if (isReprovado) {
-                    badgeColors = "bg-red-100 text-red-800 border-red-200";
-                    Icon = AlertTriangle;
-                  } else if (isAlerta) {
-                    badgeColors = "bg-yellow-100 text-yellow-800 border-yellow-200";
-                    Icon = AlertTriangle;
-                  }
-
-                  return (
-                    <div key={i} className={`p-4 rounded-xl border shadow-sm flex flex-col ${isReprovado ? 'bg-red-50' : isAlerta ? 'bg-yellow-50' : 'bg-white'}`}>
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="font-bold text-gray-800 text-sm">{item.quesito}</span>
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold border flex items-center gap-1 ${badgeColors}`}>
-                          <Icon size={12} /> {item.status?.toUpperCase()}
-                        </span>
-                      </div>
-                      <p className="text-gray-600 text-sm mt-auto">{item.justificativa}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {/* PEÇA JURÍDICA (CAMADA 4) */}
-          {findings!.pecaJuridica && (
-            <section className="print:break-inside-avoid pt-4">
-              <div className="bg-gray-900 text-white p-8 rounded-2xl shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 bg-brand-gold text-brand-green text-xs font-black px-4 py-2 rounded-bl-xl shadow-lg">PREMIUM</div>
-                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                  <FileCheck className="text-brand-gold" size={28} /> Solução Jurídica Gerada
-                </h2>
-                <p className="text-gray-300 mb-6">A Inteligência Artificial preparou uma minuta/parecer completo baseado nos apontamentos forenses desta auditoria. O documento está formatado e pronto para uso.</p>
-                
-                <div className="bg-white text-gray-900 p-6 rounded-xl max-h-64 overflow-y-auto mb-6 shadow-inner text-sm font-serif">
-                  <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(findings!.pecaJuridica) }} />
-                </div>
-                
-                <button onClick={() => {
-                  const blob = new Blob(['\ufeff', findings!.pecaJuridica || ''], { type: 'application/msword' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `Peca_Juridica_${propName?.replace(/\s+/g, '_')}.doc`;
-                  a.click();
-                }} className="w-full sm:w-auto px-8 py-4 bg-brand-gold text-brand-green rounded-xl font-bold hover:brightness-110 shadow-lg transition-all flex items-center justify-center gap-2 text-lg">
-                  Baixar Documento Word (.doc)
+                <Link
+                  href="/dashboard"
+                  className="flex items-center justify-between p-5 bg-brand-green text-white rounded-xl font-bold hover:brightness-110 transition-all shadow-md group"
+                >
+                  <span>Retornar ao Centro de Inteligência</span>
+                  <ArrowUpRight size={20} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                </Link>
+                <button
+                  onClick={handleExportPDF}
+                  className="flex items-center justify-between p-5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-all shadow-sm group"
+                >
+                  <span>Exportar Dossiê em PDF</span>
+                  <FileText size={20} className="group-hover:scale-110 transition-transform" />
                 </button>
               </div>
             </section>
-          )}
 
-          <div className="mt-8 pt-8 border-t-2 border-gray-100 flex flex-col sm:flex-row justify-end gap-4 print:hidden">
-            <button onClick={handleExportPDF} className="px-8 py-4 border-2 border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-colors">
-              Exportar PDF
-            </button>
-            <Link href="/dashboard" className="px-8 py-4 bg-brand-green text-white rounded-xl font-bold hover:brightness-110 shadow-lg transition-all flex items-center justify-center gap-2">
-              Concluir <ShieldCheck size={20} className="text-brand-gold" />
-            </Link>
           </div>
+
+          {/* RODAPÉ INSTITUCIONAL */}
+          <div className="border-t border-gray-100 bg-gray-50 p-6 print:bg-white print:border-t">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-gray-500">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={16} className="text-brand-gold" />
+                <span className="font-bold text-gray-700">AgroLex Inteligência Fundiária</span>
+              </div>
+              <div className="text-center md:text-right">
+                <p>CNPJ: XX.XXX.XXX/XXXX-XX</p>
+                <p className="mt-0.5">Este documento é confidencial e de uso interno. Protegido por LGPD.</p>
+              </div>
+            </div>
           </div>
+
         </div>
       </main>
     </div>
