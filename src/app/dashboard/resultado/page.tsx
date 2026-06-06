@@ -689,7 +689,7 @@ function ResultadoContent() {
             )}
 
             {/* 4. RECOMENDAÇÕES TÉCNICAS */}
-            <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+            <section className="border-t-2 border-gray-100 pt-8">
               <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
                 <CheckCircle2 className="text-brand-green" size={24} /> Recomendações Técnicas
               </h2>
@@ -708,7 +708,7 @@ function ResultadoContent() {
             </section>
 
             {/* 5. DOCUMENTOS FALTANTES */}
-            <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+            <section className="border-t-2 border-gray-100 pt-8">
               <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
                 <FileText className="text-orange-500" size={24} /> Documentos Necessários
               </h2>
@@ -808,7 +808,7 @@ function ResultadoContent() {
 
             {/* 8. HISTÓRICO DO CASO */}
             {(findings as any)?.parent_findings_summary || (findings as any)?.complementary_children ? (
-              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+              <section className="border-t-2 border-gray-100 pt-8">
                 <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
                   <ShieldCheck className="text-brand-gold" size={24} /> Histórico do Caso
                 </h2>
@@ -859,7 +859,7 @@ function ResultadoContent() {
             ) : null}
 
             {/* 9. RODAPÉ / PRÓXIMOS PASSOS */}
-            <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+            <section className="border-t-2 border-gray-100 pt-8">
               <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
                 <TrendingUp className="text-brand-gold" size={24} /> Próximos Passos
               </h2>

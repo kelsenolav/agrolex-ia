@@ -141,9 +141,9 @@ body {
   }
 
   /* ─── RESPIRO VERTICAL INSTITUCIONAL ───
-     Adiciona 8mm de margin-top em cada section do laudo
+     Adiciona 5mm de margin-top em cada section do laudo
      para que, ao iniciar uma nova página (após page-break),
-     o primeiro conteúdo tenha respiro visual adequado (6mm a 10mm).
+     o primeiro conteúdo tenha respiro visual adequado.
      A capa (cover-page) não é afetada.
      
      NOTA TÉCNICA: em CSS paged media, padding-top não se mantém
@@ -154,18 +154,27 @@ body {
      O space-y-10 do container pai é neutralizado (margin-top: 0)
      para que apenas nosso margin-top controle o espaçamento.    */
   .report-text > section {
-    margin-top: 8mm !important;
+    margin-top: 5mm !important;
     padding-top: 0 !important;
   }
   .report-text > section:first-child {
-    margin-top: 4mm !important;
+    margin-top: 3mm !important;
   }
   .report-text > section > *:first-child {
     margin-top: 0 !important;
   }
   /* Neutraliza o space-y-10 do Tailwind no print */
   .report-text > section + section {
-    margin-top: 8mm !important;
+    margin-top: 5mm !important;
+  }
+
+  /* ─── INTERNAL CONTENT PADDING — Professional document feel ───
+     Adds breathing room inside post-cover pages so content does
+     not appear pressed against the page borders.
+     Only affects .report-text (internal pages), NOT .cover-page.
+     Screen layout is unaffected — this rule is inside @media print. */
+  .report-text {
+    padding: 6mm 6mm !important;
   }
 
   /* Page breaks */
@@ -183,8 +192,8 @@ body {
   .report-section, .compact-print-section {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin-bottom: 8mm !important;
-    padding: 8mm !important;
+    margin-bottom: 5mm !important;
+    padding: 5mm !important;
     box-shadow: none !important;
   }
 
