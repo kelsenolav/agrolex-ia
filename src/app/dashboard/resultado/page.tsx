@@ -192,6 +192,15 @@ function ResultadoContent() {
     );
   }
 
+  // ─── SAFE NORMALIZATIONS ──────────────────────
+  // Blindagem contra dados legados onde o campo existe mas não é array
+  const safeDocuments = Array.isArray(analise.documents) ? analise.documents : [];
+  const safeProblemas = Array.isArray(findings!.problemas) ? findings!.problemas : [];
+  const safeDocumentosFaltantes = Array.isArray(findings!.documentosFaltantes) ? findings!.documentosFaltantes : [];
+  const safeRecomendacoes = Array.isArray(findings!.recomendacoes) ? findings!.recomendacoes : [];
+  const safeLinhaDoTempo = Array.isArray(findings!.linhaDoTempo) ? findings!.linhaDoTempo : [];
+  const safeChecklist = Array.isArray((findings as any)?.checklist) ? (findings as any).checklist : [];
+
   const propName = analise.properties?.name || 'Propriedade';
   const propLocation = `${analise.properties?.city || ''}, ${analise.properties?.state || ''}`;
   const risco = analise.risk_level || "Pendente";
@@ -210,7 +219,7 @@ function ResultadoContent() {
   const styles = getRiscoStyle(risco);
 
   // Contagem de achados por criticidade
-  const problemas = (Array.isArray(findings!.problemas) ? findings!.problemas : []) as ReportProblem[];
+  const problemas = safeProblemas as ReportProblem[];
   const achadosCriticos = problemas.filter(p => String(p.criticidade || '').toLowerCase().includes('critico')).length;
   const achadosAltos = problemas.filter(p => {
     const c = String(p.criticidade || '').toLowerCase();
@@ -222,7 +231,7 @@ function ResultadoContent() {
   }).length;
 
   // ─── CADEIA DOMINIAL VISUAL ──────────────────────
-  const linhaDoTempo = (Array.isArray(findings!.linhaDoTempo) ? findings!.linhaDoTempo : []) as TimelineEvent[];
+  const linhaDoTempo = safeLinhaDoTempo as TimelineEvent[];
   
   function renderCadeiaDominial() {
     if (!linhaDoTempo || linhaDoTempo.length === 0) return null;
@@ -323,9 +332,9 @@ function ResultadoContent() {
   ];
 
   function verificarDocumento(chave: string): { presente: boolean; indicio: boolean } {
-    const docsRecebidos = (analise!.documents || []).map(d => (d.document_type || d.file_path || '').toLowerCase()) || [];
-    const docsFaltantes = (findings!.documentosFaltantes || []).map(d => d.toLowerCase());
-    const problemasTexto = (findings!.problemas || []).map(p => (p.titulo || p.descricao || '').toLowerCase()).join(' ');
+    const docsRecebidos = safeDocuments.map(d => (d.document_type || d.file_path || '').toLowerCase()) || [];
+    const docsFaltantes = safeDocumentosFaltantes.map(d => d.toLowerCase());
+    const problemasTexto = safeProblemas.map(p => (p.titulo || p.descricao || '').toLowerCase()).join(' ');
 
     // Verifica se o documento foi recebido (document_type ou file_path)
     const foiRecebido = docsRecebidos.some(d => d.includes(chave.replace(/_/g, '')) || d.includes(chave));
@@ -659,13 +668,13 @@ function ResultadoContent() {
             </section>
 
             {/* 3. TIMELINE */}
-            {findings!.linhaDoTempo && findings!.linhaDoTempo.length > 0 && (
+            {safeLinhaDoTempo.length > 0 && (
               <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
                 <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
                   <Clock className="text-brand-gold" size={24} /> Timeline Registral
                 </h2>
                 <div className="timeline-premium">
-                  {findings!.linhaDoTempo.map((item: TimelineEvent, i: number) => (
+                  {safeLinhaDoTempo.map((item: TimelineEvent, i: number) => (
                     <div key={i} className="timeline-premium-item">
                       <div className="timeline-premium-dot"></div>
                       <div className="timeline-premium-content">
@@ -686,7 +695,7 @@ function ResultadoContent() {
               </h2>
               <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-200 shadow-sm print:shadow-none print:bg-white print:border">
                 <ul className="space-y-4">
-                  {findings!.recomendacoes?.map((rec: string, i: number) => (
+                  {safeRecomendacoes.map((rec: string, i: number) => (
                     <li key={i} className="flex items-start gap-3">
                       <div className="w-6 h-6 rounded-full bg-green-200 flex items-center justify-center flex-shrink-0 mt-0.5">
                         <CheckCircle2 size={14} className="text-green-700" />
@@ -704,7 +713,7 @@ function ResultadoContent() {
                 <FileText className="text-orange-500" size={24} /> Documentos Necessários
               </h2>
               <ul className="space-y-3">
-                {findings!.documentosFaltantes?.map((doc: string, i: number) => (
+                {safeDocumentosFaltantes.map((doc: string, i: number) => (
                   <li key={i} className="flex items-center gap-4 bg-orange-50 p-4 rounded-xl border border-orange-100 shadow-sm print:shadow-none print:bg-white">
                     <div className="w-8 h-8 bg-orange-200 rounded-lg flex items-center justify-center flex-shrink-0">
                       <FileText size={16} className="text-orange-700" />
@@ -712,7 +721,7 @@ function ResultadoContent() {
                     <span className="text-orange-900 font-medium">{doc}</span>
                   </li>
                 ))}
-                {(!findings!.documentosFaltantes || findings!.documentosFaltantes.length === 0) && (
+                {(safeDocumentosFaltantes.length === 0) && (
                    <li className="text-gray-500 italic p-4">Nenhum documento pendente identificado.</li>
                 )}
               </ul>
@@ -728,13 +737,13 @@ function ResultadoContent() {
             {renderChecklist()}
 
             {/* 6. CHECKLIST DA CADEIA DOMINIAL */}
-            {(findings as any)?.checklist && (findings as any).checklist.length > 0 && (
+            {safeChecklist.length > 0 && (
               <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
                 <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
                   <Scale className="text-brand-gold" size={24} /> Auditoria da Cadeia Dominial
                 </h2>
                 <div className="grid md:grid-cols-2 gap-4">
-                  {((findings as any)?.checklist || []).map((item: ChecklistItem, i: number) => {
+                  {safeChecklist.map((item: ChecklistItem, i: number) => {
                     const isReprovado = item.status?.toLowerCase().includes('reprovado') || item.status?.toLowerCase().includes('violado');
                     const isAlerta = item.status?.toLowerCase().includes('alerta');
                     
