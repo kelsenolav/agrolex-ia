@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { ShieldCheck, ArrowLeft, AlertTriangle, FileCheck, Info, CheckCircle2, Loader2, Clock, ArrowUpRight, FileText, MapPin, Scale, Landmark, ChevronRight, TrendingUp, AlertCircle } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, AlertTriangle, FileCheck, Info, CheckCircle2, Loader2, Clock, ArrowUpRight, FileText, MapPin, Scale, Landmark, ChevronRight, TrendingUp, AlertCircle, XCircle, Search, FileSignature } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Analysis, AnalysisFindings, ReportProblem, TimelineEvent, ChecklistItem } from '@/types/analise';
 import { calcularScoreAgroLex } from '@/types/analise';
@@ -220,6 +220,160 @@ function ResultadoContent() {
     const c = String(p.criticidade || '').toLowerCase();
     return c.includes('medio') || c.includes('médio');
   }).length;
+
+  // ─── CADEIA DOMINIAL VISUAL ──────────────────────
+  const linhaDoTempo = (Array.isArray(findings!.linhaDoTempo) ? findings!.linhaDoTempo : []) as TimelineEvent[];
+  
+  function renderCadeiaDominial() {
+    if (!linhaDoTempo || linhaDoTempo.length === 0) return null;
+    return (
+      <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+        <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+          <Landmark className="text-brand-gold" size={24} /> Cadeia Dominial Visual
+        </h2>
+        <div className="cadeia-dominial-flow">
+          {linhaDoTempo.map((item: TimelineEvent, i: number) => {
+            const isUltimo = i === linhaDoTempo.length - 1;
+            const anoMatch = item.data?.match(/\d{4}/);
+            const ano = anoMatch ? anoMatch[0] : item.data || '';
+            return (
+              <div key={i} className="cadeia-dominial-node">
+                <div className="cadeia-dominial-timeline">
+                  <div className="cadeia-dominial-dot">{i + 1}</div>
+                  {!isUltimo && <div className="cadeia-dominial-connector" />}
+                </div>
+                <div className="cadeia-dominial-card">
+                  <span className="cadeia-ano">{ano}</span>
+                  <span className="cadeia-evento">{item.evento}</span>
+                  {item.detalhe && <span className="cadeia-detalhe">{item.detalhe}</span>}
+                </div>
+              </div>
+            );
+          })}
+          {/* Node final — Proprietário Atual */}
+          <div className="cadeia-dominial-node">
+            <div className="cadeia-dominial-timeline">
+              <div className="cadeia-dominial-dot">{linhaDoTempo.length + 1} </div>
+            </div>
+            <div className="cadeia-dominial-card border-brand-green/40 bg-green-50/40">
+              <span className="cadeia-ano">Atual</span>
+              <span className="cadeia-evento">Proprietário Atual</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // ─── RADAR DE RISCO ────────────────────────────
+  function calcularNivelRisco(valor: number): { nivel: string; pct: number } {
+    if (valor <= 25) return { nivel: 'baixo', pct: 20 };
+    if (valor <= 50) return { nivel: 'medio', pct: 45 };
+    if (valor <= 75) return { nivel: 'alto', pct: 70 };
+    return { nivel: 'critico', pct: 95 };
+  }
+
+  function gerarRadarRisco() {
+    const scoreValor = scoreData.score;
+    const riscoDominial = calcularNivelRisco(scoreValor < 40 ? 95 : scoreValor < 60 ? 70 : scoreValor < 80 ? 45 : 15);
+    const riscoRegistral = calcularNivelRisco(scoreValor < 40 ? 90 : scoreValor < 60 ? 65 : scoreValor < 80 ? 40 : 10);
+    const riscoProcessual = calcularNivelRisco(scoreValor < 40 ? 80 : scoreValor < 60 ? 55 : scoreValor < 80 ? 30 : 5);
+    const riscoCartorial = calcularNivelRisco(scoreValor < 40 ? 85 : scoreValor < 60 ? 60 : scoreValor < 80 ? 35 : 8);
+    const riscoINCRA = calcularNivelRisco(scoreValor < 40 ? 75 : scoreValor < 60 ? 50 : scoreValor < 80 ? 25 : 5);
+
+    const riscos = [
+      { label: 'Risco Dominial', data: riscoDominial },
+      { label: 'Risco Registral', data: riscoRegistral },
+      { label: 'Risco Processual', data: riscoProcessual },
+      { label: 'Risco Cartorial', data: riscoCartorial },
+      { label: 'Risco INCRA', data: riscoINCRA },
+    ];
+
+    return (
+      <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+        <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+          <Search className="text-brand-gold" size={24} /> Radar de Risco AgroLex
+        </h2>
+        <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm print:shadow-none print:bg-white print:border">
+          <div className="space-y-4">
+            {riscos.map((r, i) => (
+              <div key={i} className="radar-risco-bar">
+                <span className="radar-risco-label">{r.label}</span>
+                <div className="radar-risco-track">
+                  <div className={`radar-risco-fill ${r.data.nivel}`} style={{ width: `${r.data.pct}%` }} />
+                </div>
+                <span className={`radar-risco-badge ${r.data.nivel}`}>{r.data.nivel.toUpperCase()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // ─── CHECKLIST INTELIGENTE ─────────────────────
+  const documentosBase = [
+    { nome: 'Matrícula', chave: 'matricula' },
+    { nome: 'Cadeia Dominial', chave: 'cadeia_dominial' },
+    { nome: 'Escritura', chave: 'escritura' },
+    { nome: 'CAR', chave: 'car' },
+    { nome: 'CCIR', chave: 'ccir' },
+    { nome: 'SIGEF', chave: 'sigef' },
+    { nome: 'Processo Administrativo', chave: 'processo_administrativo' },
+  ];
+
+  function verificarDocumento(chave: string): { presente: boolean; indicio: boolean } {
+    const docsRecebidos = (analise!.documents || []).map(d => (d.document_type || d.file_path || '').toLowerCase()) || [];
+    const docsFaltantes = (findings!.documentosFaltantes || []).map(d => d.toLowerCase());
+    const problemasTexto = (findings!.problemas || []).map(p => (p.titulo || p.descricao || '').toLowerCase()).join(' ');
+
+    // Verifica se o documento foi recebido (document_type ou file_path)
+    const foiRecebido = docsRecebidos.some(d => d.includes(chave.replace(/_/g, '')) || d.includes(chave));
+    // Se não está na lista de faltantes, pode ser um indício
+    const naoFaltante = !docsFaltantes.some(d => d.includes(chave.replace(/_/g, '')) || d.includes(chave));
+    // Verifica se há menção nos problemas
+    const mencionado = problemasTexto.includes(chave.replace(/_/g, ' ')) || problemasTexto.includes(chave);
+
+    if (foiRecebido) return { presente: true, indicio: false };
+    if (mencionado && naoFaltante) return { presente: false, indicio: true };
+    return { presente: false, indicio: false };
+  }
+
+  function renderChecklist() {
+    return (
+      <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+        <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+          <FileSignature className="text-brand-gold" size={24} /> Checklist Documental
+        </h2>
+        <div className="space-y-3">
+          {documentosBase.map((doc, i) => {
+            const { presente, indicio } = verificarDocumento(doc.chave);
+            let statusClass = 'ausente';
+            let iconText = '✗';
+            let statusText = 'Ausente';
+
+            if (presente) {
+              statusClass = 'presente';
+              iconText = '✓';
+              statusText = 'Presente';
+            } else if (indicio) {
+              statusClass = 'indicio';
+              iconText = '?';
+              statusText = 'Indício';
+            }
+
+            return (
+              <div key={i} className="checklist-item">
+                <div className={`checklist-icon ${statusClass}`}>{iconText}</div>
+                <span className="checklist-nome">{doc.nome}</span>
+                <span className={`checklist-status ${statusClass}`}>{statusText}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 print:bg-white">
@@ -563,6 +717,15 @@ function ResultadoContent() {
                 )}
               </ul>
             </section>
+
+            {/* 5b. CADEIA DOMINIAL VISUAL — Fluxo Visual Law */}
+            {renderCadeiaDominial()}
+
+            {/* 5c. RADAR DE RISCO AGROLEX */}
+            {gerarRadarRisco()}
+
+            {/* 5d. CHECKLIST DOCUMENTAL INTELIGENTE */}
+            {renderChecklist()}
 
             {/* 6. CHECKLIST DA CADEIA DOMINIAL */}
             {(findings as any)?.checklist && (findings as any).checklist.length > 0 && (
