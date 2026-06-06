@@ -71,13 +71,13 @@ export default function ScoreAgroLex({ findings, riskLevel, size = 'md', showTit
           <text x="90" y="60" fontSize="6" fill="#9CA3AF" fontWeight="bold">100</text>
         </svg>
 
-        {/* Score number overlay */}
+        {/* Score number overlay — posicionado na área livre do semicírculo, sem tocar o arco */}
         <div
           className="absolute flex flex-col items-center justify-center"
           style={{
-            top: '5px',
+            top: '77%',
             left: '50%',
-            transform: 'translateX(-50%)',
+            transform: 'translate(-50%, -50%)',
             width: s.gauge * 0.55,
             height: s.gauge * 0.55,
           }}
