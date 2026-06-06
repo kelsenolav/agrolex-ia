@@ -143,8 +143,16 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
 
 /**
  * Converte parts no formato Gemini para um prompt textual compatível com OpenAI.
- * PDFs inlineData são ignorados (OpenAI não suporta PDF direto nesse formato).
- * Adiciona uma nota informando que o conteúdo PDF não pôde ser transmitido.
+ *
+ * SPRINT P0-B.1 — Com extração híbrida, PDFs textuais agora são convertidos para texto puro
+ * e enviados como { text: "--- CONTEÚDO DO DOCUMENTO: ..." }.
+ * Apenas PDFs escaneados (fallback base64) ainda usam inlineData, que são ignorados aqui.
+ *
+ * Fluxo:
+ * 1. Identifica o prompt de instruções (texto longo com quebras de linha)
+ * 2. Coleta todos os text parts (incluindo conteúdo extraído dos PDFs)
+ * 3. Se houver inlineData (PDF escaneado), adiciona nota informativa
+ * 4. Monta userPrompt com instruções + conteúdo dos documentos
  */
 function geminiPartsToOpenAIMessages(parts: GeminiPart[]): {
   systemPrompt: string;
@@ -152,31 +160,41 @@ function geminiPartsToOpenAIMessages(parts: GeminiPart[]): {
   pdfNote: boolean;
 } {
   let instructions = '';
-  const textParts: string[] = [];
-  let hasPdf = false;
+  const documentTexts: string[] = [];
+  let hasPdfFallback = false;
 
   for (const part of parts) {
     if (part.text) {
-      if (part.text.length > 1000 || part.text.includes('\n') || part.text.includes('ATENÇÃO')) {
+      // Identificar se é o prompt de instruções (texto longo com quebras)
+      // ou conteúdo de documento extraído (começa com "--- CONTEÚDO DO DOCUMENTO:")
+      if (
+        part.text.startsWith('--- CONTEÚDO DO DOCUMENTO:') ||
+        part.text.startsWith('[Nota: O arquivo PDF')
+      ) {
+        documentTexts.push(part.text);
+      } else if (part.text.length > 1000 || part.text.includes('\n') || part.text.includes('ATENÇÃO')) {
         // Provavelmente é o prompt de instruções
         instructions = part.text;
       } else {
-        textParts.push(part.text);
+        documentTexts.push(part.text);
       }
     }
     if (part.inlineData) {
-      hasPdf = true;
+      hasPdfFallback = true;
     }
   }
 
   let userPrompt = instructions;
-  if (textParts.length > 0) {
-    userPrompt = instructions + '\n\n---\n\n' + textParts.join('\n');
+
+  // Adicionar conteúdo dos documentos extraídos
+  if (documentTexts.length > 0) {
+    userPrompt = instructions + '\n\n---\n\n' + documentTexts.join('\n');
   }
 
-  if (hasPdf) {
+  // Se ainda há PDFs em fallback base64 (escaneados), adicionar nota
+  if (hasPdfFallback) {
     userPrompt =
-      '[Nota: Documentos PDF anexados não puderam ser transmitidos ao modelo de fallback. A análise será baseada apenas nas instruções textuais.]\n\n' +
+      '[Nota: Alguns documentos estão em formato PDF escaneado e não puderam ser transmitidos ao modelo de fallback. Apenas os documentos textuais extraídos estão disponíveis.]\n\n' +
       userPrompt;
   }
 
@@ -184,7 +202,7 @@ function geminiPartsToOpenAIMessages(parts: GeminiPart[]): {
     systemPrompt:
       'Você é um auditor jurídico especializado em direito registral imobiliário brasileiro. Produza pareceres técnicos em português (Brasil), em formato Markdown, com as seções: Identificação, Documentos Analisados, Cadeia Dominial, Achados, Classificação de Risco, Recomendações.',
     userPrompt,
-    pdfNote: hasPdf,
+    pdfNote: hasPdfFallback,
   };
 }
 

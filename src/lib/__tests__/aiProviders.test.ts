@@ -418,7 +418,7 @@ describe('geminiPartsToOpenAIMessages', () => {
     expect(result.systemPrompt).toContain('auditor jurídico');
   });
 
-  it('detecta PDF e adiciona nota', () => {
+  it('detecta PDF escaneado (fallback base64) e adiciona nota', () => {
     const parts: GeminiPart[] = [
       { text: 'Analise os documentos anexados' },
       { inlineData: { data: 'base64fake', mimeType: 'application/pdf' } },
@@ -427,7 +427,7 @@ describe('geminiPartsToOpenAIMessages', () => {
     const result = geminiPartsToOpenAIMessages(parts);
 
     expect(result.pdfNote).toBe(true);
-    expect(result.userPrompt).toContain('[Nota: Documentos PDF anexados não puderam ser transmitidos');
+    expect(result.userPrompt).toContain('[Nota: Alguns documentos estão em formato PDF escaneado');
   });
 
   it('combina múltiplos text parts no userPrompt', () => {
