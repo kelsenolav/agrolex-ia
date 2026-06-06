@@ -116,29 +116,64 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // 6. Extrair case_file da análise pai (ou criar um novo se não existir)
+    // 6. HOTFIX P0 — Verificar módulos já processados no pai E em filhos existentes
     const parentFindings = parentAnalysis.findings || {};
     const parentCaseFile: CaseFile | null = parentFindings.case_file || null;
+
+    // Módulos já concluídos no pai (module_results)
+    const existingModuleResults = parentCaseFile?.module_results || {};
+    const parentCompletedModules = Object.keys(existingModuleResults).filter(
+      (modId) => existingModuleResults[modId]?.status === 'completed'
+    );
+
+    // Módulos já contratados em análises filhas existentes (complementary_children)
+    const existingComplementaryChildren = Array.isArray(parentFindings.complementary_children)
+      ? parentFindings.complementary_children
+      : [];
+    const childContractedModules = new Set<string>();
+    for (const child of existingComplementaryChildren) {
+      if (Array.isArray(child.modules)) {
+        for (const modId of child.modules) {
+          childContractedModules.add(modId);
+        }
+      }
+    }
+
+    // Módulos já processados no pai (module_results completed)
+    const alreadyProcessedModules = new Set<string>([...parentCompletedModules]);
+
+    // Filtrar módulos: remover os já processados no pai E os já contratados em filhos
+    const newModuleIds = moduleIds.filter(
+      (modId) => !alreadyProcessedModules.has(modId) && !childContractedModules.has(modId)
+    );
+
+    if (newModuleIds.length === 0) {
+      // HOTFIX P0 — Todos os módulos já foram processados ou contratados
+      return NextResponse.json({
+        status: 'modules_already_processed',
+        message: 'Todos os módulos selecionados já foram processados ou contratados anteriormente. Acesse o dossiê existente.',
+        parentAnalysisId: analysisId,
+        alreadyProcessedModules: Array.from(alreadyProcessedModules),
+        childContractedModules: Array.from(childContractedModules)
+      });
+    }
 
     // Calcular profundidade
     const parentDepth = parentFindings.analysis_depth || 1;
     const newDepth = parentDepth + 1;
 
-    // Calcular preço server-side
-    const serverTotal = calculateAuditModulesTotal(moduleIds);
+    // Calcular preço server-side (apenas módulos novos)
+    const serverTotal = calculateAuditModulesTotal(newModuleIds);
 
     // 7. Criar findings para a nova análise
     const now = new Date().toISOString();
 
-    // Módulos já concluídos na análise pai (para evitar duplicação)
-    const existingModuleResults = parentCaseFile?.module_results || {};
-
     // Montar o case_file da análise filha: cópia profunda do pai
     const childFindings: Record<string, unknown> = {
-      selected_modules: moduleIds,
+      selected_modules: newModuleIds,
       parent_analysis_id: analysisId,
       analysis_depth: newDepth,
-      complementary_modules: moduleIds,
+      complementary_modules: newModuleIds,
       estimated_total: serverTotal,
       price_source: 'server',
       price_checked_at: now,
@@ -188,7 +223,7 @@ export async function POST(req: Request) {
     complementaryChildren.push({
       child_analysis_id: newAnalysis.id,
       created_at: now,
-      modules: moduleIds,
+      modules: newModuleIds,
       total: serverTotal
     });
 

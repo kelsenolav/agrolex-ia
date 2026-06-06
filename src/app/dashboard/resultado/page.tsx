@@ -830,21 +830,42 @@ function ResultadoContent() {
                 {(findings as any)?.complementary_children && Array.isArray((findings as any).complementary_children) && (findings as any).complementary_children.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-sm font-bold text-gray-700 mb-1">Análises Complementares</p>
-                    {(findings as any).complementary_children.map((child: any, idx: number) => (
-                      <div key={idx} className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-semibold text-gray-800">
-                            Análise complementar {idx + 1}
-                          </span>
-                          <span className="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
-                            Complementar {idx + 1}
-                          </span>
-                        </div>
-                        {child.modules?.length > 0 && (
-                          <p className="text-xs text-gray-600 mt-1">Módulos: {child.modules.join(', ')}</p>
-                        )}
-                      </div>
-                    ))}
+                    {/* HOTFIX P0 — Deduplicar módulos no histórico: agrupar por módulos únicos */}
+                    {(() => {
+                      const seenModules = new Set<string>();
+                      const uniqueChildren: Array<{ child: any; idx: number; uniqueModules: string[] }> = [];
+                      for (let i = 0; i < (findings as any).complementary_children.length; i++) {
+                        const child = (findings as any).complementary_children[i];
+                        const modules = Array.isArray(child.modules) ? child.modules : [];
+                        const uniqueModules = modules.filter((modId: string) => {
+                          if (seenModules.has(modId)) return false;
+                          seenModules.add(modId);
+                          return true;
+                        });
+                        if (uniqueModules.length > 0) {
+                          uniqueChildren.push({ child, idx: i, uniqueModules });
+                        }
+                      }
+                      return uniqueChildren.length > 0 ? (
+                        uniqueChildren.map(({ child, idx, uniqueModules }) => (
+                          <div key={idx} className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-semibold text-gray-800">
+                                Análise complementar {idx + 1}
+                              </span>
+                              <span className="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                                Complementar {idx + 1}
+                              </span>
+                            </div>
+                            {uniqueModules.length > 0 && (
+                              <p className="text-xs text-gray-600 mt-1">Módulos: {uniqueModules.join(', ')}</p>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-gray-500 italic">Todas as análises complementares já estão refletidas no histórico.</p>
+                      );
+                    })()}
                   </div>
                 )}
 
