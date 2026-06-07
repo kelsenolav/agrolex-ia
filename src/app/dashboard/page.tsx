@@ -455,13 +455,13 @@ export default function DashboardPage() {
             </Link>
             <Link href="/dashboard/nova-analise" className="flex items-center gap-2 bg-brand-gold text-brand-green px-5 py-3 rounded-lg font-bold hover:brightness-110 transition-all shadow-lg hover:-translate-y-1">
               <Plus size={20} />
-              Nova Auditoria Fundiária
+              + Nova Auditoria
             </Link>
           </div>
         </div>
 
         {/* BLOCO 5 — KPIs (Cards Executivos Premium) */}
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-5 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-10">
           {/* Card 1 — Auditorias Realizadas */}
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
@@ -506,39 +506,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Card 4 — Áreas Auditadas */}
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Áreas Auditadas</span>
-              <div className="p-2 bg-amber-100 rounded-lg">
-                <MapPin size={18} className="text-amber-600" />
-              </div>
-            </div>
-            <p className="text-3xl font-black text-gray-800">{analises.length * 120} ha</p>
-            <div className="flex items-center gap-1 text-xs text-gray-400">
-              Hectares sob análise
-            </div>
-          </div>
-
-          {/* BLOCO 3 — Card 5: Demandam ação imediata */}
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow cursor-default">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Demandam ação imediata</span>
-              <div className={`p-2 ${totalRiscos > 0 ? 'bg-red-100' : 'bg-green-100'} rounded-lg`}>
-                <AlertTriangle size={18} className={totalRiscos > 0 ? 'text-red-600' : 'text-green-600'} />
-              </div>
-            </div>
-            <p className="text-3xl font-black text-gray-800">{totalRiscos}</p>
-            <div className="flex items-center gap-1 text-xs text-gray-400">
-              {totalRiscos > 0 ? (
-                <span>{totalRiscos} {totalRiscos === 1 ? 'análise' : 'análises'} com risco crítico ou alto</span>
-              ) : (
-                <span>Nenhuma análise crítica ou de alto risco</span>
-              )}
-            </div>
-          </div>
-
-          {/* Card 6 — Segurança Fundiária (Índice AgroLex) */}
+          {/* Card 4 — Segurança Fundiária (Índice AgroLex) */}
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">SEGURANÇA FUNDIÁRIA</span>
@@ -574,7 +542,8 @@ export default function DashboardPage() {
         <div className="mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
           <div className="flex items-center gap-2 mb-4">
             <Layers size={18} className="text-brand-green" />
-            <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">Resumo Executivo</span>
+            <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">Filtrar por Risco</span>
+            <span className="text-[10px] text-gray-400 font-normal ml-1">Clique para filtrar a tabela abaixo</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
             {/* Críticos */}
@@ -667,7 +636,7 @@ export default function DashboardPage() {
           <div className="mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
             <div className="flex items-center gap-2 mb-4">
               <BarChart3 size={18} className="text-brand-green" />
-              <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">ISF Analytics</span>
+              <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">ISF — Comparativo de Métricas</span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
               <div>
@@ -798,12 +767,9 @@ export default function DashboardPage() {
                   <th className="px-6 py-4 font-semibold">Documento</th>
                   <th className="px-6 py-4 font-semibold">Status da IA</th>
                   <th className="px-6 py-4 font-semibold">Risco</th>
-                  <th className="px-6 py-4 font-semibold group relative cursor-help">
+                  <th className="px-6 py-4 font-semibold cursor-help">
                     ISF
-                    <span className="ml-1 text-[10px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">ⓘ</span>
-                    <div className="absolute left-0 top-full mt-1 w-64 bg-gray-800 text-white text-[11px] rounded-lg p-2 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 leading-relaxed">
-                      ISF (Índice de Segurança Fundiária): quanto maior o valor, maior a segurança documental estimada.
-                    </div>
+                    <span className="ml-1.5 text-gray-400 cursor-help inline-block" title="ISF (Índice de Segurança Fundiária): quanto maior o valor, maior a segurança documental estimada.">ⓘ</span>
                   </th>
                   <th className="px-6 py-4 font-semibold">Módulos Sugeridos</th>
                   <th className="px-6 py-4 font-semibold">Ação</th>
@@ -918,7 +884,7 @@ export default function DashboardPage() {
                           <div className="flex flex-col gap-1.5">
                             {hasParecer ? (
                               <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm flex items-center gap-1">
-                                Ver Dossiê <ArrowUpRight size={14} />
+                                Abrir Parecer <ArrowUpRight size={14} />
                               </Link>
                             ) : (
                               <span className="text-red-500 text-xs font-semibold">Anomalia: parecer não localizado</span>
@@ -944,7 +910,7 @@ export default function DashboardPage() {
                           </span>
                         ) : statusType === 'ready_for_processing' && isComplementarJaProcessado ? (
                           <Link href={`/dashboard/resultado?id=${(analise.findings as any).parent_analysis_id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm flex items-center gap-1">
-                            Ver Dossiê <ArrowUpRight size={14} />
+                            Abrir Parecer <ArrowUpRight size={14} />
                           </Link>
                         ) : statusType === 'ready_for_processing' ? (
                           <button
@@ -1027,9 +993,9 @@ export default function DashboardPage() {
                         ) : statusType === 'pending' ? (
                           <button
                             onClick={() => handlePayNow(analise.id)}
-                            className="bg-brand-gold text-brand-green px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow"
+                            className="bg-brand-gold text-brand-green px-4 py-2 rounded text-xs font-bold hover:brightness-110 transition-all shadow"
                           >
-                            Pagar
+                            Pagar e Liberar →
                           </button>
                         ) : (
                           <span className="text-gray-400 text-sm font-medium">-</span>
