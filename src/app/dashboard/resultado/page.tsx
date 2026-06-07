@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase';
 import type { Analysis, AnalysisFindings, ReportProblem, TimelineEvent, ChecklistItem, ComplementaryChild } from '@/types/analise';
 import { calcularScoreAgroLex, MODULE_NAMES } from '@/types/analise';
 import ScoreAgroLex from '@/components/ScoreAgroLex';
+import { normalizarRadarISF, pctBarraRadar } from '@/lib/isf/radarNormalizer';
+import ISFExplainer from '@/components/isf/ISFExplainer';
 import DOMPurify from 'dompurify';
 
 const POLLING_MAX_RETRIES = 30;
@@ -251,6 +253,15 @@ function ResultadoContent() {
 
   const scoreData = calcularScoreAgroLex(findings, analise.risk_level);
 
+  // ─── RADAR v2 — ISF v2 ─────────────────────────
+  // Tenta usar findings.isf_v2; se não existir, radar v2 fica null
+  const isfV2Data = (findings as unknown as Record<string, unknown>)?.isf_v2 as Record<string, unknown> | undefined ?? null;
+  const radarEixos = normalizarRadarISF(isfV2Data);
+  const temRadarV2 = radarEixos !== null && radarEixos.length === 5;
+
+  // ─── ISF EXPLAINER — score_comparison ───────────
+  const scoreComparisonData = (findings as unknown as Record<string, unknown>)?.score_comparison as Record<string, unknown> | undefined ?? null;
+
   const getRiscoStyle = (r: string) => {
     const rLower = r?.toLowerCase();
     if (rLower === 'alto' || rLower === 'critico') return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600', labelText: 'text-red-800' };
@@ -278,7 +289,7 @@ function ResultadoContent() {
     if (!linhaDoTempo || linhaDoTempo.length === 0) return null;
     return (
       <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-        <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
           <Landmark className="text-brand-gold" size={24} /> Cadeia Dominial Visual
         </h2>
         <div className="cadeia-dominial-flow">
@@ -341,7 +352,7 @@ function ResultadoContent() {
 
     return (
       <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-        <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
           <Search className="text-brand-gold" size={24} /> Radar de Risco AgroLex
         </h2>
         <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm print:shadow-none print:bg-white print:border print-radar-risk">
@@ -399,7 +410,7 @@ function ResultadoContent() {
 
     return (
       <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-        <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
           <FileText className="text-brand-gold" size={24} /> Resultados por Camada de Análise
         </h2>
         <p className="text-sm text-gray-500 mb-6">
@@ -431,10 +442,10 @@ function ResultadoContent() {
             {/* Módulos */}
             {Array.isArray(findings?.selected_modules) && findings.selected_modules.length > 0 && (
               <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Módulos Base</p>
+                <p className="text-xs font-bold text-red-800 uppercase tracking-wider mb-2">Módulos</p>
                 <div className="flex flex-wrap gap-2">
                   {findings.selected_modules.map((modId: string, i: number) => (
-                    <span key={i} className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full border border-gray-200">
+                    <span key={i} className="px-3 py-1 bg-red-50 text-red-800 text-xs font-bold rounded-full border border-red-200">
                       {MODULE_NAMES[modId] || modId}
                     </span>
                   ))}
@@ -518,10 +529,10 @@ function ResultadoContent() {
                 {/* Módulos */}
                 {Array.isArray(childModules) && childModules.length > 0 && (
                   <div>
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Módulos Processados</p>
+                    <p className="text-xs font-bold text-red-800 uppercase tracking-wider mb-2">Módulos Processados</p>
                     <div className="flex flex-wrap gap-2">
                       {childModules.map((modId: string, i: number) => (
-                        <span key={i} className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-200">
+                        <span key={i} className="px-3 py-1 bg-red-50 text-red-800 text-xs font-bold rounded-full border border-red-200">
                           {MODULE_NAMES[modId] || modId}
                         </span>
                       ))}
@@ -623,7 +634,7 @@ function ResultadoContent() {
   function renderChecklist() {
     return (
       <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-        <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
           <FileSignature className="text-brand-gold" size={24} /> Checklist Documental
         </h2>
         <div className="space-y-3 print-checklist">
@@ -775,7 +786,7 @@ function ResultadoContent() {
               {/* RESUMO EXECUTIVO — largura total na tela; no print mantém baseline */}
               <div className="print:flex print:flex-col print:items-center print:gap-4">
                 <div className="print:w-full">
-                  <h2 className="text-2xl font-bold text-brand-dark mb-4 border-b-2 border-gray-100 pb-3 flex items-center gap-2">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-300 pb-3 uppercase tracking-wide">
                     <FileText className="text-brand-gold" size={24} /> Resumo Executivo
                   </h2>
                   {findings!.isHtmlResumo ? (
@@ -794,7 +805,7 @@ function ResultadoContent() {
 
             {/* 2. ACHADOS CRÍTICOS — Indicadores */}
             <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-              <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
                 <AlertTriangle className="text-red-500" size={24} /> Achados Críticos
               </h2>
               
@@ -898,7 +909,7 @@ function ResultadoContent() {
                   }
 
                   return (
-                    <li key={i} className={`${cardBg} p-4 rounded-xl border shadow-sm print:shadow-none print:bg-white`}>
+                    <li key={i} className={`${cardBg} p-4 rounded-xl border shadow-sm print:shadow-none print:bg-white ${c.includes('critico') ? 'border-l-4 border-l-red-400' : c.includes('alto') ? 'border-l-4 border-l-orange-400' : c.includes('medio') || c.includes('médio') ? 'border-l-4 border-l-yellow-400' : 'border-l-4 border-l-green-400'}`}>
                       <div className="flex items-start gap-3 mb-2">
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${badgeBg}`}>
                           <Icon size={14} />
@@ -945,7 +956,7 @@ function ResultadoContent() {
             {/* 3. TIMELINE */}
             {safeLinhaDoTempo.length > 0 && (
               <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-                <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
                   <Clock className="text-brand-gold" size={24} /> Timeline Registral
                 </h2>
                 <div className="timeline-premium">
@@ -965,7 +976,7 @@ function ResultadoContent() {
 
             {/* 4. RECOMENDAÇÕES TÉCNICAS */}
             <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-              <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
                 <CheckCircle2 className="text-brand-green" size={24} /> Recomendações Técnicas
               </h2>
               <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-200 shadow-sm print:shadow-none print:bg-white print:border">
@@ -984,7 +995,7 @@ function ResultadoContent() {
 
             {/* 5. DOCUMENTOS FALTANTES */}
             <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-              <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
                 <FileText className="text-orange-500" size={24} /> Documentos Necessários
               </h2>
               <ul className="space-y-3">
@@ -1005,16 +1016,62 @@ function ResultadoContent() {
             {/* 5b. CADEIA DOMINIAL VISUAL — Fluxo Visual Law */}
             {renderCadeiaDominial()}
 
-            {/* 5c. RADAR DE RISCO AGROLEX */}
-            {gerarRadarRisco()}
+            {/* 5c. RADAR DE RISCO AGROLEX — v2 (ISF) ou legado */}
+            {temRadarV2 && radarEixos ? (
+              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
+                  <Search className="text-brand-gold" size={24} /> Radar de Risco AgroLex
+                </h2>
+                <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm print:shadow-none print:bg-white print:border print-radar-risk">
+                  <p className="text-xs text-gray-400 mb-4 font-medium">Baseado no ISF v2 — dados reais da análise</p>
+                  <div className="space-y-4">
+                    {radarEixos.map((eixo, i) => (
+                      <div key={i} className="radar-risco-bar">
+                        <span className="radar-risco-label">{eixo.eixo}</span>
+                        <div className="radar-risco-track">
+                          <div
+                            className={`radar-risco-fill ${eixo.nivel}`}
+                            style={{ width: `${pctBarraRadar(eixo.valor)}%` }}
+                          />
+                        </div>
+                        <span className={`radar-risco-badge ${eixo.nivel}`}>{eixo.labelNivel.toUpperCase()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
+                  <Search className="text-brand-gold" size={24} /> Radar de Risco AgroLex
+                </h2>
+                <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 shadow-sm print:shadow-none print:bg-white print:border">
+                  <div className="flex items-start gap-3">
+                    <Info size={20} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-amber-800">ISF v2 ainda não disponível para esta análise.</p>
+                      <p className="text-xs text-amber-600 mt-1">
+                        O radar de risco baseado em dados reais será exibido automaticamente após o processamento completo do ISF v2.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
 
-            {/* 5d. CHECKLIST DOCUMENTAL INTELIGENTE */}
+            {/* 5d. EXPLICABILIDADE ISF v2 — SPRINT 3 */}
+            <ISFExplainer
+              isfV2Data={isfV2Data}
+              scoreComparisonData={scoreComparisonData}
+            />
+
+            {/* 5e. CHECKLIST DOCUMENTAL INTELIGENTE */}
             {renderChecklist()}
 
             {/* 6. CHECKLIST DA CADEIA DOMINIAL */}
             {safeChecklist.length > 0 && (
               <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-                <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
                   <Scale className="text-brand-gold" size={24} /> Auditoria da Cadeia Dominial
                 </h2>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -1087,7 +1144,7 @@ function ResultadoContent() {
             {/* 8b. HISTÓRICO DO CASO (versão simplificada — apenas resumo) */}
             {(findings as any)?.parent_findings_summary || (findings as any)?.complementary_children ? (
               <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-                <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
                   <ShieldCheck className="text-brand-gold" size={24} /> Histórico do Caso
                 </h2>
 
@@ -1150,7 +1207,7 @@ function ResultadoContent() {
 
             {/* 9. RODAPÉ / PRÓXIMOS PASSOS */}
             <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-              <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
                 <TrendingUp className="text-brand-gold" size={24} /> Próximos Passos
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
