@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { ShieldCheck, FileText, TrendingUp, ArrowRight, CheckCircle2, ChevronRight, Lock, AlertTriangle, MapPin, Clock, Users, BarChart3, Search, Scale, Landmark, ChevronDown, Upload, Eye, FileSearch, HelpCircle, Star, Target, XCircle, Zap, Layers, BookOpen, GitBranch, Globe, Award } from 'lucide-react';
+import { ShieldCheck, FileText, TrendingUp, ArrowRight, CheckCircle2, ChevronRight, Lock, AlertTriangle, MapPin, Clock, Users, BarChart3, Search, Scale, Landmark, ChevronDown, Upload, Eye, FileSearch, HelpCircle, Star, Target, XCircle, Zap, Layers, BookOpen, GitBranch, Globe, Award, UserPlus, Send, BarChart2 } from 'lucide-react';
 import { motion, Variants } from 'framer-motion';
 import { useState } from 'react';
 
@@ -207,8 +207,8 @@ export default function Home() {
               
               {/* CTAs */}
               <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-4">
-                <Link href="/cadastro" className="group px-8 py-4 bg-gradient-to-r from-brand-gold to-yellow-600 text-brand-dark rounded-full text-lg font-bold hover:scale-105 shadow-[0_0_25px_rgba(212,175,55,0.3)] transition-all flex items-center justify-center gap-3">
-                  Verificar Minha Propriedade
+                <Link href="/cadastro?next=/dashboard/nova-analise&trial=true" className="group px-8 py-4 bg-gradient-to-r from-brand-gold to-yellow-600 text-brand-dark rounded-full text-lg font-bold hover:scale-105 shadow-[0_0_25px_rgba(212,175,55,0.3)] transition-all flex items-center justify-center gap-3">
+                  Fazer Análise Gratuita
                   <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </Link>
                 <Link href="#como-funciona" className="px-8 py-4 border border-white/20 rounded-full text-lg font-bold hover:bg-white/5 transition-colors flex items-center justify-center gap-2 backdrop-blur-sm">
@@ -216,10 +216,14 @@ export default function Home() {
                 </Link>
               </motion.div>
 
-              {/* Microcopy */}
-              <motion.div variants={itemVariants} className="mt-4">
-                <span className="inline-flex items-center gap-2 text-brand-gold/80 text-xs font-bold uppercase tracking-widest">
-                  <Clock size={14} /> Mais clareza antes de comprar, vender ou regularizar
+              {/* Subtexto do CTA gratuito */}
+              <motion.div variants={itemVariants} className="mt-4 flex flex-col gap-1.5">
+                <span className="inline-flex items-center gap-2 text-emerald-400/90 text-sm font-semibold">
+                  <CheckCircle2 size={15} className="flex-shrink-0" />
+                  Teste o AgroLex com 1 matrícula simples. Sem compromisso.
+                </span>
+                <span className="inline-flex items-center gap-2 text-brand-gold/70 text-xs font-bold uppercase tracking-widest">
+                  <Clock size={13} /> Resultado em até 5 minutos · Prévia inteligente gratuita
                 </span>
               </motion.div>
             </div>
@@ -315,6 +319,107 @@ export default function Home() {
           </div>
         </motion.div>
       </main>
+
+      {/* ===== COMO FUNCIONA A ANÁLISE GRATUITA ===== */}
+      <section id="analise-gratuita" className="py-20 px-4 relative z-10 bg-[#051F15] border-t border-white/5">
+        <div className="container mx-auto max-w-5xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-12"
+          >
+            {/* Badge de destaque */}
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-900/30 border border-emerald-500/30 rounded-full text-emerald-300 text-sm font-bold uppercase tracking-widest mb-5">
+              <CheckCircle2 size={15} />
+              1 análise gratuita · sem cartão · sem compromisso
+            </div>
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
+              Como funciona a análise gratuita
+            </h2>
+            <p className="text-gray-400 text-base max-w-2xl mx-auto">
+              Em 4 passos simples, você tem uma prévia inteligente da situação documental do imóvel.
+            </p>
+          </motion.div>
+
+          {/* 4 cards horizontais */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              {
+                num: "1",
+                icon: <UserPlus size={26} />,
+                titulo: "Cadastre-se",
+                desc: "Crie sua conta gratuitamente. Nenhum cartão de crédito necessário.",
+                cor: "from-brand-gold/20 to-yellow-900/10",
+                borda: "border-brand-gold/20",
+              },
+              {
+                num: "2",
+                icon: <Send size={26} />,
+                titulo: "Envie uma matrícula simples",
+                desc: "Faça upload de 1 matrícula de imóvel rural. O sistema processa em minutos.",
+                cor: "from-blue-900/20 to-blue-950/10",
+                borda: "border-blue-500/20",
+              },
+              {
+                num: "3",
+                icon: <BarChart2 size={26} />,
+                titulo: "Veja a prévia inteligente",
+                desc: "Receba o ISF (Índice de Segurança Fundiária), a classificação de risco e os alertas identificados.",
+                cor: "from-emerald-900/20 to-emerald-950/10",
+                borda: "border-emerald-500/20",
+              },
+              {
+                num: "4",
+                icon: <Lock size={26} />,
+                titulo: "Desbloqueie quando quiser",
+                desc: "O relatório completo — cadeia dominial, módulos avançados e dossiê — está disponível nos planos pagos.",
+                cor: "from-purple-900/20 to-purple-950/10",
+                borda: "border-purple-500/20",
+              },
+            ].map((card, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.1 }}
+                className={`relative bg-gradient-to-b ${card.cor} border ${card.borda} rounded-2xl p-6 flex flex-col gap-3`}
+              >
+                {/* Número do passo */}
+                <div className="absolute -top-3 -left-3 w-7 h-7 rounded-full bg-gradient-to-r from-brand-gold to-yellow-600 text-brand-dark flex items-center justify-center font-black text-xs shadow-[0_0_10px_rgba(212,175,55,0.4)]">
+                  {card.num}
+                </div>
+                <div className="w-11 h-11 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-brand-gold">
+                  {card.icon}
+                </div>
+                <h3 className="text-white font-bold text-base leading-snug">{card.titulo}</h3>
+                <p className="text-gray-400 text-sm leading-relaxed flex-1">{card.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Nota de transparência */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 text-center"
+          >
+            <p className="text-gray-500 text-xs max-w-xl">
+              <span className="text-gray-400 font-semibold">A prévia gratuita</span> inclui ISF, classificação de risco e alertas visíveis.
+              O relatório completo — cadeia dominial, módulos avançados e dossiê técnico — é exclusivo dos planos pagos.
+            </p>
+            <Link
+              href="/cadastro?next=/dashboard/nova-analise&trial=true"
+              className="flex-shrink-0 inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-brand-gold to-yellow-600 text-brand-dark rounded-full font-bold text-sm hover:scale-105 shadow-[0_0_20px_rgba(212,175,55,0.25)] transition-all"
+            >
+              Começar agora — é grátis
+              <ArrowRight size={16} />
+            </Link>
+          </motion.div>
+        </div>
+      </section>
 
       {/* ===== 8 CARDS — O QUE O AGROLEX ANALISA ===== */}
       <section className="py-24 px-4 relative z-10 bg-gradient-to-b from-[#051F15] to-[#03150D]">

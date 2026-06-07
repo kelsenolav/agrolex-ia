@@ -2,6 +2,74 @@
 
 ## Agent Rules for AgroLex Project
 
+---
+
+- **Data**: 07/06/2026
+- **Bloco**: SPRINT CONVERSÃO — Landing Page Trial (CTA Gratuito + Seção "Como funciona a análise gratuita")
+- **Arquivos alterados**:
+  - `src/app/page.tsx` — CTA principal trocado para "Fazer Análise Gratuita", subtexto adicionado, nova seção com 4 cards, link `/cadastro?next=/dashboard/nova-analise&trial=true`
+  - `AGENTS.md`
+- **Rotas afetadas**: `/` (landing page)
+- **Alterações implementadas**:
+  1. **CTA principal do hero**: trocado de "Verificar Minha Propriedade" para **"Fazer Análise Gratuita"** com link `/cadastro?next=/dashboard/nova-analise&trial=true`.
+  2. **Subtexto do CTA**: adicionado "Teste o AgroLex com 1 matrícula simples. Sem compromisso." (verde) + "Resultado em até 5 minutos · Prévia inteligente gratuita" (dourado).
+  3. **Seção "Como funciona a análise gratuita"**: inserida logo após o hero, com badge "1 análise gratuita · sem cartão · sem compromisso" e 4 cards: (1) Cadastre-se, (2) Envie uma matrícula simples, (3) Veja a prévia inteligente (ISF + classificação + alertas), (4) Desbloqueie quando quiser (relatório completo nos planos pagos).
+  4. **Nota de transparência**: texto explícito de que a prévia gratuita inclui ISF/classificação/alertas, e que o relatório completo é exclusivo dos planos pagos. Sem promessa de relatório completo gratuito.
+  5. **Linguagem premium mantida**: "análise gratuita", "prévia inteligente", "relatório completo bloqueado para planos".
+  6. **Novos ícones importados**: `UserPlus`, `Send`, `BarChart2` do lucide-react.
+- **Validações**: `npm run build` (23 rotas, ✓), `npm run lint` (0 erros, 0 warnings, ✓), `npm test` (456/456 — 14 suítes, ✓)
+- **Deploy em produção**: **NÃO EFETUADO** (aguardando autorização explícita do usuário)
+- **Problemas restantes**: Nenhum.
+
+
+---
+
+- **Data**: 07/06/2026
+- **Bloco**: SPRINT COMERCIAL P0 — FASE 3 (Lead Scoring + Eventos Comerciais + Ranking de Leads Quentes)
+- **Arquivos alterados**:
+  - `src/lib/commercial/scoring.ts` *(novo)* — Motor de scoring comercial (funções PURE)
+  - `src/lib/commercial/__tests__/scoring.test.ts` *(novo)* — Suíte de testes do scoring (61 testes)
+  - `src/app/dashboard/resultado/page.tsx` — Importação de scoring, registro de eventos comerciais, CTA com blocked_premium_clicked
+  - `src/app/dashboard/planos/page.tsx` — Importação de scoring, registro de evento plan_clicked no CTA
+  - `src/app/admin/leads/page.tsx` — KPIs de temperatura (Frios/Mornos/Quentes/Muito Quentes), colunas Score/Temperatura/Último Evento, ordenação por score
+  - `AGENTS.md`
+- **Rotas afetadas**: `/dashboard/resultado`, `/dashboard/planos`, `/admin/leads`
+- **Alterações implementadas**:
+  1. **scoring.ts**: `CommercialEventType`, `CommercialScoreLevel`, `CommercialEvent`, `COMMERCIAL_EVENT_SCORES`, `getCommercialEventScore`, `calculateCommercialScore`, `getCommercialScoreLevel`, `getCommercialScoreLabel`, `getCommercialScoreBadge`, `createCommercialEvent`, `extractEventsFromMetadata`, `appendCommercialEvent`, `buildMetadataWithEvent`, `calculateLeadScore`, `getLastCommercialEvent`, `compareLeadScores`.
+  2. **Persistência**: via `leads.metadata.commercial_events` (campo JSON existente). Fallback silencioso se metadata não existir. TODO técnico documentado no código.
+  3. **resultado/page.tsx**: registra `result_viewed` (useEffect, uma vez por sessão), `blocked_premium_clicked` (CTA "Desbloquear Relatório Completo").
+  4. **planos/page.tsx**: registra `plan_clicked` (CTA "Escolher Plano") com `plan_id` no meta.
+  5. **admin/leads**: 4 novos KPIs (Leads Frios 🧊, Mornos 🌤️, Quentes 🔥, Muito Quentes 🚀), 3 novas colunas (Score, Temperatura, Último Evento), tabela ordenada por score decrescente (muito_quente → frio).
+  6. **scoring.test.ts**: 61 testes cobrindo pontuação por evento, soma, classificação frio/morno/quente/muito_quente, fallback para evento desconhecido, score acima de 100, helpers de persistência, ordenação.
+- **Validações**: `npm run build` (23 rotas), `npm run lint` (0 erros, 0 warnings), `npm test` (456/456 — 14 suítes)
+- **Deploy em produção**: **NÃO EFETUADO** (aguardando autorização explícita do usuário)
+- **Problemas restantes**: Migration `leads.metadata` (coluna JSONB) pendente para ativar persistência real de eventos. Próxima Sprint: integração Mercado Pago para upgrade de plano.
+
+
+---
+
+- **Data**: 07/06/2026
+- **Bloco**: SPRINT COMERCIAL P0 — FASE 2 (Bloqueio Trial + Captura de Lead + Conversão)
+- **Arquivos alterados**:
+  - `src/app/dashboard/nova-analise/page.tsx` — Bloqueio trial, modal de lead obrigatório, useEffect de verificação
+  - `src/app/dashboard/resultado/page.tsx` — Card Premium trial, gatilhos de conversão, importações comerciais
+  - `src/app/dashboard/page.tsx` — Importações comerciais (trial.ts, plans.ts), estado trialProfile/trialBlockModal
+  - `src/app/dashboard/planos/page.tsx` — Tela de planos (Starter, Profissional, Empresarial, Trial)
+  - `src/app/admin/leads/page.tsx` *(novo)* — Dashboard comercial /admin/leads
+  - `AGENTS.md`
+- **Rotas afetadas**: `/dashboard/nova-analise`, `/dashboard/resultado`, `/dashboard`, `/dashboard/planos`, `/admin/leads`
+- **Alterações implementadas**:
+  1. **Obj 1 — Bloqueio de segunda análise trial**: `nova-analise/page.tsx` verifica `plan_type === 'trial' && trial_used === true` via Supabase; exibe tela de bloqueio com CTA "Ver Planos" em vez do formulário.
+  2. **Obj 2 — Captura obrigatória de lead**: Modal obrigatório ao entrar em `/dashboard/nova-analise`; verifica existência e completude do lead (nome, email, telefone, cidade, estado) via `supabase.from('leads')`; upsert com `onConflict: 'user_id'`; usa helpers `montarLeadPayload` de `lead.ts`.
+  3. **Obj 3 — Experiência gratuita controlada**: `resultado/page.tsx` busca `plan_type` do profile; usuário trial vê Card Premium com prévia limitada (ISF + classificação + alertas visíveis, mas relatório completo bloqueado visualmente).
+  4. **Obj 4 — Gatilhos de conversão**: Card Premium com indicadores psicológicos (✓ Auditoria realizada, ✓ Documento processado, ✗ riscos encontrados, 🔒 Relatório completo bloqueado, 🔒 Cadeia dominial bloqueada, 🔒 Módulos avançados bloqueados) + contador "Você está visualizando apenas uma prévia da análise" + CTA "Desbloquear Relatório Completo".
+  5. **Obj 5 — Tela de planos**: `/dashboard/planos` com grid de 4 planos (Trial, Starter, Profissional, Empresarial), features, highlights, preços, CTA "Escolher Plano", badge "Plano Atual".
+  6. **Obj 6 — Dashboard comercial**: `/admin/leads` com KPIs (Total Leads, Trials, Conversões, Taxa Conversão, ISF Médio) + tabela de leads com nome, email, WhatsApp, cidade/UF, origem, status.
+- **Validações**: `npm run build` (23 rotas), `npm run lint` (aprovado), `npm test` (395/395 — 13 suítes)
+- **Deploy em produção**: **NÃO EFETUADO** (aguardando autorização explícita do usuário)
+- **Problemas restantes**: Nenhum. Próxima Sprint: integração Mercado Pago para upgrade de plano.
+
+
 - **Read** `PROJECT_CONTEXT_AGROLEX.md` **before any task**.
 - **Read** `STABLE_BASELINE_AGROLEX.md` **before changing files**.
 - **Critical files**: do not modify files listed in the stable baseline without diagnosis, risk, tests, and a rollback plan.
@@ -260,4 +328,7 @@
 - **Arquivos alterados**: `src/app/api/analyze/route.ts`, `AGENTS.md`
 - **Rotas afetadas**: `/api/analyze`
 - **Botões corrigidos**: Mapeamento do processamento da API do motor de IA para normalizar novos e antigos IDs de módulos fundiários de forma transparente e compatível. Introduzidas no prompt a seção obrigatória de 'Limitação do Escopo da Análise' e a estrutura padronizada de Achados (Achado -> Base -> Risco -> Criticidade -> Documento necessário -> Recomendação).
-- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados
+- **Resultados de validação**: `npm run build`, `npm run lint` e `npx tsc --noEmit` aprovados.
+- **Deploy**: Não aplicável (sem deploy neste bloco).
+- **URL validada**: Painel validado localmente.
+- **Problemas restantes**: Finalizar configuração de pagamento real (FASE 4) e processamento em etapas (FASE 5).
