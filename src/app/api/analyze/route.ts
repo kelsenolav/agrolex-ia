@@ -6,7 +6,6 @@ import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRe
 import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocument, type CaseFileRecommendedModule } from '@/lib/caseFile';
 import { buildRecommendedModules } from '@/lib/recommendations';
 import { generateWithFallback, type FallbackResult } from '@/lib/aiProviders';
-import { extractTextFromPdf } from '@/lib/pdfTextExtractor';
 import {
   initializeProcessingStages,
   getCurrentStage,
@@ -392,34 +391,15 @@ export async function POST(req: Request) {
       (modId) => parentModuleResults[modId]?.status === 'completed'
     );
     
-    // HOTFIX P0 — Verificar também módulos já contratados em análises filhas irmãs
-    const parentFindingsForFilter = findings;
-    const siblingChildren = Array.isArray(parentFindingsForFilter.complementary_children)
-      ? parentFindingsForFilter.complementary_children
-      : [];
-    const siblingContractedModules = new Set<string>();
-    for (const child of siblingChildren) {
-      if (Array.isArray(child.modules)) {
-        for (const modId of child.modules) {
-          siblingContractedModules.add(modId);
-        }
-      }
-    }
-    
     // Filtrar selected_modules para remover módulos já concluídos na análise pai
-    // E também módulos já contratados em análises filhas irmãs
     const modulesToProcess = selectedModules.filter(
-      (modId: string) => !parentCompletedModules.includes(modId) && !siblingContractedModules.has(modId)
+      (modId: string) => !parentCompletedModules.includes(modId)
     );
     
     if (modulesToProcess.length === 0) {
-      // HOTFIX P0 — Não tratar como erro fatal. Retornar status conhecido para o frontend.
-      return NextResponse.json({
-        status: 'modules_already_processed',
-        message: 'Esses módulos já foram processados. Você pode acessar o dossiê existente.',
-        parentAnalysisId: findings.parent_analysis_id || null,
-        currentAnalysisId: analysisId
-      });
+      return NextResponse.json({ 
+        error: 'Todos os módulos selecionados já foram processados na análise pai. Nenhum módulo novo para processar.' 
+      }, { status: 400 });
     }
 
     const { data: propertyData } = await supabaseAdmin
@@ -580,35 +560,17 @@ export async function POST(req: Request) {
         
         if (doc.file_path.toLowerCase().endsWith('.pdf') || doc.document_type?.toLowerCase().includes('matrícula') || doc.document_type === 'Certidão Inteiro Teor' || doc.document_type === 'Matrícula') {
           const arrayBuffer = await fileData.arrayBuffer();
-          const pdfBuffer = Buffer.from(arrayBuffer);
+          const base64Data = Buffer.from(arrayBuffer).toString('base64');
           
-          // SPRINT P0-B.1 — Extração híbrida: tentar extrair texto server-side primeiro
-          const extractionResult = await extractTextFromPdf(pdfBuffer);
-          
-          if (extractionResult.success) {
-            // PDF textual: usar texto extraído (redução de ~99% dos tokens)
-            const charCount = extractionResult.text.length;
-            const pageInfo = extractionResult.pageCount ? ` (${extractionResult.pageCount} páginas)` : '';
-            console.log(`[PDF Extractor] Documento ${doc.file_path}: extração textual usada — ${charCount} caracteres${pageInfo}`);
-            
-            geminiParts.push({
-              text: `\n--- CONTEÚDO DO DOCUMENTO: ${doc.document_type || doc.file_path} ---\n${extractionResult.text}\n--- FIM DO DOCUMENTO ---\n`
-            });
-          } else {
-            // PDF escaneado ou falha de extração: fallback base64 (preserva compatibilidade)
-            const base64Data = pdfBuffer.toString('base64');
-            console.log(`[PDF Extractor] Documento ${doc.file_path}: fallback base64 usado — motivo: ${extractionResult.reason || 'extração falhou'}`);
-            
-            geminiParts.push({
-              inlineData: {
-                data: base64Data,
-                mimeType: "application/pdf"
-              }
-            });
-            geminiParts.push({
-              text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`
-            });
-          }
+          geminiParts.push({
+            inlineData: {
+              data: base64Data,
+              mimeType: "application/pdf"
+            }
+          });
+          geminiParts.push({
+            text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`
+          });
         }
       }
 
