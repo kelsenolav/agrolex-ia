@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ShieldCheck, ArrowLeft, AlertTriangle, FileCheck, Info, CheckCircle2, Loader2, Clock, ArrowUpRight, FileText, MapPin, Scale, Landmark, ChevronRight, TrendingUp, AlertCircle, XCircle, Search, FileSignature } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import type { Analysis, AnalysisFindings, ReportProblem, TimelineEvent, ChecklistItem } from '@/types/analise';
-import { calcularScoreAgroLex } from '@/types/analise';
+import type { Analysis, AnalysisFindings, ReportProblem, TimelineEvent, ChecklistItem, ComplementaryChild } from '@/types/analise';
+import { calcularScoreAgroLex, MODULE_NAMES } from '@/types/analise';
 import ScoreAgroLex from '@/components/ScoreAgroLex';
 import DOMPurify from 'dompurify';
 
@@ -45,6 +45,7 @@ function ResultadoContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [analise, setAnalise] = useState<Analysis | null>(null);
+  const [childAnalyses, setChildAnalyses] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
   const pollingCountRef = useRef(0);
 
@@ -104,6 +105,46 @@ function ResultadoContent() {
       }, POLLING_INTERVAL_MS);
     }
     return () => clearInterval(interval);
+  }, [analise]);
+
+  // Buscar análises filhas (complementares) para exibir na seção "Resultados por Camada"
+  useEffect(() => {
+    const fetchChildAnalyses = async () => {
+      if (!analise) return;
+      const findings = analise.findings as AnalysisFindings;
+      const children = Array.isArray((findings as any)?.complementary_children)
+        ? (findings as any).complementary_children as ComplementaryChild[]
+        : [];
+      
+      if (children.length === 0) {
+        setChildAnalyses([]);
+        return;
+      }
+
+      // Buscar cada análise filha individualmente
+      const results: Analysis[] = [];
+      for (const child of children) {
+        const { data } = await supabase
+          .from('analyses')
+          .select('*')
+          .eq('id', child.child_analysis_id)
+          .single();
+        if (data) {
+          results.push(data as unknown as Analysis);
+        }
+      }
+
+      // Ordenar por created_at (cronológica)
+      results.sort((a, b) => {
+        const aDate = a.created_at || '';
+        const bDate = b.created_at || '';
+        return aDate.localeCompare(bDate);
+      });
+
+      setChildAnalyses(results);
+    };
+
+    fetchChildAnalyses();
   }, [analise]);
 
   const handleExportPDF = () => {
@@ -348,6 +389,237 @@ function ResultadoContent() {
     return { presente: false, indicio: false };
   }
 
+  // ─── RESULTADOS POR CAMADA DE ANÁLISE ──────────
+  // `analise` e `findings` são garantidos não-null aqui (após early-return checks)
+  const analiseSafe = analise!;
+  const findingsSafe = findings!;
+
+  function renderResultadosPorCamada() {
+    if (childAnalyses.length === 0) return null;
+
+    return (
+      <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+        <h2 className="text-2xl font-bold text-brand-dark mb-6 flex items-center gap-2">
+          <FileText className="text-brand-gold" size={24} /> Resultados por Camada de Análise
+        </h2>
+        <p className="text-sm text-gray-500 mb-6">
+          Este dossiê consolida resultados de múltiplas camadas de análise. Abaixo, cada camada é exibida separadamente para garantir a rastreabilidade.
+        </p>
+
+        {/* A. Análise Principal */}
+        <div className="mb-8 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-brand-green text-white px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <ShieldCheck size={20} />
+              <span className="font-bold text-lg">Análise Principal</span>
+            </div>
+            <span className="px-3 py-1 bg-white/20 text-white text-[10px] font-bold uppercase rounded-full">
+              Camada 1
+            </span>
+          </div>
+          <div className="p-6 space-y-4">
+            {/* Data */}
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Clock size={14} />
+              <span>
+                {analiseSafe.created_at 
+                  ? new Date(analiseSafe.created_at).toLocaleDateString('pt-BR')
+                  : 'Data não disponível'}
+              </span>
+            </div>
+
+            {/* Módulos */}
+            {Array.isArray(findings?.selected_modules) && findings.selected_modules.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Módulos Base</p>
+                <div className="flex flex-wrap gap-2">
+                  {findings.selected_modules.map((modId: string, i: number) => (
+                    <span key={i} className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full border border-gray-200">
+                      {MODULE_NAMES[modId] || modId}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Síntese */}
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Síntese Principal</p>
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 text-sm text-gray-700 leading-relaxed">
+                {findings?.resumo ? (
+                  findings.isHtmlResumo ? (
+                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(findings.resumo.substring(0, 500)) }} />
+                  ) : (
+                    <p className="whitespace-pre-line">{findings.resumo.substring(0, 500)}{findings.resumo.length > 500 ? '...' : ''}</p>
+                  )
+                ) : (
+                  <p className="text-gray-400 italic">Síntese não disponível</p>
+                )}
+              </div>
+            </div>
+
+            {/* Achados */}
+            {problemas.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Achados Principais ({problemas.length})</p>
+                <div className="space-y-2">
+                  {problemas.slice(0, 5).map((prob, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm">
+                      <AlertTriangle size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
+                      <span className="text-gray-700">{prob.titulo || prob.descricao}</span>
+                    </div>
+                  ))}
+                  {problemas.length > 5 && (
+                    <p className="text-xs text-gray-400 italic">+{problemas.length - 5} achados adicionais</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* B. Análises Complementares */}
+        {childAnalyses.map((child, idx) => {
+          const childFindings = child.findings as AnalysisFindings;
+          const childProblemas = Array.isArray(childFindings?.problemas) ? childFindings.problemas : [];
+          const childRecomendacoes = Array.isArray(childFindings?.recomendacoes) ? childFindings.recomendacoes : [];
+          const childModules = childFindings?.selected_modules || childFindings?.complementary_modules || [];
+          const childRiskLevel = child.risk_level;
+
+          return (
+            <div key={child.id} className="mb-8 bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
+              <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <FileCheck size={20} />
+                  <span className="font-bold text-lg">Análise Complementar {idx + 1}</span>
+                </div>
+                <span className="px-3 py-1 bg-white/20 text-white text-[10px] font-bold uppercase rounded-full">
+                  Camada {(findings?.analysis_depth || 1) + idx + 1}
+                </span>
+              </div>
+              <div className="p-6 space-y-4">
+                {/* Data */}
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <Clock size={14} />
+                  <span>
+                    {child.created_at
+                      ? new Date(child.created_at).toLocaleDateString('pt-BR')
+                      : 'Data não disponível'}
+                  </span>
+                </div>
+
+                {/* Vínculo com análise pai */}
+                <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-100">
+                  <p className="text-xs text-blue-700">
+                    <strong>Vinculada à:</strong> Análise Principal • Ref: ALX-{analiseSafe.id.slice(0, 8).toUpperCase() || '00000000'}
+                  </p>
+                </div>
+
+                {/* Módulos */}
+                {Array.isArray(childModules) && childModules.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Módulos Processados</p>
+                    <div className="flex flex-wrap gap-2">
+                      {childModules.map((modId: string, i: number) => (
+                        <span key={i} className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-200">
+                          {MODULE_NAMES[modId] || modId}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Achados específicos */}
+                {childProblemas.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Achados Específicos ({childProblemas.length})</p>
+                    <div className="space-y-2">
+                      {childProblemas.map((prob, i) => {
+                        const c = (prob.criticidade || '').toLowerCase();
+                        let badgeColor = 'bg-green-100 text-green-700';
+                        if (c.includes('critico')) badgeColor = 'bg-red-100 text-red-700';
+                        else if (c.includes('alto')) badgeColor = 'bg-orange-100 text-orange-700';
+                        else if (c.includes('medio') || c.includes('médio')) badgeColor = 'bg-yellow-100 text-yellow-700';
+
+                        return (
+                          <div key={i} className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle size={14} className="text-red-400 mt-1 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-800">{prob.titulo || prob.descricao}</span>
+                                  {prob.criticidade && (
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${badgeColor}`}>
+                                      {prob.criticidade}
+                                    </span>
+                                  )}
+                                </div>
+                                {prob.descricao && prob.descricao !== prob.titulo && (
+                                  <p className="text-xs text-gray-600 mt-1">{prob.descricao}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recomendações específicas */}
+                {childRecomendacoes.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Recomendações Específicas</p>
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                      <ul className="space-y-2">
+                        {childRecomendacoes.map((rec: string, i: number) => (
+                          <li key={i} className="flex items-start gap-2 text-sm">
+                            <CheckCircle2 size={14} className="text-green-500 mt-0.5 flex-shrink-0" />
+                            <span className="text-gray-700">{rec}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {/* Documentos Faltantes */}
+                {Array.isArray(childFindings?.documentosFaltantes) && childFindings.documentosFaltantes.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Documentos Necessários</p>
+                    <div className="space-y-1">
+                      {childFindings.documentosFaltantes.map((doc: string, i: number) => (
+                        <div key={i} className="flex items-center gap-2 text-sm text-gray-600">
+                          <FileText size={14} className="text-orange-400 flex-shrink-0" />
+                          <span>{doc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Nível de Risco */}
+                {childRiskLevel && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-500 font-bold">Nível de Risco:</span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      childRiskLevel.toLowerCase() === 'critico' ? 'bg-red-100 text-red-700' :
+                      childRiskLevel.toLowerCase() === 'alto' ? 'bg-orange-100 text-orange-700' :
+                      childRiskLevel.toLowerCase() === 'medio' || childRiskLevel.toLowerCase() === 'médio' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>
+                      {childRiskLevel}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </section>
+    );
+  }
+
   function renderChecklist() {
     return (
       <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
@@ -495,11 +767,14 @@ function ResultadoContent() {
 
             {/* 1. SCORE AGROLEX + RESUMO EXECUTIVO */}
             <section className="print:break-inside-avoid">
-                  <div className="grid md:grid-cols-5 gap-8 items-start mb-8 print:flex print:flex-col print:items-center print:gap-4">
-                <div className="md:col-span-2 flex justify-center print:hidden print:w-full print:max-w-sm">
-                  <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} size="lg" />
-                </div>
-                <div className="md:col-span-3 print:w-full">
+              {/* SCORE — centralizado na tela, oculto no print */}
+              <div className="flex justify-center mb-8 print:hidden">
+                <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} size="lg" />
+              </div>
+
+              {/* RESUMO EXECUTIVO — largura total na tela; no print mantém baseline */}
+              <div className="print:flex print:flex-col print:items-center print:gap-4">
+                <div className="print:w-full">
                   <h2 className="text-2xl font-bold text-brand-dark mb-4 border-b-2 border-gray-100 pb-3 flex items-center gap-2">
                     <FileText className="text-brand-gold" size={24} /> Resumo Executivo
                   </h2>
@@ -806,76 +1081,70 @@ function ResultadoContent() {
               </section>
             )}
 
-            {/* 8. HISTÓRICO DO CASO */}
+            {/* 8. RESULTADOS POR CAMADA DE ANÁLISE (se houver filhos) */}
+            {renderResultadosPorCamada()}
+
+            {/* 8b. HISTÓRICO DO CASO (versão simplificada — apenas resumo) */}
             {(findings as any)?.parent_findings_summary || (findings as any)?.complementary_children ? (
               <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
                 <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
                   <ShieldCheck className="text-brand-gold" size={24} /> Histórico do Caso
                 </h2>
 
-                {(findings as any)?.parent_findings_summary && (
-                  <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 mb-4">
-                    <p className="text-sm font-bold text-gray-700 mb-1">Análise Principal</p>
-                    <p className="text-sm text-gray-600">
-                      {(findings as any)?.parent_findings_summary?.original_modules?.length > 0
-                        ? `Módulos: ${(findings as any).parent_findings_summary.original_modules.join(', ')}`
-                        : 'Análise original'}
-                    </p>
-                    <span className="mt-2 inline-block px-2 py-0.5 bg-brand-green/10 text-brand-green text-[10px] font-bold uppercase rounded">
-                      Análise principal
-                    </span>
-                  </div>
-                )}
+                <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 space-y-3">
+                  {/* Se esta análise é filha: mostrar vínculo com pai */}
+                  {(findings as any)?.parent_findings_summary && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 bg-brand-green/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <ShieldCheck size={16} className="text-brand-green" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-700">Análise Principal</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {Array.isArray((findings as any).parent_findings_summary.original_modules) && 
+                           (findings as any).parent_findings_summary.original_modules.length > 0
+                            ? `Módulos: ${(findings as any).parent_findings_summary.original_modules.join(', ')}`
+                            : 'Análise original'}
+                          {(findings as any).parent_findings_summary.completed_at && (
+                            <> • Concluída em: {new Date((findings as any).parent_findings_summary.completed_at).toLocaleDateString('pt-BR')}</>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
-                {(findings as any)?.complementary_children && Array.isArray((findings as any).complementary_children) && (findings as any).complementary_children.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-bold text-gray-700 mb-1">Análises Complementares</p>
-                    {/* HOTFIX P0 — Deduplicar módulos no histórico: agrupar por módulos únicos */}
-                    {(() => {
-                      const seenModules = new Set<string>();
-                      const uniqueChildren: Array<{ child: any; idx: number; uniqueModules: string[] }> = [];
-                      for (let i = 0; i < (findings as any).complementary_children.length; i++) {
-                        const child = (findings as any).complementary_children[i];
-                        const modules = Array.isArray(child.modules) ? child.modules : [];
-                        const uniqueModules = modules.filter((modId: string) => {
-                          if (seenModules.has(modId)) return false;
-                          seenModules.add(modId);
-                          return true;
-                        });
-                        if (uniqueModules.length > 0) {
-                          uniqueChildren.push({ child, idx: i, uniqueModules });
-                        }
-                      }
-                      return uniqueChildren.length > 0 ? (
-                        uniqueChildren.map(({ child, idx, uniqueModules }) => (
-                          <div key={idx} className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-semibold text-gray-800">
-                                Análise complementar {idx + 1}
-                              </span>
-                              <span className="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
-                                Complementar {idx + 1}
-                              </span>
-                            </div>
-                            {uniqueModules.length > 0 && (
-                              <p className="text-xs text-gray-600 mt-1">Módulos: {uniqueModules.join(', ')}</p>
-                            )}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-xs text-gray-500 italic">Todas as análises complementares já estão refletidas no histórico.</p>
-                      );
-                    })()}
-                  </div>
-                )}
+                  {/* Se esta análise é pai: mostrar contagem de complementares */}
+                  {(findings as any)?.complementary_children && Array.isArray((findings as any).complementary_children) && (findings as any).complementary_children.length > 0 && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <FileCheck size={16} className="text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-700">Análises Complementares</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {(findings as any).complementary_children.length} análise(s) complementar(es) vinculada(s)
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
-                {(findings as any)?.analysis_depth > 1 && !(findings as any)?.parent_findings_summary && (
-                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
-                    <p className="text-sm text-gray-700">
-                      Esta é uma <strong>análise complementar</strong> (profundidade {(findings as any).analysis_depth}).
-                    </p>
-                  </div>
-                )}
+                  {/* Se esta análise é filha mas não tem parent_findings_summary */}
+                  {(findings as any)?.analysis_depth > 1 && !(findings as any)?.parent_findings_summary && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Info size={16} className="text-amber-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-700">
+                          Esta é uma <strong>análise complementar</strong> (profundidade {(findings as any).analysis_depth}).
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Consulte a seção "Resultados por Camada de Análise" para visualizar o conteúdo completo.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </section>
             ) : null}
 

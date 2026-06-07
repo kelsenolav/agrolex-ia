@@ -43,6 +43,24 @@ export interface AnalysisFindings {
   client_estimated_total?: number;
   price_source?: string;
   price_checked_at?: string;
+  selected_modules?: string[];
+  parent_analysis_id?: string;
+  analysis_depth?: number;
+  complementary_modules?: string[];
+  parent_findings_summary?: {
+    completed_at: string | null;
+    risk_level: string | null;
+    original_modules: string[];
+  };
+  complementary_children?: ComplementaryChild[];
+  case_file?: any;
+}
+
+export interface ComplementaryChild {
+  child_analysis_id: string;
+  created_at: string;
+  modules: string[];
+  total: number;
 }
 
 export interface AnalysisProperty {
@@ -201,3 +219,16 @@ export function calcularScoreAgroLex(findings?: AnalysisFindings | null, riskLev
     acaoSugerida: 'Propriedade dentro dos padrões fundiários',
   };
 }
+
+/**
+ * Mapa de nomes de módulos (ID → nome legível)
+ */
+export const MODULE_NAMES: Record<string, string> = {
+  matricula_individual: 'Matrícula Individual',
+  cruzamento_matriculas: 'Cruzamento de Matrículas',
+  cadeia_dominial: 'Cadeia Dominial',
+  origem_publica: 'Origem Pública (INCRA)',
+  geoespacial: 'Geoespacial (SIGEF/CAR)',
+  nulidades_fraudes: 'Nulidades e Fraudes',
+  cruzamento_total: 'Cruzamento Total',
+};
