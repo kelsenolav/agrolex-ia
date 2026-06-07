@@ -6,6 +6,9 @@ import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRe
 import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocument, type CaseFileRecommendedModule } from '@/lib/caseFile';
 import { buildRecommendedModules } from '@/lib/recommendations';
 import { generateWithFallback, type FallbackResult } from '@/lib/aiProviders';
+import { calcularISF, calcularComparacao } from '@/lib/isf/isfV2';
+import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
+import { calcularScoreAgroLex } from '@/types/analise';
 import {
   initializeProcessingStages,
   getCurrentStage,
@@ -869,6 +872,42 @@ export async function POST(req: Request) {
           console.error('[Recommendations] Falha ao calcular recomendações:', recommendationsError);
         }
 
+        // ─── ISF v2 — CÁLCULO DETERMINÍSTICO ───────────────────────────────────
+        // Executa APENAS com dados reais da análise. 100% determinístico.
+        // Não altera fluxo existente. Falha aqui não bloqueia o postprocess.
+        let isfPayload: Record<string, unknown> = {};
+        let isfError: string | null = null;
+        try {
+          // 1. Calcular ISF v2 a partir dos problemas extraídos do parecer
+          const isfResult = calcularISF(parsedProblemas as any);
+
+          // 2. Calcular score legado (v1) para telemetria de divergência
+          const legacyScoreData = calcularScoreAgroLex(
+            {
+              problemas: parsedProblemas,
+              documentosFaltantes: parsedDocumentosFaltantes,
+              recomendacoes: parsedRecomendacoes,
+              resumo: markdownResponse,
+            } as any,
+            riskLevel
+          );
+
+          // 3. Calcular comparação entre v1 e v2
+          const comparison = calcularComparacao(legacyScoreData.score, isfResult.isf_score);
+
+          // 4. Gerar payload completo para persistência (isf_v2 + score_comparison)
+          isfPayload = gerarPayloadISFCompleto(isfResult, comparison);
+
+          console.log(
+            `[ISF v2] Análise ${analysisId}: legado=${legacyScoreData.score}, isf=${isfResult.isf_score}, ` +
+            `diferença=${comparison.difference}, risk_level=${isfResult.risk_level}`
+          );
+        } catch (isfCalcError: any) {
+          isfError = ((isfCalcError && (isfCalcError.message || isfCalcError.toString())) || 'Erro desconhecido no ISF v2')
+            .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
+          console.error('[ISF v2] Falha ao calcular ISF v2:', isfError);
+        }
+
         const patchedFindings = {
           ...resultJson,
           problemas: parsedProblemas,
@@ -876,6 +915,8 @@ export async function POST(req: Request) {
           documentosFaltantes: parsedDocumentosFaltantes,
           case_file: enrichedCaseFile,
           ...(caseFileExtractError ? { case_file_extract_error: caseFileExtractError } : {}),
+          ...isfPayload,
+          ...(isfError ? { isf_v2_error: isfError } : {}),
           structured_extract_source: 'local_parser',
           structured_extract_at: new Date().toISOString(),
           processing_metrics: {
