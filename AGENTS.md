@@ -5,6 +5,29 @@
 ---
 
 - **Data**: 07/06/2026
+- **Bloco**: SPRINT COMERCIAL P0.4 — Núcleo de Captura de Interesse (Fase 1-4, 6-7, 9)
+- **Arquivos criados**:
+  - `src/components/commercial/InterestModal.tsx` *(novo)* — Componente React de captura de interesse com telemetria e fila de prioridade comercial.
+  - `supabase/migrations/20260607_marketing_leads_interest.sql` *(novo)* — SQL sugerido com colunas de interesse comercial em `marketing_leads`.
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/lib/commercial/scoring.ts` — Adicionados novos tipos de eventos e lógica de score de interesse.
+  - `src/lib/commercial/__tests__/scoring.test.ts` — Novos testes unitários para a pontuação de interesse.
+  - `src/app/api/marketing/leads/route.ts` — Nova action `register_interest` com suporte a fallback em `metadata` JSONB.
+  - `src/app/dashboard/planos/page.tsx` — Integração de escolha de planos starter/profissional/empresarial para acionar o formulário de interesse.
+  - `src/app/dashboard/resultado/page.tsx` — Interceptação dos CTAs da prévia trial para capturar dados de interesse no modal.
+- **Rotas afetadas**: `/dashboard/planos`, `/dashboard/resultado`, `/api/marketing/leads`
+- **Alterações implementadas**:
+  1. Criação do modal de interesse comercial coletando Nome, Email, WhatsApp, Perfil, Plano e Volume mensal estimado.
+  2. Implementação de tracking de eventos específicos: `interest_modal_open`, `interest_form_started`, `interest_form_completed`, `interest_plan_selected`, `interest_volume_selected`.
+  3. Lógica resiliente para APIs salvando dados em colunas estruturadas ou no metadata JSONB como fallback automático caso a migration não tenha sido aplicada.
+  4. Nova lógica pure de score de interesse: Empresarial + Mais de 100 análises (100 pontos), Profissional + Até 25 análises (70 pontos), Ocasional + Até 5 análises (30 pontos).
+- **Validações**: `npx tsc --noEmit` (exit 0), `npm run lint` (✓), `npm test` (468/468 — 15 suítes, ✓), `npm run build` (✓)
+- **Deploy em produção**: **NÃO EFETUADO** (aguardando autorização para deploy)
+
+---
+
+- **Data**: 07/06/2026
 - **Bloco**: SPRINT COMERCIAL P0.3 — Conversão Persuasiva (Gatilhos Psicológicos e Valor)
 - **Arquivos criados**: Nenhum (apenas refatorações de UX e copy).
 - **Arquivos alterados**:

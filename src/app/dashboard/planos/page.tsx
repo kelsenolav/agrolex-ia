@@ -7,6 +7,7 @@ import { ShieldCheck, ArrowLeft, CheckCircle2, Crown, Building2, Zap, Lock, XCir
 import { supabase } from '@/lib/supabase';
 import { PLANS, listPlans, type Plan, type PlanType } from '@/lib/commercial/plans';
 import { createCommercialEvent, buildMetadataWithEvent } from '@/lib/commercial/scoring';
+import InterestModal from '@/components/commercial/InterestModal';
 
 const PLAN_FEATURES: Record<PlanType, string[]> = {
   trial: [
@@ -69,6 +70,13 @@ export default function PlanosPage() {
   // FASE 3: lead_id para persistência de eventos
   const [leadId, setLeadId] = useState<string | null>(null);
 
+  // Estados do Modal de Interesse Comercial
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedPlanForModal, setSelectedPlanForModal] = useState('Profissional');
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
+  const [userId, setUserId] = useState('');
+
   useEffect(() => {
     const fetchProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -77,14 +85,20 @@ export default function PlanosPage() {
         return;
       }
 
+      setUserEmail(session.user.email || '');
+      setUserId(session.user.id);
+      
       const { data: profile } = await supabase
         .from('profiles')
-        .select('plan_type')
+        .select('name, plan_type')
         .eq('id', session.user.id)
         .single();
 
-      if (profile?.plan_type && profile.plan_type in PLANS) {
-        setCurrentPlan(profile.plan_type as PlanType);
+      if (profile) {
+        if (profile.name) setUserName(profile.name);
+        if (profile.plan_type && profile.plan_type in PLANS) {
+          setCurrentPlan(profile.plan_type as PlanType);
+        }
       }
 
       // FASE 3: buscar lead para persistência de eventos
@@ -310,11 +324,14 @@ export default function PlanosPage() {
                           console.error(e);
                         }
 
-                        if (plan.id !== 'trial' && plan.id !== 'starter') {
-                          alert(`Plano ${displayLabel} em breve disponível com Mercado Pago.`);
+                        if (plan.id === 'trial') {
+                          router.push('/dashboard/nova-analise');
                           return;
                         }
-                        router.push('/dashboard/nova-analise');
+
+                        // Para os planos starter (Usuário Ocasional), profissional e empresarial, abre o Modal de Interesse
+                        setSelectedPlanForModal(displayLabel);
+                        setIsModalOpen(true);
                       }}
                       className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${
                         isPremium
@@ -339,6 +356,16 @@ export default function PlanosPage() {
           <p className="mt-1">Dúvidas? Entre em contato pelo WhatsApp: (63) 9 9999-9999</p>
         </div>
       </main>
+
+      {/* Modal de Interesse Comercial */}
+      <InterestModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        defaultPlan={selectedPlanForModal}
+        userEmail={userEmail}
+        userName={userName}
+        userId={userId}
+      />
     </div>
   );
 }

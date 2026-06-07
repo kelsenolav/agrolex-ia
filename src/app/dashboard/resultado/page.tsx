@@ -9,6 +9,7 @@ import { calcularScoreAgroLex, MODULE_NAMES } from '@/types/analise';
 import ScoreAgroLex from '@/components/ScoreAgroLex';
 import { normalizarRadarISF, pctBarraRadar } from '@/lib/isf/radarNormalizer';
 import ISFExplainer from '@/components/isf/ISFExplainer';
+import InterestModal from '@/components/commercial/InterestModal';
 import {
   getISFStyle,
   getISFLabel,
@@ -75,10 +76,20 @@ function ResultadoContent() {
   // SPRINT COMERCIAL P0 — FASE 3: Lead Scoring
   const [leadId, setLeadId] = useState<string | null>(null);
 
+  // Estados do Modal de Interesse Comercial
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedPlanForModal, setSelectedPlanForModal] = useState('Profissional');
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
+  const [userId, setUserId] = useState('');
+
   useEffect(() => {
     const fetchProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
+
+      setUserEmail(session.user.email || '');
+      setUserId(session.user.id);
 
       // SPRINT P0.2 — Buscar status do trial no marketing_leads
       let trialUsedFromLeads = false;
@@ -98,10 +109,11 @@ function ResultadoContent() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('plan_type, trial_used, subscription_status')
+        .select('name, plan_type, trial_used, subscription_status')
         .eq('id', session.user.id)
         .single();
       if (profile) {
+        if (profile.name) setUserName(profile.name);
         setTrialProfile(profile as TrialProfile);
         setIsTrialUser(profile.plan_type === 'trial');
       }
@@ -1007,7 +1019,8 @@ function ResultadoContent() {
             <button
               onClick={() => {
                 registrarEventoComercial('blocked_premium_clicked', { origem: 'card_premium_trial' });
-                router.push('/dashboard/planos');
+                setSelectedPlanForModal('Profissional');
+                setIsModalOpen(true);
               }}
               className="w-full bg-brand-gold text-brand-green py-4 rounded-xl font-extrabold text-lg text-center hover:brightness-110 transition-all shadow-lg"
             >
@@ -1332,7 +1345,8 @@ function ResultadoContent() {
                           });
                         }
                       });
-                      router.push('/dashboard/planos');
+                      setSelectedPlanForModal('Profissional');
+                      setIsModalOpen(true);
                     }}
                     className="w-full max-w-md bg-brand-gold text-brand-green py-4 rounded-xl font-extrabold text-lg text-center hover:brightness-110 transition-all shadow-md"
                   >
@@ -1649,6 +1663,16 @@ function ResultadoContent() {
 
         </div>
       </main>
+
+      {/* Modal de Interesse Comercial */}
+      <InterestModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        defaultPlan={selectedPlanForModal}
+        userEmail={userEmail}
+        userName={userName}
+        userId={userId}
+      />
     </div>
   );
 }
