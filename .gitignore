@@ -40,6 +40,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# VS Code
+.vscode/
+
+# Artifacts and legacy
+src/app/oracleJdk-26/
+scripts/legacy/
+landing-prod.png
+docs/
+
 # Local caches and rescue backups
 .npm-cache/
 artifacts/

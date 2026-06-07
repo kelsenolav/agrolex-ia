@@ -25,39 +25,45 @@ import {
 } from 'lucide-react';
 import type { ExplicabilidadeISF, TopFator, EixoExplicacao, ComparacaoScore } from '@/lib/isf/isfExplainer';
 import { gerarExplicabilidadeISF } from '@/lib/isf/isfExplainer';
+import {
+  getISFStyle,
+  getISFLabel,
+  getISFHex,
+  getISFBgTint,
+  getISFTextTint,
+  getISFDescription,
+  normalizeISFLevel,
+} from '@/lib/isf/isfTaxonomy';
 
-// ─── CORES POR CLASSIFICAÇÃO ──────────────────────────────────────────
-
-const CORES_CLASSIFICACAO: Record<string, { bg: string; border: string; text: string; badge: string }> = {
-  critico:      { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', badge: 'bg-red-100 text-red-800' },
-  alto_risco:   { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-800' },
-  atencao:      { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700', badge: 'bg-yellow-100 text-yellow-800' },
-  seguro:       { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', badge: 'bg-green-100 text-green-800' },
-  muito_seguro: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800' },
-};
-
-const CRITICIDADE_CORES: Record<string, string> = {
-  critica: 'bg-red-100 text-red-800 border-red-200',
-  crítica: 'bg-red-100 text-red-800 border-red-200',
-  critico: 'bg-red-100 text-red-800 border-red-200',
-  crítico: 'bg-red-100 text-red-800 border-red-200',
-  alta:    'bg-orange-100 text-orange-800 border-orange-200',
-  alto:    'bg-orange-100 text-orange-800 border-orange-200',
-  media:   'bg-yellow-100 text-yellow-800 border-yellow-200',
-  médio:   'bg-yellow-100 text-yellow-800 border-yellow-200',
-  medio:   'bg-yellow-100 text-yellow-800 border-yellow-200',
-  baixa:   'bg-green-100 text-green-800 border-green-200',
-  baixo:   'bg-green-100 text-green-800 border-green-200',
-};
-
-function getCriticidadeCor(criticidade: string): string {
-  const key = criticidade.toLowerCase().trim();
-  return CRITICIDADE_CORES[key] || 'bg-gray-100 text-gray-800 border-gray-200';
+// P1B — Funções de cor usando taxonomy centralizada em vez de Record hardcoded
+function getClassificacaoCor(classificacao: string): { bg: string; border: string; text: string; badge: string } {
+  const style = getISFStyle(classificacao);
+  const bgTint = getISFBgTint(classificacao);
+  const textTint = getISFTextTint(classificacao);
+  return {
+    bg: bgTint,
+    border: style.split(' ').find(c => c.startsWith('border-')) || 'border-gray-200',
+    text: textTint,
+    badge: `${bgTint} ${textTint}`,
+  };
 }
 
-function getClassificacaoCor(classificacao: string): { bg: string; border: string; text: string; badge: string } {
-  const key = classificacao.toLowerCase().replace(/\s+/g, '_') as keyof typeof CORES_CLASSIFICACAO;
-  return CORES_CLASSIFICACAO[key] || CORES_CLASSIFICACAO.atencao;
+function getCriticidadeCor(criticidade: string): string {
+  const c = criticidade.toLowerCase().trim();
+  // Mapeamento de criticidade textual para nível ISF
+  if (c.includes('critico') || c.includes('crítico') || c.includes('critica') || c.includes('crítica')) {
+    return getISFStyle('critico');
+  }
+  if (c.includes('alto') || c.includes('alta')) {
+    return getISFStyle('alto_risco');
+  }
+  if (c.includes('medio') || c.includes('médio') || c.includes('media')) {
+    return getISFStyle('atencao');
+  }
+  if (c.includes('baixo') || c.includes('baixa')) {
+    return getISFStyle('seguro');
+  }
+  return 'bg-gray-100 text-gray-800 border-gray-200';
 }
 
 // ─── COMPONENTES INTERNOS ─────────────────────────────────────────────

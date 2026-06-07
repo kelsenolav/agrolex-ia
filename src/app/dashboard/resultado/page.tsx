@@ -9,6 +9,15 @@ import { calcularScoreAgroLex, MODULE_NAMES } from '@/types/analise';
 import ScoreAgroLex from '@/components/ScoreAgroLex';
 import { normalizarRadarISF, pctBarraRadar } from '@/lib/isf/radarNormalizer';
 import ISFExplainer from '@/components/isf/ISFExplainer';
+import {
+  getISFStyle,
+  getISFLabel,
+  getISFHex,
+  getISFBgTint,
+  getISFTextTint,
+  classifyISFScore,
+  normalizeISFLevel,
+} from '@/lib/isf/isfTaxonomy';
 import DOMPurify from 'dompurify';
 
 const POLLING_MAX_RETRIES = 30;
@@ -246,27 +255,43 @@ function ResultadoContent() {
 
   const propName = analise.properties?.name || 'Propriedade';
   const propLocation = `${analise.properties?.city || ''}, ${analise.properties?.state || ''}`;
-  const risco = analise.risk_level || "Pendente";
+  
+  // P1B — Fonte primária: ISF v2, fallback: risk_level legado
+  const isfV2Findings = (findings as unknown as Record<string, unknown>)?.isf_v2 as Record<string, unknown> | undefined ?? null;
+  const isfV2RiskLabel = (isfV2Findings as any)?.risk_label || null;
+  const isfV2RiskLevel = (isfV2Findings as any)?.risk_level || null;
+  const isfV2Score = (isfV2Findings as any)?.isf_score ?? null;
+  const risco = isfV2RiskLabel || analise.risk_level || "Pendente";
   
   let finalResumo = findings!.isHtmlResumo ? findings!.resumo : parseMarkdown(findings!.resumo);
   const sanitizedResumo = DOMPurify.sanitize(finalResumo);
 
-  const scoreData = calcularScoreAgroLex(findings, analise.risk_level);
+  // P1B — Score: ISF v2 como primário, legado como fallback
+  const scoreData = {
+    ...calcularScoreAgroLex(findings, analise.risk_level),
+    score: isfV2Score !== null ? isfV2Score : calcularScoreAgroLex(findings, analise.risk_level).score,
+  };
 
   // ─── RADAR v2 — ISF v2 ─────────────────────────
   // Tenta usar findings.isf_v2; se não existir, radar v2 fica null
-  const isfV2Data = (findings as unknown as Record<string, unknown>)?.isf_v2 as Record<string, unknown> | undefined ?? null;
+  const isfV2Data = isfV2Findings;
   const radarEixos = normalizarRadarISF(isfV2Data);
   const temRadarV2 = radarEixos !== null && radarEixos.length === 5;
 
   // ─── ISF EXPLAINER — score_comparison ───────────
   const scoreComparisonData = (findings as unknown as Record<string, unknown>)?.score_comparison as Record<string, unknown> | undefined ?? null;
 
+  // P1B — getRiscoStyle usando taxonomy centralizada em vez de switch hardcoded
   const getRiscoStyle = (r: string) => {
-    const rLower = r?.toLowerCase();
-    if (rLower === 'alto' || rLower === 'critico') return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600', labelText: 'text-red-800' };
-    if (rLower === 'medio' || rLower === 'médio') return { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-600', labelText: 'text-yellow-800' };
-    return { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600', labelText: 'text-green-800' };
+    const taxonomyStyle = getISFStyle(r);
+    const taxonomyBgTint = getISFBgTint(r);
+    const taxonomyTextTint = getISFTextTint(r);
+    return {
+      bg: taxonomyBgTint,
+      border: taxonomyStyle.split(' ').find(c => c.startsWith('border-')) || 'border-gray-200',
+      text: taxonomyTextTint,
+      labelText: taxonomyStyle.split(' ').find(c => c.startsWith('text-') && c !== 'text-white') || 'text-gray-800',
+    };
   };
   const styles = getRiscoStyle(risco);
 
