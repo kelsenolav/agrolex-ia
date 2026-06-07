@@ -228,6 +228,14 @@ export default function NovaAnalisePage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    // Capturar referência estável do formulário antes de qualquer operação
+    const form = e.currentTarget;
+    if (!(form instanceof HTMLFormElement)) {
+      showToast('Erro inesperado: referência do formulário inválida.', 'error');
+      return;
+    }
+
     if (files.length === 0) {
       showToast('Por favor, anexe ao menos um documento.', 'error');
       return;
@@ -254,7 +262,7 @@ export default function NovaAnalisePage() {
       return;
     }
 
-    const formData = new FormData(e.currentTarget);
+    const formData = new FormData(form);
     setLoading(true);
 
     try {
