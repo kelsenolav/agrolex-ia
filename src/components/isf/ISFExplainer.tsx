@@ -3,6 +3,7 @@
  * ISFExplainer.tsx — Componente Visual de Explicabilidade do ISF v2
  *
  * SPRINT 3 — EXPLICABILIDADE ISF v2
+ * SPRINT 4 — PDF ISF v2 (classes de print adicionadas)
  *
  * Exibe:
  *   1. Card geral do ISF v2 (score + classificação + leitura executiva)
@@ -73,7 +74,7 @@ function CardGeral({
   const cores = getClassificacaoCor(classificacao);
 
   return (
-    <div className={`${cores.bg} p-5 rounded-xl border ${cores.border} shadow-sm`}>
+    <div className={`${cores.bg} p-5 rounded-xl border ${cores.border} shadow-sm isf-card-geral`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className={`w-12 h-12 rounded-full ${cores.badge} flex items-center justify-center`}>
@@ -81,14 +82,14 @@ function CardGeral({
           </div>
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">ISF v2</p>
-            <p className={`text-3xl font-black ${cores.text}`}>{score}</p>
+            <p className={`text-3xl font-black ${cores.text} isf-score-valor`}>{score}</p>
           </div>
         </div>
-        <span className={`px-3 py-1 rounded-full text-xs font-bold ${cores.badge}`}>
+        <span className={`px-3 py-1 rounded-full text-xs font-bold ${cores.badge} isf-classificacao-badge`}>
           {classificacao}
         </span>
       </div>
-      <p className="text-sm text-gray-700 leading-relaxed">{resumo}</p>
+      <p className="text-sm text-gray-700 leading-relaxed isf-resumo-texto">{resumo}</p>
     </div>
   );
 }
@@ -108,11 +109,11 @@ function TopFatoresList({ fatores }: { fatores: TopFator[] }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 isf-top-fatores">
       {fatores.map((fator, i) => (
         <div
           key={i}
-          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+          className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow isf-top-fator-item"
         >
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -120,6 +121,12 @@ function TopFatoresList({ fatores }: { fatores: TopFator[] }) {
                 {i + 1}
               </span>
               <span className="text-sm font-bold text-gray-900 truncate">{fator.nome}</span>
+              {/* Badge "RISCO MAIS RELEVANTE" no fator #1 */}
+              {i === 0 && (
+                <span className="ml-2 px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider bg-red-600 text-white isf-risco-relevante-badge">
+                  RISCO MAIS RELEVANTE
+                </span>
+              )}
             </div>
             <span
               className={`px-2 py-0.5 rounded text-[10px] font-bold border flex-shrink-0 ml-2 ${getCriticidadeCor(fator.criticidade)}`}
@@ -152,7 +159,7 @@ function EixosExplicacao({ eixos }: { eixos: EixoExplicacao[] }) {
   if (eixos.length === 0) return null;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 isf-eixos">
       {eixos.map((eixo, i) => {
         const leitura = eixo.leitura || '';
         const intensidade = eixo.valor / 100; // 0-1
@@ -164,7 +171,7 @@ function EixosExplicacao({ eixos }: { eixos: EixoExplicacao[] }) {
         else if (eixo.valor >= 25) barColor = 'bg-yellow-500';
 
         return (
-          <div key={i} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <div key={i} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm isf-eixo-item">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-bold text-gray-800">{eixo.eixo}</span>
               <span className="text-xs font-bold text-gray-500">
@@ -173,9 +180,9 @@ function EixosExplicacao({ eixos }: { eixos: EixoExplicacao[] }) {
             </div>
 
             {/* Barra de valor */}
-            <div className="w-full bg-gray-100 rounded-full h-2.5 mb-2">
+            <div className="w-full bg-gray-100 rounded-full h-2.5 mb-2 isf-eixo-bar-track">
               <div
-                className={`h-2.5 rounded-full transition-all ${barColor}`}
+                className={`h-2.5 rounded-full transition-all ${barColor} isf-eixo-bar-fill`}
                 style={{ width: `${eixo.valor}%` }}
               />
             </div>
@@ -186,7 +193,7 @@ function EixosExplicacao({ eixos }: { eixos: EixoExplicacao[] }) {
               <span>{eixo.achados} achado(s)</span>
             </div>
 
-            <p className="text-xs text-gray-600 italic">{leitura}</p>
+            <p className="text-xs text-gray-600 italic isf-eixo-leitura">{leitura}</p>
           </div>
         );
       })}
@@ -200,13 +207,13 @@ function ComparacaoScores({ comparacao }: { comparacao: ComparacaoScore }) {
   else if (comparacao.difference < -5) leituraCor = 'text-red-600';
 
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-5 rounded-xl border border-blue-200 shadow-sm">
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-5 rounded-xl border border-blue-200 shadow-sm isf-comparacao">
       <div className="flex items-center gap-2 mb-4">
         <GitCompare size={18} className="text-blue-600" />
         <span className="text-sm font-bold text-blue-800">Comparação: Score Legado vs ISF v2</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-3 gap-4 mb-4 isf-comparacao-grid">
         <div className="bg-white p-3 rounded-lg border border-blue-100 text-center">
           <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Score Legado</p>
           <p className="text-xl font-black text-gray-800">{comparacao.legacyScore}</p>
@@ -276,18 +283,18 @@ export default function ISFExplainer({
   const eixos = explicabilidade.eixos || [];
 
   return (
-    <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+    <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8 isf-section">
       <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
         <ShieldCheck className="text-brand-gold" size={24} /> Índice de Segurança Fundiária — ISF
       </h2>
 
       {/* 1. Card Geral */}
-      <div className="mb-6">
+      <div className="mb-6 isf-bloco-card">
         <CardGeral score={score} classificacao={classificacao} resumo={resumo} />
       </div>
 
       {/* 2. Top Fatores de Redução */}
-      <div className="mb-6">
+      <div className="mb-6 isf-bloco-fatores">
         <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2 uppercase tracking-wider">
           <TrendingDown size={16} className="text-red-500" />
           Fatores que reduziram o ISF
@@ -297,7 +304,7 @@ export default function ISFExplainer({
 
       {/* 3. Explicação por Eixo */}
       {eixos.length > 0 && (
-        <div className="mb-6">
+        <div className="mb-6 isf-bloco-eixos">
           <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2 uppercase tracking-wider">
             <BarChart3 size={16} className="text-brand-gold" />
             Detalhamento por Eixo
@@ -308,13 +315,13 @@ export default function ISFExplainer({
 
       {/* 4. Comparação v1 x v2 (se disponível) */}
       {explicabilidade.comparacao && (
-        <div className="mb-2">
+        <div className="mb-2 isf-bloco-comparacao">
           <ComparacaoScores comparacao={explicabilidade.comparacao} />
         </div>
       )}
 
       {/* 5. Nota de rodapé */}
-      <div className="mt-4 pt-3 border-t border-gray-100">
+      <div className="mt-4 pt-3 border-t border-gray-100 isf-rodape">
         <p className="text-[10px] text-gray-400 leading-relaxed">
           <strong>ISF v2</strong> — Índice de Segurança Fundiária. Versão 2.0. Este índice é um complemento ao score legado e está em fase de calibração. Os valores podem variar conforme o refinamento dos pesos e thresholds.
         </p>

@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase';
 import type { Analysis, AnalysisFindings } from '@/types/analise';
 import { normalizeStatus, calcularScoreAgroLex } from '@/types/analise';
 import ScoreAgroLex from '@/components/ScoreAgroLex';
+import { isfTelemetry } from '@/lib/isf/isfTelemetry';
+import type { ISFTelemetryResult } from '@/lib/isf/isfTelemetry';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -25,6 +27,9 @@ export default function DashboardPage() {
   // FASE 5 — Proteção contra loop infinito no encadeamento automático
   const chainCountRef = useRef<Record<string, number>>({});
   const MAX_AUTO_CHAIN = 8;
+
+  // SPRINT 5 — Telemetria ISF v2
+  const [isfData, setIsfData] = useState<ISFTelemetryResult | null>(null);
 
   // FASE 2.0.2 — Modal de recomendação
   const [recommendModal, setRecommendModal] = useState<{
@@ -96,6 +101,12 @@ export default function DashboardPage() {
 
       if (data) {
         setAnalises(data as unknown as Analysis[]);
+
+        // SPRINT 5 — Calcular telemetria ISF v2 com análises completas
+        const concluidas = data.filter((a: any) => a.status === 'completed');
+        if (concluidas.length > 0) {
+          setIsfData(isfTelemetry(concluidas));
+        }
       }
       setLoading(false);
     };
@@ -519,6 +530,44 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* SPRINT 5 — ISF Analytics Card (bloco discreto) */}
+        {isfData && isfData.totalAnalyses > 0 && (
+          <div className="mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2 mb-4">
+              <BarChart3 size={18} className="text-brand-green" />
+              <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">ISF Analytics</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+              <div>
+                <span className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">Análises</span>
+                <p className="text-xl font-black text-gray-800">{isfData.totalAnalyses}</p>
+              </div>
+              <div>
+                <span className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">Média ISF</span>
+                <p className="text-xl font-black text-brand-green">{isfData.averageISF}</p>
+              </div>
+              <div>
+                <span className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">Média Legado</span>
+                <p className="text-xl font-black text-gray-600">{isfData.averageLegacyScore}</p>
+              </div>
+              <div>
+                <span className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">Diferença</span>
+                <p className={`text-xl font-black ${isfData.averageDifference >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {isfData.averageDifference >= 0 ? '+' : ''}{isfData.averageDifference}
+                </p>
+              </div>
+              <div className="col-span-2 md:col-span-1">
+                <span className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">Distribuição</span>
+                <div className="flex gap-2 mt-1">
+                  <span className="text-[11px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">{isfData.distribution.seguro}%</span>
+                  <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">{isfData.distribution.atencao}%</span>
+                  <span className="text-[11px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">{isfData.distribution.critico}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Filtros e Busca */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">

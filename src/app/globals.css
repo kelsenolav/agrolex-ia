@@ -442,4 +442,154 @@ body {
     background: #fef3c7 !important;
     color: #92400e !important;
   }
+
+  /* ─── PRINT ISF EXPLAINER — SPRINT 4 ─── */
+  /* Card Executivo ISF v2 */
+  .isf-card-geral {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+  }
+  .isf-card-geral .isf-score-valor {
+    font-size: 20pt !important;
+  }
+  .isf-card-geral .isf-classificacao-badge {
+    font-size: 9pt !important;
+    font-weight: 800 !important;
+    padding: 3px 12px !important;
+    letter-spacing: 0.5px !important;
+  }
+  .isf-card-geral .isf-resumo-texto {
+    font-size: 10pt !important;
+    line-height: 1.5 !important;
+    color: #374151 !important;
+  }
+
+  /* Top Fatores de Redução */
+  .isf-top-fatores {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  .isf-top-fator-item {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+  }
+  .isf-risco-relevante-badge {
+    display: inline-flex !important;
+    background: #dc2626 !important;
+    color: #ffffff !important;
+    font-size: 7pt !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.8px !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  /* Explicação por Eixo */
+  .isf-eixos {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  .isf-eixo-item {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+    padding: 10px 14px !important;
+  }
+  .isf-eixo-bar-track {
+    background: #e5e7eb !important;
+    height: 10px !important;
+    border-radius: 5px !important;
+  }
+  .isf-eixo-bar-fill {
+    height: 10px !important;
+    border-radius: 5px !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+  .isf-eixo-bar-fill.bg-green-500 {
+    background: #10b981 !important;
+  }
+  .isf-eixo-bar-fill.bg-yellow-500 {
+    background: #f59e0b !important;
+  }
+  .isf-eixo-bar-fill.bg-orange-500 {
+    background: #f97316 !important;
+  }
+  .isf-eixo-bar-fill.bg-red-500 {
+    background: #dc2626 !important;
+  }
+  .isf-eixo-leitura {
+    font-size: 9pt !important;
+    line-height: 1.5 !important;
+    color: #6b7280 !important;
+  }
+
+  /* Comparação Score Legado vs ISF v2 */
+  .isf-comparacao {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    background: #eff6ff !important;
+    border: 1px solid #bfdbfe !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+  .isf-comparacao-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr 1fr !important;
+    gap: 10px !important;
+  }
+  .isf-comparacao-grid > div {
+    background: #ffffff !important;
+    border: 1px solid #dbeafe !important;
+    border-radius: 8px !important;
+    padding: 8px 4px !important;
+  }
+  .isf-comparacao-grid > div p:last-child {
+    font-size: 14pt !important;
+  }
+
+  /* Aviso obrigatório no rodapé da comparação */
+  .isf-comparacao p.text-gray-400.italic {
+    font-size: 8pt !important;
+    color: #9ca3af !important;
+    margin-top: 6px !important;
+  }
+
+  /* Nota de rodapé do ISF */
+  .isf-rodape {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-top: 8px !important;
+    padding-top: 6px !important;
+    border-top: 1px solid #e5e7eb !important;
+  }
+  .isf-rodape p {
+    font-size: 8pt !important;
+    line-height: 1.4 !important;
+    color: #9ca3af !important;
+  }
+
+  /* Seção ISF — evitar quebra antes do título */
+  .isf-section {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Blocos internos — evitar quebra */
+  .isf-bloco-card,
+  .isf-bloco-fatores,
+  .isf-bloco-eixos,
+  .isf-bloco-comparacao {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
 }
