@@ -1232,22 +1232,24 @@ function ResultadoContent() {
             </section>
 
             {isTrialUser && (
-              <section className="p-6 bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-300 rounded-2xl shadow-sm text-center my-8">
-                <div className="mb-4">
-                  <span className="text-2xl">🔒</span>
-                  <h3 className="text-lg font-bold text-gray-800 mt-2">Relatório Parcial Bloqueado</h3>
-                  <p className="text-sm text-gray-600 max-w-md mx-auto mt-1">
-                    Para visualizar a análise completa de todos os riscos, cadeia dominial visual, recomendações técnicas completas e baixar a peça jurídica ou PDF, assine um plano.
+              <section className="p-8 bg-gradient-to-br from-amber-50/80 to-yellow-50/50 border border-amber-300 rounded-2xl shadow-sm text-center my-8 space-y-6">
+                <div className="border-l-4 border-red-500 bg-red-50 p-4 rounded-r-xl text-left">
+                  <h4 className="text-red-800 font-extrabold text-sm uppercase tracking-wide">ATENÇÃO</h4>
+                  <p className="text-gray-700 text-sm mt-1 leading-relaxed">
+                    Sua análise identificou sinais relevantes que podem impactar a segurança jurídica deste imóvel.
+                  </p>
+                  <p className="text-gray-700 text-sm mt-1.5 leading-relaxed font-semibold">
+                    O AgroLex encontrou informações que merecem análise detalhada antes de qualquer compra, venda, financiamento ou regularização.
                   </p>
                 </div>
                 
                 {/* Barra de Valor do Relatório */}
-                <div className="max-w-md mx-auto mb-6 bg-white border border-amber-200 rounded-xl p-4">
-                  <div className="flex justify-between text-xs font-bold text-amber-800 mb-1.5">
-                    <span>Relatório exibido: 20%</span>
-                    <span>80% do relatório permanece bloqueado</span>
+                <div className="max-w-md mx-auto bg-white border border-amber-200 rounded-xl p-5 shadow-sm">
+                  <div className="flex justify-between text-xs font-bold text-amber-800 mb-2">
+                    <span>Relatório liberado: 20%</span>
+                    <span>80% das informações permanecem protegidas.</span>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden flex">
+                  <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden flex border border-gray-200">
                     <div className="bg-amber-500 h-full w-[20%]" />
                     <div className="bg-gray-200 h-full flex-1 animate-pulse" />
                   </div>
@@ -1256,31 +1258,87 @@ function ResultadoContent() {
                   </p>
                 </div>
 
-                <button
-                  onClick={() => {
-                    registrarEventoComercial('blocked_premium_clicked', { origem: 'resultado_parcial_bar' });
-                    // Telemetria do click
-                    supabase.auth.getSession().then(({ data: { session } }) => {
-                      if (session) {
-                        fetch('/api/marketing/leads', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            action: 'track_event',
-                            userId: session.user.id,
-                            email: session.user.email,
-                            eventType: 'upgrade_cta_click',
-                            meta: { origem: 'resultado_parcial_bar', analysisId: analise.id }
-                          })
-                        });
-                      }
-                    });
-                    router.push('/dashboard/planos');
-                  }}
-                  className="bg-brand-gold text-brand-green px-8 py-3.5 rounded-xl font-extrabold hover:brightness-110 transition-all shadow-md"
-                >
-                  Desbloquear Relatório Completo
-                </button>
+                {/* Gatilho de Perda */}
+                <div className="max-w-md mx-auto bg-white border border-amber-200 rounded-xl p-5 shadow-sm text-left">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">O que você ainda NÃO viu:</p>
+                  <ul className="space-y-2.5 text-sm">
+                    <li className="flex items-center gap-2 text-gray-700 font-medium">
+                      <span className="text-amber-500">✓</span> Análise dominial completa
+                    </li>
+                    <li className="flex items-center gap-2 text-gray-700 font-medium">
+                      <span className="text-amber-500">✓</span> Cronologia registral detalhada
+                    </li>
+                    <li className="flex items-center gap-2 text-gray-700 font-medium">
+                      <span className="text-amber-500">✓</span> Inconsistências documentais
+                    </li>
+                    <li className="flex items-center gap-2 text-gray-700 font-medium">
+                      <span className="text-amber-500">✓</span> Riscos ocultos identificados
+                    </li>
+                    <li className="flex items-center gap-2 text-gray-700 font-medium">
+                      <span className="text-amber-500">✓</span> Recomendações jurídicas
+                    </li>
+                    <li className="flex items-center gap-2 text-gray-700 font-medium">
+                      <span className="text-amber-500">✓</span> Estratégia de mitigação de riscos
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Gatilho de Credibilidade */}
+                <div className="max-w-md mx-auto bg-gray-50 border border-gray-200 rounded-xl p-5 text-left">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Como o AgroLex trabalha</p>
+                  <ul className="space-y-2 text-xs text-gray-600">
+                    <li className="flex items-center gap-2">
+                      <span className="text-brand-green font-bold">✓</span> Análise automatizada de documentos
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-brand-green font-bold">✓</span> Verificação de inconsistências registrais
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-brand-green font-bold">✓</span> Avaliação de riscos fundiários
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-brand-green font-bold">✓</span> Organização técnica dos achados
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-brand-green font-bold">✓</span> Relatório estruturado para tomada de decisão
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Gatilho de Urgência */}
+                <div className="max-w-md mx-auto bg-amber-100/50 border border-amber-200 rounded-xl p-4 text-center">
+                  <p className="text-xs font-bold text-amber-800 leading-relaxed">
+                    Quanto mais cedo os riscos são identificados, menor o custo para corrigir problemas futuros.
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      registrarEventoComercial('blocked_premium_clicked', { origem: 'resultado_parcial_bar' });
+                      // Telemetria do click
+                      supabase.auth.getSession().then(({ data: { session } }) => {
+                        if (session) {
+                          fetch('/api/marketing/leads', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              action: 'track_event',
+                              userId: session.user.id,
+                              email: session.user.email,
+                              eventType: 'upgrade_cta_click',
+                              meta: { origem: 'resultado_parcial_bar', analysisId: analise.id }
+                            })
+                          });
+                        }
+                      });
+                      router.push('/dashboard/planos');
+                    }}
+                    className="w-full max-w-md bg-brand-gold text-brand-green py-4 rounded-xl font-extrabold text-lg text-center hover:brightness-110 transition-all shadow-md"
+                  >
+                    Quero Ver o Relatório Completo
+                  </button>
+                </div>
               </section>
             )}
 

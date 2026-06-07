@@ -93,7 +93,26 @@ export default function PlanosPage() {
         .select('id, metadata')
         .eq('user_id', session.user.id)
         .maybeSingle();
-      if (lead) setLeadId(lead.id);
+      if (lead) {
+        setLeadId(lead.id);
+        
+        // SPRINT P0.3: Telemetria de visualização da página de planos
+        try {
+          fetch('/api/marketing/leads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'track_event',
+              userId: session.user.id,
+              email: session.user.email,
+              eventType: 'plans_page_view',
+              meta: { origem: 'dashboard_planos' }
+            })
+          });
+        } catch (e) {
+          console.error(e);
+        }
+      }
 
       setLoading(false);
     };
@@ -150,9 +169,9 @@ export default function PlanosPage() {
         </Link>
 
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-extrabold text-gray-800 mb-3">Planos AgroLex</h1>
+          <h1 className="text-4xl font-extrabold text-gray-800 mb-3">Proteja sua próxima decisão fundiária</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Escolha o plano ideal para o seu escritório e comece a auditar imóveis rurais com inteligência fundiária de ponta.
+            Escolha o plano ideal para mitigar riscos, validar documentos e garantir a segurança jurídica de suas operações.
           </p>
         </div>
 
@@ -164,6 +183,24 @@ export default function PlanosPage() {
             const highlights = PLAN_HIGHLIGHTS[plan.id] || [];
             const isTrial = plan.id === 'trial';
             const isPremium = plan.id === 'empresarial';
+
+            // Custom labels and descriptions for Sprint P0.3 Conversão Persuasiva
+            let displayLabel = plan.label;
+            let displayDescription = plan.description;
+
+            if (plan.id === 'trial') {
+              displayLabel = 'Acesso Experimental';
+              displayDescription = 'Ideal para testar a plataforma com uma análise simples.';
+            } else if (plan.id === 'starter') {
+              displayLabel = 'Usuário Ocasional';
+              displayDescription = 'Ideal para quem analisa poucos imóveis.';
+            } else if (plan.id === 'profissional') {
+              displayLabel = 'Profissional';
+              displayDescription = 'Ideal para advogados, corretores e consultores.';
+            } else if (plan.id === 'empresarial') {
+              displayLabel = 'Empresarial';
+              displayDescription = 'Ideal para operações recorrentes.';
+            }
 
             return (
               <div
@@ -189,8 +226,8 @@ export default function PlanosPage() {
                       <span className="text-brand-gold text-[10px] font-bold uppercase tracking-widest">Premium</span>
                     </div>
                   )}
-                  <h3 className={`text-xl font-extrabold ${isPremium ? 'text-white' : 'text-gray-800'}`}>{plan.label}</h3>
-                  <p className={`text-sm mt-1 ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>{plan.description}</p>
+                  <h3 className={`text-xl font-extrabold ${isPremium ? 'text-white' : 'text-gray-800'}`}>{displayLabel}</h3>
+                  <p className={`text-sm mt-1 ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>{displayDescription}</p>
                 </div>
 
                 {/* Preço */}
@@ -251,10 +288,30 @@ export default function PlanosPage() {
                   ) : (
                     <button
                       onClick={() => {
-                        // FASE 3: registrar evento plan_clicked antes de navegar
+                        // FASE 3: registrar evento plan_clicked e plans_cta_click antes de navegar
                         registrarPlanClicked(plan.id);
+                        try {
+                          supabase.auth.getSession().then(({ data: { session } }) => {
+                            if (session) {
+                              fetch('/api/marketing/leads', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  action: 'track_event',
+                                  userId: session.user.id,
+                                  email: session.user.email,
+                                  eventType: 'plans_cta_click',
+                                  meta: { planId: plan.id }
+                                })
+                              });
+                            }
+                          });
+                        } catch (e) {
+                          console.error(e);
+                        }
+
                         if (plan.id !== 'trial' && plan.id !== 'starter') {
-                          alert(`Plano ${plan.label} em breve disponível com Mercado Pago.`);
+                          alert(`Plano ${displayLabel} em breve disponível com Mercado Pago.`);
                           return;
                         }
                         router.push('/dashboard/nova-analise');

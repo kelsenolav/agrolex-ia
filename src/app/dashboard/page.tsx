@@ -146,8 +146,8 @@ export default function DashboardPage() {
                 action: 'track_event',
                 userId: session.user.id,
                 email: session.user.email,
-                eventType: 'upgrade_cta_view',
-                meta: { origem: 'banner_dashboard' }
+                eventType: 'conversion_banner_view',
+                meta: { origem: 'banner_dashboard_esgotado' }
               })
             });
           }
@@ -542,8 +542,8 @@ export default function DashboardPage() {
         {trialUsed && (
           <div className="mb-8 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-amber-500 rounded-r-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h3 className="font-extrabold text-amber-900 text-lg">Você já utilizou sua análise gratuita</h3>
-              <p className="text-amber-800 text-sm font-medium">Desbloqueie análises ilimitadas e acesso ao relatório completo.</p>
+              <h3 className="font-extrabold text-amber-900 text-lg">Sua análise gratuita foi concluída.</h3>
+              <p className="text-amber-800 text-sm font-medium">Você já utilizou seu acesso experimental. Continue utilizando o AgroLex para avaliar novos imóveis e acessar relatórios completos.</p>
             </div>
             <Link
               href="/dashboard/planos"
@@ -558,8 +558,8 @@ export default function DashboardPage() {
                         action: 'track_event',
                         userId: session.user.id,
                         email: session.user.email,
-                        eventType: 'upgrade_cta_click',
-                        meta: { origem: 'banner_dashboard' }
+                        eventType: 'conversion_banner_click',
+                        meta: { origem: 'banner_dashboard_esgotado' }
                       })
                     });
                   }
@@ -567,7 +567,7 @@ export default function DashboardPage() {
               }}
               className="px-6 py-2.5 bg-brand-gold text-brand-green font-black rounded-lg hover:brightness-110 transition-all text-sm shadow-md flex-shrink-0"
             >
-              Quero Acesso Completo
+              Continuar Utilizando o AgroLex
             </Link>
           </div>
         )}

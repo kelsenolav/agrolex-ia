@@ -5,6 +5,25 @@
 ---
 
 - **Data**: 07/06/2026
+- **Bloco**: SPRINT COMERCIAL P0.3 — Conversão Persuasiva (Gatilhos Psicológicos e Valor)
+- **Arquivos criados**: Nenhum (apenas refatorações de UX e copy).
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/app/dashboard/page.tsx` — Customização de copy do banner de trial utilizado ("Sua análise gratuita foi concluída...") com eventos de telemetria `conversion_banner_view` e `conversion_banner_click`.
+  - `src/app/dashboard/resultado/page.tsx` — Inclusão do aviso detalhado de riscos e impacto jurídico, barra de valor ("Relatório liberado: 20%"), blocos de gatilhos visuais de perda ("O que você ainda não viu"), credibilidade ("Como o AgroLex trabalha") e urgência de correção de riscos, com telemetria `upgrade_cta_click`.
+  - `src/app/dashboard/planos/page.tsx` — Título e descrição orientados a segurança ("Proteja sua próxima decisão fundiária"), renomeação de planos e copies focadas na dor de cada público-alvo (Acesso Experimental, Usuário Ocasional, Profissional, Empresarial) e eventos de telemetria `plans_page_view` e `plans_cta_click`.
+- **Rotas afetadas**: `/dashboard`, `/dashboard/resultado`, `/dashboard/planos`
+- **Alterações implementadas**:
+  1. Reforço de valor no Dossiê com avisos estruturados de atenção ao risco fundiário detectado.
+  2. Implementação visual de 3 gatilhos persuasivos na página de visualização parcial (Perda, Credibilidade e Urgência).
+  3. Reestruturação de copies e headlines de planos focados em proteção e segurança com cards adaptados a perfis de uso.
+  4. Rastreamento e log em banco de dados de eventos avançados de conversão: `conversion_banner_view`, `conversion_banner_click`, `plans_page_view`, `plans_cta_click`.
+- **Validações**: `npx tsc --noEmit` (exit 0), `npm run lint` (✓), `npm test` (464/464 — 15 suítes, ✓)
+- **Deploy em produção**: **NÃO EFETUADO** (aguardando autorização explícita do usuário)
+
+---
+
+- **Data**: 07/06/2026
 - **Bloco**: SPRINT COMERCIAL P0.2 — Trial Control Engine + Resultado Parcial + Conversão (Fases 1–9)
 - **Arquivos criados**:
   - `src/lib/trial/trialControl.ts` *(novo)* — Camada de controle de Trial baseada em `marketing_leads`.
@@ -25,7 +44,7 @@
   4. Barra de progresso visual de conversão e banner no dashboard informando limites com CTA de upgrade.
   5. Experiência de valor com mensagens informativas rotativas durante o loading.
 - **Validações**: `npx tsc --noEmit` (exit 0), `npm run lint` (✓), `npm test` (464/464 — 15 suítes, ✓)
-- **Deploy em produção**: **NÃO EFETUADO** (aguardando autorização explícita do usuário)
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` (autorização explícita do usuário em 07/06/2026)
 - **Riscos encontrados**:
   - O banco de dados de produção precisará ter os novos campos de `marketing_leads` aplicados antes de subir estas alterações para produção.
 
