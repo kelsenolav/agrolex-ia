@@ -220,12 +220,22 @@ export default function DashboardPage() {
     }));
   };
 
-  const priorityStyles: Record<string, string> = {
-    critica: 'bg-red-100 text-red-800 border-red-200',
-    alta: 'bg-amber-100 text-amber-800 border-amber-200',
-    media: 'bg-blue-100 text-blue-800 border-blue-200',
-    baixa: 'bg-gray-100 text-gray-800 border-gray-200'
-  };
+  function getRiskStyle(level: string): string {
+    const lvl = level?.toLowerCase() || '';
+    switch (lvl) {
+      case 'critico':
+        return 'bg-red-50 text-red-700 border-red-200';
+      case 'alto':
+        return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'medio':
+      case 'médio':
+        return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+      case 'baixo':
+        return 'bg-green-50 text-green-700 border-green-200';
+      default:
+        return 'bg-slate-50 text-slate-700 border-slate-200';
+    }
+  }
 
   const handleStartAnalysis = async (analysisId: string, propertyId: string, retryOptions?: { retryMessage?: string; forceRetry?: boolean; isAutoChain?: boolean }) => {
     if (loadingAnalysisId) return;
@@ -769,7 +779,7 @@ export default function DashboardPage() {
                   <th className="px-6 py-4 font-semibold">Risco</th>
                   <th className="px-6 py-4 font-semibold cursor-help">
                     ISF
-                    <span className="ml-1.5 text-gray-400 cursor-help inline-block" title="ISF (Índice de Segurança Fundiária): quanto maior o valor, maior a segurança documental estimada.">ⓘ</span>
+                    <span className="ml-1.5 text-gray-400 cursor-help inline-block" title="ISF (Índice de Segurança Fundiária). Quanto maior o ISF, maior o risco fundiário identificado.">ⓘ</span>
                   </th>
                   <th className="px-6 py-4 font-semibold">Módulos Sugeridos</th>
                   <th className="px-6 py-4 font-semibold">Ação</th>
@@ -833,10 +843,7 @@ export default function DashboardPage() {
                       </td>
                       <td className="px-6 py-4">
                         {statusType === 'completed' && analise.risk_level ? (
-                          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                            analise.risk_level.toLowerCase() === 'alto' || analise.risk_level.toLowerCase() === 'critico' ? 'bg-red-100 text-red-800' :
-                            analise.risk_level.toLowerCase() === 'medio' || analise.risk_level.toLowerCase() === 'médio' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
-                          }`}>
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${getRiskStyle(analise.risk_level)}`}>
                             {analise.risk_level}
                           </span>
                         ) : (
@@ -845,13 +852,12 @@ export default function DashboardPage() {
                       </td>
                       <td className="px-6 py-4">
                         {statusType === 'completed' ? (
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                            scoreData.faixa === 'critico' ? 'bg-red-100 text-red-700' :
-                            scoreData.faixa === 'atencao' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
-                          }`}>
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${getRiskStyle(analise.risk_level || '')}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${
-                              scoreData.faixa === 'critico' ? 'bg-red-500' :
-                              scoreData.faixa === 'atencao' ? 'bg-amber-500' : 'bg-green-500'
+                              analise.risk_level?.toLowerCase() === 'critico' ? 'bg-red-500' :
+                              analise.risk_level?.toLowerCase() === 'alto' ? 'bg-orange-500' :
+                              (analise.risk_level?.toLowerCase() === 'medio' || analise.risk_level?.toLowerCase() === 'médio') ? 'bg-yellow-500' :
+                              analise.risk_level?.toLowerCase() === 'baixo' ? 'bg-green-500' : 'bg-slate-500'
                             }`} />
                             ISF {scoreData.score}
                           </span>
@@ -865,7 +871,7 @@ export default function DashboardPage() {
                             {recommended.slice(0, 3).map((mod) => (
                               <span
                                 key={mod.module_id}
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${priorityStyles[mod.priority || ''] || 'bg-gray-50 text-gray-600 border-gray-200'}`}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getRiskStyle(analise.risk_level || '')}`}
                                 title={`${mod.title}${mod.price ? ` — R$ ${mod.price.toFixed(2)}` : ''}`}
                               >
                                 {mod.title.length > 18 ? mod.title.substring(0, 16) + '…' : mod.title}
