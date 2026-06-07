@@ -19,6 +19,15 @@ import {
   normalizeISFLevel,
 } from '@/lib/isf/isfTaxonomy';
 import DOMPurify from 'dompurify';
+import { getPlanPermissions } from '@/lib/commercial/plans';
+import type { TrialProfile } from '@/lib/commercial/trial';
+import {
+  createCommercialEvent,
+  buildMetadataWithEvent,
+  extractEventsFromMetadata,
+  calculateLeadScore,
+  getCommercialScoreBadge,
+} from '@/lib/commercial/scoring';
 
 const POLLING_MAX_RETRIES = 30;
 const POLLING_INTERVAL_MS = 4000;
@@ -59,6 +68,88 @@ function ResultadoContent() {
   const [childAnalyses, setChildAnalyses] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
   const pollingCountRef = useRef(0);
+
+  // SPRINT COMERCIAL P0 — FASE 2: Trial preview controlado
+  const [trialProfile, setTrialProfile] = useState<TrialProfile | null>(null);
+  const [isTrialUser, setIsTrialUser] = useState(false);
+  // SPRINT COMERCIAL P0 — FASE 3: Lead Scoring
+  const [leadId, setLeadId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      // SPRINT P0.2 — Buscar status do trial no marketing_leads
+      let trialUsedFromLeads = false;
+      try {
+        const trialRes = await fetch('/api/marketing/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get_trial_status', userId: session.user.id, email: session.user.email })
+        });
+        if (trialRes.ok) {
+          const trialStatusData = await trialRes.json();
+          trialUsedFromLeads = trialStatusData.used === true;
+        }
+      } catch (err) {
+        console.error('Erro ao verificar trial status:', err);
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('plan_type, trial_used, subscription_status')
+        .eq('id', session.user.id)
+        .single();
+      if (profile) {
+        setTrialProfile(profile as TrialProfile);
+        setIsTrialUser(profile.plan_type === 'trial');
+      }
+
+      // FASE 3: Buscar lead_id do usuário para persistência de eventos
+      const { data: lead } = await supabase
+        .from('leads')
+        .select('id, metadata')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+      if (lead) {
+        setLeadId(lead.id);
+      }
+    };
+    fetchProfile();
+  }, [router]);
+
+  /**
+   * FASE 3 — Registra evento comercial no campo leads.metadata.commercial_events.
+   * Seguro: falha silenciosamente se não houver lead ou campo metadata.
+   * TODO: Se leads.metadata não existir no schema, criar migration para adicionar
+   *       coluna JSONB `metadata` na tabela `leads` antes de ativar persistência real.
+   */
+  const registrarEventoComercial = async (
+    tipo: Parameters<typeof createCommercialEvent>[0],
+    meta?: Record<string, unknown>
+  ) => {
+    if (!leadId) return; // sem lead capturado, não persiste
+    try {
+      // Buscar metadata atual do lead
+      const { data: leadData } = await supabase
+        .from('leads')
+        .select('metadata')
+        .eq('id', leadId)
+        .maybeSingle();
+
+      const currentMetadata = (leadData?.metadata as Record<string, unknown> | null) ?? null;
+      const novoEvento = createCommercialEvent(tipo, meta);
+      const metadataAtualizado = buildMetadataWithEvent(currentMetadata, novoEvento);
+
+      await supabase
+        .from('leads')
+        .update({ metadata: metadataAtualizado })
+        .eq('id', leadId);
+    } catch {
+      // Falha silenciosa — não quebra a UX
+    }
+  };
 
   useEffect(() => {
     const fetchAnalise = async () => {
@@ -161,6 +252,56 @@ function ResultadoContent() {
   const handleExportPDF = () => {
     window.print();
   };
+
+  // FASE 3 — Registrar result_viewed quando trial visualiza resultado concluído
+  // Executado uma vez após analise + leadId estarem disponíveis
+  const resultViewedRegistered = useRef(false);
+  useEffect(() => {
+    if (
+      isTrialUser &&
+      leadId &&
+      analise &&
+      ['completed', 'done', 'concluido'].includes((analise.status || '').toLowerCase().trim()) &&
+      !resultViewedRegistered.current
+    ) {
+      resultViewedRegistered.current = true;
+      registrarEventoComercial('result_viewed', { analysis_id: analise.id });
+
+      // SPRINT P0.2 — Telemetria de visualização parcial e visualização do CTA
+      const trackTrialEvents = async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            await fetch('/api/marketing/leads', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'track_event',
+                userId: session.user.id,
+                email: session.user.email,
+                eventType: 'result_partial_view',
+                meta: { analysisId: analise.id }
+              })
+            });
+            await fetch('/api/marketing/leads', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'track_event',
+                userId: session.user.id,
+                email: session.user.email,
+                eventType: 'upgrade_cta_view',
+                meta: { origem: 'resultado_parcial_trial', analysisId: analise.id }
+              })
+            });
+          }
+        } catch (e) {
+          console.error('Erro ao trackear telemetria de visualização:', e);
+        }
+      };
+      trackTrialEvents();
+    }
+  }, [isTrialUser, leadId, analise]); // registrarEventoComercial é estável (não muda entre renders)
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-brand-green" size={48} /></div>;
@@ -765,11 +906,115 @@ function ResultadoContent() {
             <ArrowLeft size={20} /> Centro de Inteligência
           </Link>
           <div className="flex gap-3">
-            <button onClick={handleExportPDF} className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-colors text-sm flex items-center gap-2">
-              <FileText size={16} /> Exportar PDF
-            </button>
+            {!isTrialUser && (
+              <button onClick={handleExportPDF} className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-colors text-sm flex items-center gap-2">
+                <FileText size={16} /> Exportar PDF
+              </button>
+            )}
+            {isTrialUser && (
+              <Link href="/dashboard/planos" className="px-5 py-2.5 border-2 border-amber-400 text-amber-700 bg-amber-50 rounded-xl font-bold hover:bg-amber-100 transition-colors text-sm flex items-center gap-2">
+                🔒 PDF bloqueado — Ver Planos
+              </Link>
+            )}
           </div>
         </div>
+
+        {/* ═══ OBJ 3+4: CARD PREMIUM PARA USUÁRIOS TRIAL ═══ */}
+        {isTrialUser && (
+          <div className="mb-8 bg-gradient-to-br from-amber-50 to-yellow-50 border-2 border-amber-300 rounded-2xl shadow-xl p-8">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 size={32} className="text-amber-600" />
+              </div>
+              <h2 className="text-2xl font-extrabold text-gray-800 mb-2">Análise Concluída</h2>
+              <p className="text-gray-600 max-w-lg mx-auto">
+                Encontramos indícios relevantes que merecem atenção. Desbloqueie o relatório profissional completo para visualizar todos os riscos, inconsistências, cadeia dominial e recomendações.
+              </p>
+            </div>
+
+            {/* Indicadores de progresso */}
+            <div className="bg-white rounded-xl p-5 border border-amber-200 mb-6">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Status da sua análise gratuita</p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <CheckCircle2 size={16} className="text-green-500 flex-shrink-0" />
+                  <span className="text-green-700 font-medium">✓ Auditoria realizada</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <CheckCircle2 size={16} className="text-green-500 flex-shrink-0" />
+                  <span className="text-green-700 font-medium">✓ Documento processado</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />
+                  <span className="text-red-600 font-medium">{problemas.length} riscos encontrados</span>
+                </div>
+                {/* FASE 3: blocked_premium_clicked — relatório completo */}
+                <button
+                  onClick={() => {
+                    registrarEventoComercial('blocked_premium_clicked', { origem: 'indicador_relatorio' });
+                    router.push('/dashboard/planos');
+                  }}
+                  className="flex items-center gap-2 text-sm text-left w-full hover:opacity-80 transition-opacity"
+                >
+                  <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <span className="text-red-500 text-[10px] font-bold">🔒</span>
+                  </div>
+                  <span className="text-red-500 font-medium underline decoration-dotted">🔒 Relatório completo bloqueado</span>
+                </button>
+                {/* FASE 3: blocked_pdf_clicked — PDF bloqueado */}
+                <button
+                  onClick={() => {
+                    registrarEventoComercial('blocked_pdf_clicked', { origem: 'indicador_pdf' });
+                    router.push('/dashboard/planos');
+                  }}
+                  className="flex items-center gap-2 text-sm text-left w-full hover:opacity-80 transition-opacity"
+                >
+                  <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <span className="text-red-500 text-[10px] font-bold">🔒</span>
+                  </div>
+                  <span className="text-red-500 font-medium underline decoration-dotted">🔒 Exportação PDF bloqueada</span>
+                </button>
+                {/* FASE 3: blocked_chain_clicked — cadeia dominial bloqueada */}
+                <button
+                  onClick={() => {
+                    registrarEventoComercial('blocked_chain_clicked', { origem: 'indicador_cadeia' });
+                    router.push('/dashboard/planos');
+                  }}
+                  className="flex items-center gap-2 text-sm text-left w-full hover:opacity-80 transition-opacity"
+                >
+                  <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <span className="text-red-500 text-[10px] font-bold">🔒</span>
+                  </div>
+                  <span className="text-red-500 font-medium underline decoration-dotted">🔒 Cadeia dominial bloqueada</span>
+                </button>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center">
+                    <span className="text-red-500 text-[10px] font-bold">🔒</span>
+                  </div>
+                  <span className="text-red-500 font-medium">🔒 Módulos avançados bloqueados</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Contador visual */}
+            <div className="bg-amber-100 border border-amber-300 rounded-xl p-4 mb-6 text-center">
+              <p className="text-sm font-bold text-amber-800">
+                Você está visualizando apenas uma prévia da análise.
+              </p>
+            </div>
+
+            {/* CTA — FASE 3: registra blocked_premium_clicked */}
+            <button
+              onClick={() => {
+                registrarEventoComercial('blocked_premium_clicked', { origem: 'card_premium_trial' });
+                router.push('/dashboard/planos');
+              }}
+              className="w-full bg-brand-gold text-brand-green py-4 rounded-xl font-extrabold text-lg text-center hover:brightness-110 transition-all shadow-lg"
+            >
+              Desbloquear Relatório Completo
+            </button>
+          </div>
+        )}
 
         {/* Card Principal do Dossiê */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden print:shadow-none print:border print:rounded-none">
@@ -906,7 +1151,7 @@ function ResultadoContent() {
 
               {/* Lista de Achados */}
               <ul className="space-y-4">
-                {problemas.map((prob: ReportProblem, i: number) => {
+                {(isTrialUser ? problemas.slice(0, 3) : problemas).map((prob: ReportProblem, i: number) => {
                   const titulo = prob.titulo || prob.descricao || 'Problema identificado';
                   const descricao = prob.descricao && prob.descricao !== prob.titulo ? prob.descricao : null;
                   const c = (prob.criticidade || '').toLowerCase();
@@ -976,10 +1221,71 @@ function ResultadoContent() {
                   );
                 })}
               </ul>
+
+              {isTrialUser && problemas.length > 3 && (
+                <div className="mt-4 p-4 bg-gray-50 border border-dashed border-gray-300 rounded-xl text-center">
+                  <p className="text-sm text-gray-500 italic">
+                    + {problemas.length - 3} riscos adicionais ocultados na versão de teste.
+                  </p>
+                </div>
+              )}
             </section>
 
+            {isTrialUser && (
+              <section className="p-6 bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-300 rounded-2xl shadow-sm text-center my-8">
+                <div className="mb-4">
+                  <span className="text-2xl">🔒</span>
+                  <h3 className="text-lg font-bold text-gray-800 mt-2">Relatório Parcial Bloqueado</h3>
+                  <p className="text-sm text-gray-600 max-w-md mx-auto mt-1">
+                    Para visualizar a análise completa de todos os riscos, cadeia dominial visual, recomendações técnicas completas e baixar a peça jurídica ou PDF, assine um plano.
+                  </p>
+                </div>
+                
+                {/* Barra de Valor do Relatório */}
+                <div className="max-w-md mx-auto mb-6 bg-white border border-amber-200 rounded-xl p-4">
+                  <div className="flex justify-between text-xs font-bold text-amber-800 mb-1.5">
+                    <span>Relatório exibido: 20%</span>
+                    <span>80% do relatório permanece bloqueado</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden flex">
+                    <div className="bg-amber-500 h-full w-[20%]" />
+                    <div className="bg-gray-200 h-full flex-1 animate-pulse" />
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-2 font-mono">
+                    [████░░░░░░░░░░░░░░]
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    registrarEventoComercial('blocked_premium_clicked', { origem: 'resultado_parcial_bar' });
+                    // Telemetria do click
+                    supabase.auth.getSession().then(({ data: { session } }) => {
+                      if (session) {
+                        fetch('/api/marketing/leads', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            action: 'track_event',
+                            userId: session.user.id,
+                            email: session.user.email,
+                            eventType: 'upgrade_cta_click',
+                            meta: { origem: 'resultado_parcial_bar', analysisId: analise.id }
+                          })
+                        });
+                      }
+                    });
+                    router.push('/dashboard/planos');
+                  }}
+                  className="bg-brand-gold text-brand-green px-8 py-3.5 rounded-xl font-extrabold hover:brightness-110 transition-all shadow-md"
+                >
+                  Desbloquear Relatório Completo
+                </button>
+              </section>
+            )}
+
             {/* 3. TIMELINE */}
-            {safeLinhaDoTempo.length > 0 && (
+            {!isTrialUser && safeLinhaDoTempo.length > 0 && (
               <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
                   <Clock className="text-brand-gold" size={24} /> Timeline Registral
@@ -1000,46 +1306,50 @@ function ResultadoContent() {
             )}
 
             {/* 4. RECOMENDAÇÕES TÉCNICAS */}
-            <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
-                <CheckCircle2 className="text-brand-green" size={24} /> Recomendações Técnicas
-              </h2>
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-200 shadow-sm print:shadow-none print:bg-white print:border">
-                <ul className="space-y-4">
-                  {safeRecomendacoes.map((rec: string, i: number) => (
-                    <li key={i} className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-green-200 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <CheckCircle2 size={14} className="text-green-700" />
-                      </div>
-                      <span className="text-gray-800 font-medium">{rec}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </section>
+            {!isTrialUser && (
+              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
+                  <CheckCircle2 className="text-brand-green" size={24} /> Recomendações Técnicas
+                </h2>
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border border-green-200 shadow-sm print:shadow-none print:bg-white print:border">
+                  <ul className="space-y-4">
+                    {safeRecomendacoes.map((rec: string, i: number) => (
+                      <li key={i} className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-green-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <CheckCircle2 size={14} className="text-green-700" />
+                        </div>
+                        <span className="text-gray-800 font-medium">{rec}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+            )}
 
             {/* 5. DOCUMENTOS FALTANTES */}
-            <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
-                <FileText className="text-orange-500" size={24} /> Documentos Necessários
-              </h2>
-              <ul className="space-y-3">
-                {safeDocumentosFaltantes.map((doc: string, i: number) => (
-                  <li key={i} className="flex items-center gap-4 bg-orange-50 p-4 rounded-xl border border-orange-100 shadow-sm print:shadow-none print:bg-white">
-                    <div className="w-8 h-8 bg-orange-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <FileText size={16} className="text-orange-700" />
-                    </div>
-                    <span className="text-orange-900 font-medium">{doc}</span>
-                  </li>
-                ))}
-                {(safeDocumentosFaltantes.length === 0) && (
-                   <li className="text-gray-500 italic p-4">Nenhum documento pendente identificado.</li>
-                )}
-              </ul>
-            </section>
+            {!isTrialUser && (
+              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
+                  <FileText className="text-orange-500" size={24} /> Documentos Necessários
+                </h2>
+                <ul className="space-y-3">
+                  {safeDocumentosFaltantes.map((doc: string, i: number) => (
+                    <li key={i} className="flex items-center gap-4 bg-orange-50 p-4 rounded-xl border border-orange-100 shadow-sm print:shadow-none print:bg-white">
+                      <div className="w-8 h-8 bg-orange-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <FileText size={16} className="text-orange-700" />
+                      </div>
+                      <span className="text-orange-900 font-medium">{doc}</span>
+                    </li>
+                  ))}
+                  {(safeDocumentosFaltantes.length === 0) && (
+                    <li className="text-gray-500 italic p-4">Nenhum documento pendente identificado.</li>
+                  )}
+                </ul>
+              </section>
+            )}
 
             {/* 5b. CADEIA DOMINIAL VISUAL — Fluxo Visual Law */}
-            {renderCadeiaDominial()}
+            {!isTrialUser && renderCadeiaDominial()}
 
             {/* 5c. RADAR DE RISCO AGROLEX — v2 (ISF) ou legado */}
             {temRadarV2 && radarEixos ? (
@@ -1094,7 +1404,7 @@ function ResultadoContent() {
             {renderChecklist()}
 
             {/* 6. CHECKLIST DA CADEIA DOMINIAL */}
-            {safeChecklist.length > 0 && (
+            {!isTrialUser && safeChecklist.length > 0 && (
               <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
                   <Scale className="text-brand-gold" size={24} /> Auditoria da Cadeia Dominial
@@ -1136,7 +1446,7 @@ function ResultadoContent() {
             )}
 
             {/* 7. PEÇA JURÍDICA */}
-            {findings!.pecaJuridica && (
+            {!isTrialUser && findings!.pecaJuridica && (
               <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
                 <div className="bg-gray-900 text-white p-8 rounded-2xl shadow-xl relative overflow-hidden">
                   <div className="absolute top-0 right-0 bg-brand-gold text-brand-green text-xs font-black px-4 py-2 rounded-bl-xl shadow-lg">PREMIUM</div>
@@ -1164,7 +1474,7 @@ function ResultadoContent() {
             )}
 
             {/* 8. RESULTADOS POR CAMADA DE ANÁLISE (se houver filhos) */}
-            {renderResultadosPorCamada()}
+            {!isTrialUser && renderResultadosPorCamada()}
 
             {/* 8b. HISTÓRICO DO CASO (versão simplificada — apenas resumo) */}
             {(findings as any)?.parent_findings_summary || (findings as any)?.complementary_children ? (
@@ -1243,13 +1553,23 @@ function ResultadoContent() {
                   <span>Retornar ao Centro de Inteligência</span>
                   <ArrowUpRight size={20} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 </Link>
-                <button
-                  onClick={handleExportPDF}
-                  className="flex items-center justify-between p-5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-all shadow-sm group"
-                >
-                  <span>Exportar Dossiê em PDF</span>
-                  <FileText size={20} className="group-hover:scale-110 transition-transform" />
-                </button>
+                {isTrialUser ? (
+                  <Link
+                    href="/dashboard/planos"
+                    className="flex items-center justify-between p-5 bg-amber-50 border-2 border-amber-300 text-amber-700 rounded-xl font-bold hover:bg-amber-100 transition-all shadow-sm group"
+                  >
+                    <span>🔒 PDF bloqueado — Desbloquear</span>
+                    <ArrowUpRight size={20} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                  </Link>
+                ) : (
+                  <button
+                    onClick={handleExportPDF}
+                    className="flex items-center justify-between p-5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-all shadow-sm group"
+                  >
+                    <span>Exportar Dossiê em PDF</span>
+                    <FileText size={20} className="group-hover:scale-110 transition-transform" />
+                  </button>
+                )}
               </div>
             </section>
 

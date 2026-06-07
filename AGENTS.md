@@ -1,6 +1,80 @@
-﻿# AGENTS.md
+# AGENTS.md
 
 ## Agent Rules for AgroLex Project
+
+---
+
+- **Data**: 07/06/2026
+- **Bloco**: SPRINT COMERCIAL P0.2 — Trial Control Engine + Resultado Parcial + Conversão (Fases 1–9)
+- **Arquivos criados**:
+  - `src/lib/trial/trialControl.ts` *(novo)* — Camada de controle de Trial baseada em `marketing_leads`.
+  - `src/lib/trial/__tests__/trialControl.test.ts` *(novo)* — Testes unitários para o Trial Control Engine.
+  - `supabase/migrations/20260607_marketing_leads_trial_control.sql` *(novo)* — SQL sugerido para campos de trial em `marketing_leads` (NÃO executado).
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/app/api/marketing/leads/route.ts` — Adicionados endpoints `get_trial_status` e `track_event`.
+  - `src/app/api/analyze/route.ts` — Bloqueio trial backend no processamento e telemetria `trial_started` / `trial_completed`.
+  - `src/app/dashboard/nova-analise/page.tsx` — Bloqueio trial frontend e telemetria `trial_blocked` / `upgrade_cta_view`.
+  - `src/app/dashboard/page.tsx` — Banner de trial esgotado, telemetria de visualização do banner, telemetria de click, experiência de valor com mensagens rotativas e correção de hooks React (linter).
+  - `src/app/dashboard/resultado/page.tsx` — Resultados parciais limitados a Top 3 achados, barra de progresso, restrições nas seções premium, telemetria `result_partial_view` e `upgrade_cta_click`.
+- **Rotas afetadas**: `/dashboard/nova-analise`, `/dashboard/resultado`, `/api/analyze`, `/dashboard`, `/api/marketing/leads`
+- **Alterações implementadas**:
+  1. Centralização do controle de trial na tabela `marketing_leads`.
+  2. Bloqueio de intake de segunda análise tanto no frontend quanto no backend com telemetria associada.
+  3. Resultado parcial exibindo score ISF e resumo, limitando a visualização para os Top 3 riscos e ocultando seções avançadas.
+  4. Barra de progresso visual de conversão e banner no dashboard informando limites com CTA de upgrade.
+  5. Experiência de valor com mensagens informativas rotativas durante o loading.
+- **Validações**: `npx tsc --noEmit` (exit 0), `npm run lint` (✓), `npm test` (464/464 — 15 suítes, ✓)
+- **Deploy em produção**: **NÃO EFETUADO** (aguardando autorização explícita do usuário)
+- **Riscos encontrados**:
+  - O banco de dados de produção precisará ter os novos campos de `marketing_leads` aplicados antes de subir estas alterações para produção.
+
+---
+
+
+- **Data**: 07/06/2026
+- **Bloco**: SPRINT COMERCIAL P0.1 — Captura de Leads Estratégica (Fases 1–7)
+- **Arquivos criados**:
+  - `src/lib/marketing/leadCapture.ts` *(novo)* — Camada de serviço: `captureLead`, `updateLeadActivity`, `markLeadConverted`, `complementLead`
+  - `src/app/api/marketing/leads/route.ts` *(novo)* — API Route POST (capture/update_activity/mark_converted/complement) + GET admin com verificação de role
+  - `src/app/dashboard/leads/page.tsx` *(novo)* — Dashboard admin `/dashboard/leads` com KPIs + tabela + formulário de complementação inline
+  - `supabase/migrations/20260607_marketing_leads.sql` *(novo)* — SQL sugerido para tabela `marketing_leads` (NÃO executado)
+- **Arquivos alterados**:
+  - `src/app/(auth)/cadastro/page.tsx` — Captura automática de lead no signup (`captureLead` com nome, email, whatsapp, origem="signup")
+  - `src/app/(auth)/login/page.tsx` — Atualização de `ultima_atividade` no login (`updateLeadActivity`, falha silenciosa)
+  - `AGENTS.md`
+- **Rotas afetadas**: `/cadastro`, `/login`, `/dashboard/leads` (nova), `/api/marketing/leads` (nova)
+- **Alterações implementadas**:
+  1. **FASE 1 — Diagnóstico**: Fluxo signup em `cadastro/page.tsx` (supabase.auth.signUp), login em `login/page.tsx` (signInWithPassword + /api/auth/session), profiles com campo `role` ('user'/'admin'), tabela `leads` existente (migration 20260607), sem middleware de rota.
+  2. **FASE 2 — Modelagem**: SQL sugerido para `marketing_leads` com campos: id, created_at, user_id, nome, email, whatsapp, tipo_usuario, origem, converteu, converted_at, trial_utilizado, ultima_atividade, metadata. Constraint UNIQUE(email). RLS restritiva (apenas admin/service_role). NÃO executado.
+  3. **FASE 3 — Camada de serviço**: `leadCapture.ts` com 4 funções idempotentes via fetch para `/api/marketing/leads`. Falha silenciosa em todas (não bloqueia fluxo principal).
+  4. **FASE 4 — Captura automática**: Signup salva lead (nome, email, whatsapp, user_id, origem="signup"). Login atualiza `ultima_atividade` (fire-and-forget com `.catch(() => {})`).
+  5. **FASE 5 — Complementação**: Formulário inline na tabela do dashboard admin (campos WhatsApp + select Tipo de Usuário). Chama `complementLead` via API Route.
+  6. **FASE 6 — Dashboard admin `/dashboard/leads`**: KPIs (Total, Últimos 7 dias, Convertidos, Taxa Conversão) + tabela (nome, email, whatsapp, tipo, origem, convertido, data cadastro, botão Editar). Dados via GET `/api/marketing/leads` com token de sessão.
+  7. **FASE 7 — Segurança**: `useEffect` verifica `role === 'admin'` via Supabase; redireciona usuário comum para `/dashboard`. API GET verifica token + role admin via `supabaseAdmin`. Usuário comum não acessa `/dashboard/leads`.
+- **Ponto de captura**: No signup (após `supabase.auth.signUp` bem-sucedido) e no login (após `/api/auth/session` bem-sucedido).
+- **Idempotência**: Upsert por email (`onConflict: 'email'`) — sem duplicidade.
+- **Validações**: `npm run build` (25 rotas, ✓), `npm run lint` (✓), `npm test` (456/456 — 14 suítes, ✓)
+- **Deploy em produção**: **NÃO EFETUADO** (aguardando autorização explícita do usuário)
+- **SQL sugerido**: `supabase/migrations/20260607_marketing_leads.sql` — NÃO executado. Requer autorização para aplicar em produção.
+- **Riscos encontrados**:
+  - `SUPABASE_SERVICE_ROLE_KEY` deve estar configurado no `.env.local` e no Vercel para a API Route funcionar em produção.
+  - A tabela `marketing_leads` ainda não existe no banco — a migration precisa ser executada antes do deploy.
+  - Captura no signup é client-side (fetch para API Route) — se o usuário fechar a aba antes do fetch completar, o lead pode não ser salvo. Mitigação futura: trigger no banco via `handle_new_user`.
+- **Próxima sprint recomendada**: Executar migration `20260607_marketing_leads.sql` em produção + configurar `SUPABASE_SERVICE_ROLE_KEY` no Vercel + integrar `markLeadConverted` no fluxo de upgrade de plano (Mercado Pago webhook).
+
+
+---
+
+- **Data**: 07/06/2026
+- **Bloco**: Deploy em produção — SPRINT CONVERSÃO + SPRINT COMERCIAL P0 (Fases 2 e 3)
+- **Arquivos alterados**: Nenhum (deploy do estado atual do repositório)
+- **Rotas afetadas**: Todas as rotas do projeto (23 rotas)
+- **Alterações implementadas**: Deploy em produção via `vercel --prod --yes` do commit `0637f9d`. Inclui todas as entregas das sprints anteriores: Landing Page Trial (CTA Gratuito), SPRINT COMERCIAL P0 Fase 2 (Bloqueio Trial + Captura de Lead + Conversão) e Fase 3 (Lead Scoring + Eventos Comerciais + Ranking de Leads Quentes).
+- **Validações**: Build remoto concluído em 54s, 23 rotas geradas.
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` (autorização explícita do usuário em 07/06/2026)
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/ → HTTP 200 ✓
+- **Problemas restantes**: Nenhum.
 
 ---
 

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { updateLeadActivity } from '@/lib/marketing/leadCapture';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -58,6 +59,9 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
+
+      // Atualiza ultima_atividade do lead — falha silenciosa (não bloqueia login)
+      updateLeadActivity(email).catch(() => {});
 
       const next = new URLSearchParams(window.location.search).get('next');
       const safeNext = next?.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';

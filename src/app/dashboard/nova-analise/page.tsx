@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from 'next/link';
 import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Layers, CheckCircle2, AlertCircle, Info, ShieldAlert } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { AUDIT_MODULES, getModulePrice, buildDocumentProfile, getModuleCompatibility, calculateAuditModulesTotal } from "@/lib/auditModules";
 import { createInitialCaseFile, type CaseFileDocument } from "@/lib/caseFile";
+import { getCommercialAccess, canStartTrialAnalysis, getTrialBlockReason, type TrialProfile } from '@/lib/commercial/trial';
+import { montarLeadPayload, validarNome, validarEmail, validarWhatsApp, validarCidade, validarEstado, type LeadPayload } from '@/lib/commercial/lead';
 
 // ─── Constantes de validação documental ────────────────────────────────────
 const MAX_FILE_SIZE_MB = 20;
@@ -92,10 +94,191 @@ export default function NovaAnalisePage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // SPRINT COMERCIAL P0 — FASE 2: Trial + Lead
+  const [trialProfile, setTrialProfile] = useState<TrialProfile | null>(null);
+  const [trialBlocked, setTrialBlocked] = useState(false);
+  const [trialBlockReason, setTrialBlockReasonState] = useState<string | null>(null);
+  const [leadModalOpen, setLeadModalOpen] = useState(false);
+  const [leadForm, setLeadForm] = useState({ nome: '', email: '', telefone: '', cidade: '', estado: '' });
+  const [leadErrors, setLeadErrors] = useState<Record<string, string[]>>({});
+  const [leadSaving, setLeadSaving] = useState(false);
+  const [pageReady, setPageReady] = useState(false);
+
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToast({ message, type });
     toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+  };
+
+  // ═══ VERIFICAÇÃO DE TRIAL + LEAD AO MONTAR ═══
+  useEffect(() => {
+    const checkTrialAndLead = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
+      // Função auxiliar para telemetria
+      const trackLeadEvent = async (eventType: string, meta?: any) => {
+        try {
+          await fetch('/api/marketing/leads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'track_event',
+              userId: session.user.id,
+              email: session.user.email,
+              eventType,
+              meta
+            })
+          });
+        } catch (err) {
+          console.error('Erro ao registrar telemetria:', err);
+        }
+      };
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('subscription_status, plan_type, trial_used, trial_analysis_id, trial_started_at, trial_ends_at, lead_id')
+        .eq('id', session.user.id)
+        .single();
+
+      const tp: TrialProfile = {
+        subscription_status: profile?.subscription_status,
+        plan_type: profile?.plan_type,
+        trial_used: profile?.trial_used,
+        trial_analysis_id: profile?.trial_analysis_id,
+        trial_started_at: profile?.trial_started_at,
+        trial_ends_at: profile?.trial_ends_at,
+        lead_id: profile?.lead_id,
+      };
+      setTrialProfile(tp);
+
+      // SPRINT P0.2 — Buscar status do trial no marketing_leads
+      let trialUsedFromLeads = false;
+      try {
+        const trialRes = await fetch('/api/marketing/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get_trial_status', userId: session.user.id, email: session.user.email })
+        });
+        if (trialRes.ok) {
+          const trialStatusData = await trialRes.json();
+          trialUsedFromLeads = trialStatusData.used === true;
+        }
+      } catch (err) {
+        console.error('Erro ao verificar trial status:', err);
+      }
+
+      // Obj 1: Bloqueio de segunda análise trial
+      if (trialUsedFromLeads || (tp.plan_type === 'trial' && tp.trial_used === true)) {
+        setTrialBlocked(true);
+        setTrialBlockReasonState('Sua análise gratuita já foi utilizada. Para continuar utilizando o AgroLex e acessar análises completas, desbloqueie o acesso profissional.');
+        setPageReady(true);
+        
+        // Telemetria: trial_blocked e upgrade_cta_view
+        await trackLeadEvent('trial_blocked', { origem: 'nova-analise' });
+        await trackLeadEvent('upgrade_cta_view', { origem: 'bloqueio_frontend_nova_analise' });
+        return;
+      }
+
+      // Obj 2: Lead obrigatório — verificar se lead existe
+      const userEmail = session.user.email || '';
+      const userNameMeta = session.user.user_metadata?.full_name || '';
+
+      // Verificar se já existe lead para este usuário
+      const { data: existingLead } = await supabase
+        .from('leads')
+        .select('id, nome, email, telefone, cidade, estado')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+      if (existingLead) {
+        // Lead já existe, verificar completude
+        const missing: string[] = [];
+        if (!existingLead.nome || existingLead.nome.trim().length < 2) missing.push('nome');
+        if (!existingLead.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(existingLead.email)) missing.push('email');
+        if (!existingLead.telefone || existingLead.telefone.replace(/\D/g, '').length < 10) missing.push('telefone');
+        if (!existingLead.cidade || existingLead.cidade.trim().length < 2) missing.push('cidade');
+        if (!existingLead.estado || existingLead.estado.trim().length !== 2) missing.push('estado');
+
+        if (missing.length > 0) {
+          // Preencher com dados existentes e abrir modal
+          setLeadForm({
+            nome: existingLead.nome || userNameMeta,
+            email: existingLead.email || userEmail,
+            telefone: existingLead.telefone || '',
+            cidade: existingLead.cidade || '',
+            estado: existingLead.estado || '',
+          });
+          setLeadModalOpen(true);
+        }
+      } else {
+        // Sem lead, abrir modal com preenchimento automático de nome/email
+        setLeadForm({
+          nome: userNameMeta,
+          email: userEmail,
+          telefone: '',
+          cidade: '',
+          estado: '',
+        });
+        setLeadModalOpen(true);
+      }
+
+      setPageReady(true);
+    };
+
+    checkTrialAndLead();
+  }, [router]);
+
+  const handleLeadSubmit = async () => {
+    setLeadSaving(true);
+    setLeadErrors({});
+
+    const { payload, errors } = montarLeadPayload(leadForm);
+    if (!payload) {
+      setLeadErrors(errors);
+      setLeadSaving(false);
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        showToast('Sessão expirada. Faça login novamente.', 'error');
+        router.push('/login');
+        return;
+      }
+
+      // Upsert no lead
+      const { error: leadError } = await supabase
+        .from('leads')
+        .upsert({
+          user_id: session.user.id,
+          nome: payload.nome,
+          email: payload.email,
+          telefone: payload.telefone || null,
+          cidade: payload.cidade || null,
+          estado: payload.estado || null,
+          origem: 'nova-analise',
+        }, { onConflict: 'user_id' });
+
+      if (leadError) {
+        console.error('Erro ao salvar lead:', leadError);
+        showToast('Erro ao salvar seus dados. Tente novamente.', 'error');
+        setLeadSaving(false);
+        return;
+      }
+
+      showToast('Dados salvos com sucesso! Prossiga com sua auditoria.', 'success');
+      setLeadModalOpen(false);
+    } catch (err) {
+      console.error('Erro ao salvar lead:', err);
+      showToast('Erro ao salvar seus dados.', 'error');
+    } finally {
+      setLeadSaving(false);
+    }
   };
   
   // Estados para Integrações GOV
@@ -399,6 +582,40 @@ export default function NovaAnalisePage() {
           <ArrowLeft size={20} /> Voltar ao painel
         </Link>
 
+        {/* ═══ OBJ 1: TELA DE BLOQUEIO TRIAL ═══ */}
+        {trialBlocked ? (
+          <div className="bg-white p-10 rounded-2xl shadow-xl border-t-4 border-amber-500 text-center">
+            <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <ShieldAlert size={40} className="text-amber-600" />
+            </div>
+            <h1 className="text-2xl font-extrabold text-gray-800 mb-3">Sua análise gratuita já foi utilizada</h1>
+            <p className="text-gray-600 mb-8 max-w-md mx-auto">Para continuar utilizando o AgroLex e acessar análises completas, desbloqueie o acesso profissional.</p>
+            <Link
+              href="/dashboard/planos"
+              onClick={async () => {
+                try {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (session) {
+                    await fetch('/api/marketing/leads', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'track_event',
+                        userId: session.user.id,
+                        email: session.user.email,
+                        eventType: 'upgrade_cta_click',
+                        meta: { origem: 'bloqueio_frontend_nova_analise' }
+                      })
+                    });
+                  }
+                } catch (e) {}
+              }}
+              className="inline-flex items-center gap-2 bg-brand-gold text-brand-green px-8 py-4 rounded-xl font-extrabold text-lg hover:brightness-110 transition-all shadow-lg"
+            >
+              Quero Acesso Completo <ArrowLeft size={20} className="rotate-180" />
+            </Link>
+          </div>
+        ) : (
         <div className="bg-white p-8 rounded-2xl shadow-xl border-t-4 border-brand-gold">
           <h1 className="text-3xl font-extrabold text-gray-800 mb-2">Nova Auditoria Fundiária</h1>
           <p className="text-gray-600 mb-8 text-lg">Envie uma ou mais matrículas da área e selecione a profundidade da auditoria.</p>
@@ -630,7 +847,100 @@ export default function NovaAnalisePage() {
             </div>
           </form>
         </div>
+        )}
       </main>
+
+      {/* ═══ OBJ 2: MODAL DE CAPTURA DE LEAD ═══ */}
+      {leadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-brand-green/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ShieldCheck size={32} className="text-brand-green" />
+              </div>
+              <h2 className="text-xl font-extrabold text-gray-800">Complete seu cadastro</h2>
+              <p className="text-sm text-gray-500 mt-2">Preencha seus dados para iniciar a auditoria gratuita.</p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Nome Completo *</label>
+                <input
+                  type="text"
+                  value={leadForm.nome}
+                  onChange={(e) => setLeadForm({ ...leadForm, nome: e.target.value })}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-green outline-none ${leadErrors.nome ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  placeholder="Seu nome completo"
+                />
+                {leadErrors.nome && <p className="text-red-600 text-xs mt-1 font-medium">{leadErrors.nome[0]}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">E-mail *</label>
+                <input
+                  type="email"
+                  value={leadForm.email}
+                  onChange={(e) => setLeadForm({ ...leadForm, email: e.target.value })}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-green outline-none ${leadErrors.email ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  placeholder="seu@email.com"
+                />
+                {leadErrors.email && <p className="text-red-600 text-xs mt-1 font-medium">{leadErrors.email[0]}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">WhatsApp *</label>
+                <input
+                  type="tel"
+                  value={leadForm.telefone}
+                  onChange={(e) => setLeadForm({ ...leadForm, telefone: e.target.value })}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-green outline-none ${leadErrors.telefone ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  placeholder="(63) 9 9999-9999"
+                />
+                {leadErrors.telefone && <p className="text-red-600 text-xs mt-1 font-medium">{leadErrors.telefone[0]}</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Cidade *</label>
+                  <input
+                    type="text"
+                    value={leadForm.cidade}
+                    onChange={(e) => setLeadForm({ ...leadForm, cidade: e.target.value })}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-green outline-none ${leadErrors.cidade ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                    placeholder="Sua cidade"
+                  />
+                  {leadErrors.cidade && <p className="text-red-600 text-xs mt-1 font-medium">{leadErrors.cidade[0]}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Estado (UF) *</label>
+                  <input
+                    type="text"
+                    maxLength={2}
+                    value={leadForm.estado}
+                    onChange={(e) => setLeadForm({ ...leadForm, estado: e.target.value.toUpperCase() })}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-green outline-none ${leadErrors.estado ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                    placeholder="EX: TO"
+                  />
+                  {leadErrors.estado && <p className="text-red-600 text-xs mt-1 font-medium">{leadErrors.estado[0]}</p>}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleLeadSubmit}
+              disabled={leadSaving}
+              className="w-full mt-6 bg-brand-green text-white py-4 rounded-xl font-extrabold text-lg hover:brightness-110 transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {leadSaving ? (
+                <>Salvando...</>
+              ) : (
+                <>Salvar e Continuar <ArrowLeft size={20} className="rotate-180" /></>
+              )}
+            </button>
+
+            <p className="text-xs text-gray-400 text-center mt-4">
+              Seus dados são protegidos e não serão compartilhados.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

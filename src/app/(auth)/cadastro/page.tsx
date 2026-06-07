@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { captureLead } from '@/lib/marketing/leadCapture';
 
 export default function CadastroPage() {
   const router = useRouter();
@@ -21,7 +22,7 @@ export default function CadastroPage() {
     const name = formData.get('name') as string;
     const whatsapp = formData.get('whatsapp') as string;
 
-    const { error } = await supabase.auth.signUp({
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -36,6 +37,15 @@ export default function CadastroPage() {
       setError(error.message);
       setLoading(false);
     } else {
+      // Captura de lead de marketing — falha silenciosa (não bloqueia cadastro)
+      await captureLead({
+        nome: name,
+        email,
+        whatsapp: whatsapp || null,
+        origem: 'signup',
+        user_id: signUpData?.user?.id ?? null,
+      });
+
       // Substituído alert() por redirecionamento com toast integrado
       router.push('/login?cadastro=sucesso');
     }

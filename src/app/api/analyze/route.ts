@@ -355,6 +355,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Acesso negado: a análise não pertence ao usuário' }, { status: 403 });
     }
 
+    // CAMADA 2: Bloqueio Backend contra bypass de trial
+    const { getTrialStatus } = await import('@/lib/trial/trialControl');
+    const trialStatus = await getTrialStatus(user.id, user.email || '');
+
+    // Buscar plan_type do profile
+    const { data: userProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('plan_type')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const planType = userProfile?.plan_type || 'trial';
+
+    if (planType === 'trial' && trialStatus.used) {
+      return NextResponse.json({
+        error: 'Sua análise gratuita já foi utilizada. Para continuar utilizando o AgroLex e acessar análises completas, desbloqueie o acesso profissional.'
+      }, { status: 403 });
+    }
+
     // Validação de status atual
     const currentStatus = (analysis.status || '').toLowerCase().trim();
 
@@ -517,6 +536,16 @@ export async function POST(req: Request) {
 
     if (startUpdateError) {
       return NextResponse.json({ error: 'Erro ao transicionar para processando: ' + startUpdateError.message }, { status: 500 });
+    }
+
+    // Registrar telemetria: trial_started
+    if (planType === 'trial') {
+      try {
+        const { trackTrialEvent } = await import('@/lib/trial/trialControl');
+        await trackTrialEvent(user.id, 'trial_started', { analysisId }, user.email || '');
+      } catch (e) {
+        console.error('Erro ao trackear trial_started:', e);
+      }
     }
 
     // Bloco de processamento principal síncrono
@@ -933,6 +962,17 @@ export async function POST(req: Request) {
 
         if (patchError) {
           console.error('[Postprocess] Falha ao salvar extração estruturada:', patchError.message);
+        } else {
+          // Registrar telemetria: trial_completed
+          if (planType === 'trial') {
+            try {
+              const { markTrialUsed, trackTrialEvent } = await import('@/lib/trial/trialControl');
+              await markTrialUsed(user.id, analysisId, user.email || '');
+              await trackTrialEvent(user.id, 'trial_completed', { analysisId }, user.email || '');
+            } catch (e) {
+              console.error('Erro ao trackear trial_completed:', e);
+            }
+          }
         }
       } catch (postprocessError: any) {
         const postprocessMs = Date.now() - postprocessStartAt;

@@ -21,6 +21,8 @@ import {
   normalizeISFLevel,
 } from '@/lib/isf/isfTaxonomy';
 import type { ISFLevel } from '@/lib/isf/isfTaxonomy';
+import { getCommercialAccess, type TrialProfile } from '@/lib/commercial/trial';
+import { getPlanPermissions } from '@/lib/commercial/plans';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -44,6 +46,10 @@ export default function DashboardPage() {
   // SPRINT 5 — Telemetria ISF v2
   const [isfData, setIsfData] = useState<ISFTelemetryResult | null>(null);
 
+  // SPRINT COMERCIAL P0 — FASE 2: Trial profile e acesso comercial
+  const [trialProfile, setTrialProfile] = useState<TrialProfile | null>(null);
+  const [trialBlockModal, setTrialBlockModal] = useState(false);
+
   // FASE 2.0.2 — Modal de recomendação
   const [recommendModal, setRecommendModal] = useState<{
     analysisId: string;
@@ -52,11 +58,35 @@ export default function DashboardPage() {
   } | null>(null);
   const [acceptingModules, setAcceptingModules] = useState(false);
 
+  // SPRINT COMERCIAL P0.2 — Trial control e mensagens rotativas
+  const [trialUsed, setTrialUsed] = useState(false);
+  const [rotatingMessage, setRotatingMessage] = useState("Analisando mais de 50 critérios fundiários...");
+
   const showToast = (message: string, type: 'success' | 'error') => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToast({ message, type });
     toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
   };
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (loadingAnalysisId) {
+      const messages = [
+        "Analisando mais de 50 critérios fundiários...",
+        "Validando cadeia dominial...",
+        "Verificando inconsistências registrais...",
+        "Calculando Índice de Segurança Fundiária...",
+        "Conferindo sinais de litígio...",
+        "Mapeando riscos ocultos..."
+      ];
+      let idx = 0;
+      interval = setInterval(() => {
+        idx = (idx + 1) % messages.length;
+        setRotatingMessage(messages[idx]);
+      }, 4000);
+    }
+    return () => clearInterval(interval);
+  }, [loadingAnalysisId]);
 
   const refreshAnalises = async () => {
     try {
@@ -97,6 +127,34 @@ export default function DashboardPage() {
       // Buscar Créditos
       const { data: profile } = await supabase.from('profiles').select('credits').eq('id', session.user.id).single();
       if (profile) setCredits(profile.credits || 0);
+
+      // SPRINT COMERCIAL P0.2 — Buscar status do trial no marketing_leads e registrar telemetria
+      try {
+        const trialRes = await fetch('/api/marketing/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get_trial_status', userId: session.user.id, email: session.user.email })
+        });
+        if (trialRes.ok) {
+          const trialStatusData = await trialRes.json();
+          if (trialStatusData.used === true) {
+            setTrialUsed(true);
+            await fetch('/api/marketing/leads', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'track_event',
+                userId: session.user.id,
+                email: session.user.email,
+                eventType: 'upgrade_cta_view',
+                meta: { origem: 'banner_dashboard' }
+              })
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao verificar status do trial:', err);
+      }
 
       // Buscar Análises reais do Banco de Dados
       const { data } = await supabase
@@ -480,6 +538,39 @@ export default function DashboardPage() {
       </nav>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Banner Trial Utilizado */}
+        {trialUsed && (
+          <div className="mb-8 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-amber-500 rounded-r-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h3 className="font-extrabold text-amber-900 text-lg">Você já utilizou sua análise gratuita</h3>
+              <p className="text-amber-800 text-sm font-medium">Desbloqueie análises ilimitadas e acesso ao relatório completo.</p>
+            </div>
+            <Link
+              href="/dashboard/planos"
+              onClick={async () => {
+                try {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (session) {
+                    await fetch('/api/marketing/leads', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'track_event',
+                        userId: session.user.id,
+                        email: session.user.email,
+                        eventType: 'upgrade_cta_click',
+                        meta: { origem: 'banner_dashboard' }
+                      })
+                    });
+                  }
+                } catch (e) {}
+              }}
+              className="px-6 py-2.5 bg-brand-gold text-brand-green font-black rounded-lg hover:brightness-110 transition-all text-sm shadow-md flex-shrink-0"
+            >
+              Quero Acesso Completo
+            </Link>
+          </div>
+        )}
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
@@ -1203,6 +1294,25 @@ export default function DashboardPage() {
             >
               ✕
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay de carregamento com mensagens rotativas de valor */}
+      {loadingAnalysisId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8 text-center border-t-4 border-brand-green">
+            <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="animate-spin h-8 w-8 text-brand-green" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Auditoria Fundiária em Processamento</h3>
+            <p className="text-sm text-gray-500 mb-4">Esta operação pode levar até 2 minutos para documentos complexos.</p>
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-brand-green font-semibold text-sm animate-pulse">
+              {rotatingMessage}
+            </div>
           </div>
         </div>
       )}

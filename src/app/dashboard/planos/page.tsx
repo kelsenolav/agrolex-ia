@@ -1,131 +1,285 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ShieldCheck, ArrowLeft, CheckCircle2, Zap, Gem, Loader2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import { ShieldCheck, ArrowLeft, CheckCircle2, Crown, Building2, Zap, Lock, XCircle } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { PLANS, listPlans, type Plan, type PlanType } from '@/lib/commercial/plans';
+import { createCommercialEvent, buildMetadataWithEvent } from '@/lib/commercial/scoring';
+
+const PLAN_FEATURES: Record<PlanType, string[]> = {
+  trial: [
+    'Análise de matrícula individual',
+    'ISF - Índice de Segurança Fundiária',
+    'Classificação de risco',
+    'Prévia com até 3 alertas principais',
+    'Relatório completo bloqueado',
+    'Cadeia dominial bloqueada',
+    'Módulos complementares bloqueados',
+    'Exportação PDF bloqueada',
+    'Sem compartilhamento',
+  ],
+  starter: [
+    'Até 5 análises por mês',
+    'Relatório completo desbloqueado',
+    'ISF - Índice de Segurança Fundiária',
+    'Classificação de risco completa',
+    'Exportação PDF profissional',
+    'Compartilhamento de laudo',
+    'Histórico do caso',
+    'Suporte por e-mail',
+  ],
+  profissional: [
+    'Até 20 análises por mês',
+    'Todos os módulos de auditoria',
+    'Cadeia dominial completa',
+    'Módulos complementares liberados',
+    'Cruzamento de matrículas',
+    'Auditoria geoespacial',
+    'Mapeamento de nulidades e fraudes',
+    'Suporte prioritário WhatsApp',
+    'Relatório A4 profissional',
+  ],
+  empresarial: [
+    'Análises ilimitadas',
+    'Todos os módulos premium',
+    'Cadeia dominial completa',
+    'Módulos complementares liberados',
+    'Auditoria de origem pública',
+    'Multi-usuário (equipe)',
+    'API de integração',
+    'Suporte dedicado 24/7',
+    'Treinamento onboarding',
+    'Relatórios personalizados',
+  ],
+};
+
+const PLAN_HIGHLIGHTS: Record<PlanType, string[]> = {
+  trial: ['Grátis', '1 análise', 'Prévia limitada'],
+  starter: ['Até 5 análises', 'Relatório completo', 'PDF profissional'],
+  profissional: ['Até 20 análises', 'Todos os módulos', 'Suporte WhatsApp'],
+  empresarial: ['Ilimitado', 'Equipe', 'API & Suporte 24/7'],
+};
 
 export default function PlanosPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [credits, setCredits] = useState(0);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<PlanType>('trial');
+  const [loading, setLoading] = useState(true);
+  // FASE 3: lead_id para persistência de eventos
+  const [leadId, setLeadId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setUserId(session.user.id);
-        const { data } = await supabase.from('profiles').select('credits').eq('id', session.user.id).single();
-        if (data) setCredits(data.credits || 0);
+      if (!session) {
+        router.push('/login');
+        return;
       }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('plan_type')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profile?.plan_type && profile.plan_type in PLANS) {
+        setCurrentPlan(profile.plan_type as PlanType);
+      }
+
+      // FASE 3: buscar lead para persistência de eventos
+      const { data: lead } = await supabase
+        .from('leads')
+        .select('id, metadata')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+      if (lead) setLeadId(lead.id);
+
+      setLoading(false);
     };
     fetchProfile();
-  }, []);
+  }, [router]);
 
-  const handleBuyCredits = async (amount: number, price: number) => {
-    if (!userId) {
-      router.push('/login');
-      return;
-    }
-    
-    setLoading(true);
+  /**
+   * FASE 3 — Registra evento plan_clicked no metadata do lead.
+   * Falha silenciosamente se não houver lead ou campo metadata.
+   * TODO: Requer coluna JSONB `metadata` na tabela `leads` (migration pendente).
+   */
+  const registrarPlanClicked = async (planId: string) => {
+    if (!leadId) return;
     try {
-      // Simulação de compra no Mercado Pago
-      await new Promise(r => setTimeout(r, 1500));
-      
-      const newCredits = credits + amount;
-      
-      // Tenta atualizar a coluna credits. Se der erro (coluna não existe), alerta o usuário.
-      const { error } = await supabase.from('profiles').update({ credits: newCredits }).eq('id', userId);
-      
-      if (error) {
-        console.error("Erro ao atualizar créditos:", error);
-        alert(`Erro! Você esqueceu de rodar o Script SQL no Supabase para criar a coluna 'credits'? Detalhe: ${error.message}`);
-      } else {
-        setCredits(newCredits);
-        alert(`Pagamento de R$ ${price} aprovado! Você recebeu ${amount} créditos.`);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+      const { data: leadData } = await supabase
+        .from('leads')
+        .select('metadata')
+        .eq('id', leadId)
+        .maybeSingle();
+      const currentMetadata = (leadData?.metadata as Record<string, unknown> | null) ?? null;
+      const novoEvento = createCommercialEvent('plan_clicked', { plan_id: planId });
+      const metadataAtualizado = buildMetadataWithEvent(currentMetadata, novoEvento);
+      await supabase.from('leads').update({ metadata: metadataAtualizado }).eq('id', leadId);
+    } catch {
+      // Falha silenciosa
     }
   };
 
+  const plans = listPlans();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500">Carregando...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
+    <div className="min-h-screen bg-gray-50">
+      {/* Navbar */}
       <nav className="bg-brand-green text-white shadow-md">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
+          <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold">
             <ShieldCheck size={28} />
             <span className="text-xl font-bold text-white">AgroLex</span>
           </Link>
-          <div className="flex items-center gap-2 bg-black/20 px-4 py-2 rounded-full font-bold">
-            <Gem size={18} className="text-brand-gold" />
-            <span>{credits} Créditos Restantes</span>
-          </div>
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8 max-w-5xl">
-        <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-brand-green mb-6 transition-colors w-fit font-medium">
+      <main className="container mx-auto px-4 py-12">
+        <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-brand-green mb-8 transition-colors w-fit font-medium">
           <ArrowLeft size={20} /> Voltar ao painel
         </Link>
 
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-extrabold text-gray-900 mb-4">Planos Corporativos</h1>
-          <p className="text-xl text-gray-600">Economize até 60% por análise comprando pacotes para o seu escritório.</p>
+          <h1 className="text-4xl font-extrabold text-gray-800 mb-3">Planos AgroLex</h1>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Escolha o plano ideal para o seu escritório e comece a auditar imóveis rurais com inteligência fundiária de ponta.
+          </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8">
-          {/* Pacote Básico */}
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 flex flex-col hover:shadow-xl transition-shadow">
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Básico</h2>
-            <p className="text-gray-500 mb-6">Para pequenos escritórios</p>
-            <div className="text-4xl font-black text-gray-900 mb-6">R$ 1.990<span className="text-lg text-gray-500 font-medium">/pct</span></div>
-            <ul className="space-y-4 mb-8 flex-grow">
-              <li className="flex items-center gap-3 text-gray-700"><CheckCircle2 className="text-brand-green" size={20} /> <strong>5 Análises Completas</strong></li>
-              <li className="flex items-center gap-3 text-gray-700"><CheckCircle2 className="text-brand-green" size={20} /> R$ 398 por análise</li>
-              <li className="flex items-center gap-3 text-gray-700"><CheckCircle2 className="text-brand-green" size={20} /> Relatórios Ilimitados em PDF</li>
-            </ul>
-            <button disabled={loading} onClick={() => handleBuyCredits(5, 1990)} className="w-full bg-gray-900 text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50">
-              {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Comprar 5 Créditos'}
-            </button>
-          </div>
+        {/* Grid de Planos */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 max-w-6xl mx-auto">
+          {plans.map((plan) => {
+            const isCurrent = plan.id === currentPlan;
+            const features = PLAN_FEATURES[plan.id] || [];
+            const highlights = PLAN_HIGHLIGHTS[plan.id] || [];
+            const isTrial = plan.id === 'trial';
+            const isPremium = plan.id === 'empresarial';
 
-          {/* Pacote Premium */}
-          <div className="bg-brand-green rounded-2xl shadow-2xl p-8 flex flex-col transform md:-translate-y-4 relative">
-            <div className="absolute top-0 right-0 bg-brand-gold text-brand-dark font-black px-4 py-1 rounded-bl-xl rounded-tr-xl text-sm">MAIS VENDIDO</div>
-            <h2 className="text-2xl font-bold text-white mb-2">Premium</h2>
-            <p className="text-gray-300 mb-6">Para bancas especializadas</p>
-            <div className="text-4xl font-black text-white mb-6">R$ 3.490<span className="text-lg text-gray-400 font-medium">/pct</span></div>
-            <ul className="space-y-4 mb-8 flex-grow">
-              <li className="flex items-center gap-3 text-white"><CheckCircle2 className="text-brand-gold" size={20} /> <strong>10 Análises Completas</strong></li>
-              <li className="flex items-center gap-3 text-white"><CheckCircle2 className="text-brand-gold" size={20} /> R$ 349 por análise</li>
-              <li className="flex items-center gap-3 text-white"><CheckCircle2 className="text-brand-gold" size={20} /> Relatórios Ilimitados em PDF</li>
-              <li className="flex items-center gap-3 text-white"><Zap className="text-brand-gold" size={20} /> Busca Ativa no Ibama/Receita</li>
-            </ul>
-            <button disabled={loading} onClick={() => handleBuyCredits(10, 3490)} className="w-full bg-brand-gold text-brand-dark font-black py-4 rounded-xl hover:bg-yellow-400 transition-colors shadow-lg disabled:opacity-50">
-              {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Comprar 10 Créditos'}
-            </button>
-          </div>
+            return (
+              <div
+                key={plan.id}
+                className={`bg-white rounded-2xl shadow-lg border-2 transition-all flex flex-col ${
+                  isCurrent
+                    ? 'border-brand-green ring-2 ring-brand-green/20'
+                    : isPremium
+                      ? 'border-brand-gold'
+                      : 'border-gray-100 hover:border-brand-gold/30 hover:shadow-xl'
+                }`}
+              >
+                {/* Header */}
+                <div className={`p-6 pb-4 text-center rounded-t-2xl ${isPremium ? 'bg-gradient-to-b from-gray-900 to-gray-800 text-white' : ''}`}>
+                  {isCurrent && (
+                    <span className="inline-block px-3 py-1 bg-brand-green text-white text-[10px] font-bold uppercase rounded-full mb-3">
+                      Plano Atual
+                    </span>
+                  )}
+                  {isPremium && (
+                    <div className="flex items-center justify-center gap-1 mb-2">
+                      <Crown size={16} className="text-brand-gold" />
+                      <span className="text-brand-gold text-[10px] font-bold uppercase tracking-widest">Premium</span>
+                    </div>
+                  )}
+                  <h3 className={`text-xl font-extrabold ${isPremium ? 'text-white' : 'text-gray-800'}`}>{plan.label}</h3>
+                  <p className={`text-sm mt-1 ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>{plan.description}</p>
+                </div>
 
-          {/* Pacote Enterprise */}
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 flex flex-col hover:shadow-xl transition-shadow">
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Enterprise</h2>
-            <p className="text-gray-500 mb-6">Para corretoras e fundos (FIIs)</p>
-            <div className="text-4xl font-black text-gray-900 mb-6">R$ 9.990<span className="text-lg text-gray-500 font-medium">/pct</span></div>
-            <ul className="space-y-4 mb-8 flex-grow">
-              <li className="flex items-center gap-3 text-gray-700"><CheckCircle2 className="text-brand-green" size={20} /> <strong>50 Análises Completas</strong></li>
-              <li className="flex items-center gap-3 text-gray-700"><CheckCircle2 className="text-brand-green" size={20} /> R$ 199 por análise (60% OFF)</li>
-              <li className="flex items-center gap-3 text-gray-700"><CheckCircle2 className="text-brand-green" size={20} /> Suporte Prioritário</li>
-            </ul>
-            <button disabled={loading} onClick={() => handleBuyCredits(50, 9990)} className="w-full bg-gray-900 text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50">
-              {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Comprar 50 Créditos'}
-            </button>
-          </div>
+                {/* Preço */}
+                <div className={`px-6 py-5 text-center border-b ${isPremium ? 'border-gray-700' : 'border-gray-100'}`}>
+                  {plan.price === null ? (
+                    <div>
+                      <span className={`text-4xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>Grátis</span>
+                      <p className={`text-xs mt-1 ${isPremium ? 'text-gray-400' : 'text-gray-400'}`}>7 dias de teste</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <span className={`text-4xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>
+                        R$ {plan.price.toFixed(2).replace('.', ',')}
+                      </span>
+                      <p className={`text-xs mt-1 ${isPremium ? 'text-gray-400' : 'text-gray-400'}`}>/mês</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Highlights */}
+                <div className="px-6 py-3 flex flex-wrap gap-1.5 justify-center">
+                  {highlights.map((h, i) => (
+                    <span key={i} className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                      isPremium ? 'bg-brand-gold/20 text-brand-gold border border-brand-gold/30' : 'bg-brand-green/10 text-brand-green'
+                    }`}>
+                      {h}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Features */}
+                <div className="p-6 flex-grow">
+                  <ul className="space-y-3">
+                    {features.map((feature, i) => {
+                      const isLocked = feature.toLowerCase().includes('bloquead');
+                      return (
+                        <li key={i} className="flex items-start gap-2">
+                          {isLocked ? (
+                            <Lock size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
+                          ) : (
+                            <CheckCircle2 size={14} className={`mt-0.5 flex-shrink-0 ${isPremium ? 'text-brand-gold' : 'text-brand-green'}`} />
+                          )}
+                          <span className={`text-xs leading-tight ${isLocked ? 'text-red-500' : isPremium ? 'text-gray-200' : 'text-gray-700'}`}>
+                            {feature}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+
+                {/* CTA */}
+                <div className="p-6 pt-0">
+                  {isCurrent ? (
+                    <div className="w-full py-3 rounded-xl text-center font-bold text-sm bg-green-50 text-brand-green border border-brand-green/20">
+                      Seu plano atual
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        // FASE 3: registrar evento plan_clicked antes de navegar
+                        registrarPlanClicked(plan.id);
+                        if (plan.id !== 'trial' && plan.id !== 'starter') {
+                          alert(`Plano ${plan.label} em breve disponível com Mercado Pago.`);
+                          return;
+                        }
+                        router.push('/dashboard/nova-analise');
+                      }}
+                      className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${
+                        isPremium
+                          ? 'bg-brand-gold text-brand-green hover:brightness-110 shadow-lg'
+                          : isTrial
+                            ? 'bg-brand-green text-white hover:brightness-110 shadow'
+                            : 'bg-brand-green text-white hover:brightness-110 shadow'
+                      }`}
+                    >
+                      {isTrial ? 'Começar Grátis' : 'Escolher Plano'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer informativo */}
+        <div className="text-center mt-12 text-sm text-gray-500">
+          <p>Pagamentos processados via Mercado Pago. Cancele a qualquer momento.</p>
+          <p className="mt-1">Dúvidas? Entre em contato pelo WhatsApp: (63) 9 9999-9999</p>
         </div>
       </main>
     </div>
