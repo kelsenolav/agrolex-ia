@@ -7,8 +7,8 @@ const nextConfig: NextConfig = {
     'pdf-parse',
     'pdf2json',
   ],
-  outputFileTracingExcludes: {
-    '/api/analyze': [
+  experimental: {
+    outputFileTracingIgnores: [
       './node_modules/pdfjs-dist/**',
       './node_modules/@napi-rs/canvas/**',
       './node_modules/pdf-parse/**',
