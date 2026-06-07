@@ -7,28 +7,28 @@ import { useState } from 'react';
 
 const faqData = [
   {
-    q: "Posso comprar essa área com segurança?",
-    a: "O AgroLex analisa a matrícula, a cadeia de proprietários anteriores e cruza com bases do INCRA, SIGEF e CAR. Se existir qualquer irregularidade — grilagem, sobreposição, fraude documental — o sistema aponta antes de você fechar negócio. Você não precisa mais comprar no escuro."
+    q: "O AgroLex garante que a propriedade não tem risco?",
+    a: "Não. Nenhuma análise documental pode garantir 100% de segurança. O AgroLex organiza os documentos enviados, aplica critérios técnicos e ajuda a identificar sinais de risco. A decisão final é sempre sua — e, quando houver indícios relevantes, recomendamos consultar um profissional especializado."
   },
   {
-    q: "Existe risco de perder a propriedade depois da compra?",
-    a: "Sim, esse risco existe — e é mais comum do que parece. Uma matrícula com cadeia dominial quebrada, cláusula resolutiva não cumprida ou origem em terras públicas pode gerar nulidade. O AgroLex identifica esses riscos em minutos, não em semanas."
+    q: "Posso confiar no resultado da análise?",
+    a: "O AgroLex segue uma metodologia documental estruturada em camadas, aplicando critérios técnicos sobre as informações presentes nos arquivos enviados. O resultado ajuda a direcionar sua atenção para pontos sensíveis, mas não substitui uma auditoria presencial ou a análise de um advogado quando o risco for relevante."
   },
   {
-    q: "A documentação do imóvel está realmente correta?",
-    a: "O sistema varre cada página da matrícula, CCIR, CAR e SIGEF em busca de inconsistências: assinaturas ausentes, averbações faltantes, áreas divergentes entre registros. Se algo estiver errado, você descobre antes de passar o contrato."
+    q: "Que tipos de risco o AgroLex pode indicar?",
+    a: "A análise pode indicar inconsistências em matrículas, lacunas na cadeia dominial, divergências entre documentos, sinais de ônus ou restrições, e ausência de documentos importantes. Cada sinal de alerta é contextualizado para você entender o que pode significar no seu caso."
   },
   {
-    q: "Vale a pena concluir a negociação?",
-    a: "O relatório entrega um parecer claro com score de risco, lista de achados críticos e recomendações. Com esses dados em mãos, você decide com segurança — seja para concluir, renegociar ou desistir do negócio."
+    q: "A análise considera dados de órgãos oficiais?",
+    a: "O AgroLex analisa exclusivamente os documentos que você envia. Com base nas informações presentes nesses arquivos, o sistema cruza dados entre matrículas, títulos, CCIR, CAR e outros documentos para apontar divergências ou inconsistências. Não há consulta automática a bases externas governamentais."
   },
   {
-    q: "Existe algum problema oculto que pode me prejudicar?",
-    a: "Muitos problemas ficam escondidos na documentação: ônus reais, ações judiciais, débitos de ITR, passivo ambiental, irregularidades no georreferenciamento. O AgroLex revela tudo de forma automatizada e entrega um dossiê completo para sua análise."
+    q: "O que fazer se a análise apontar um risco?",
+    a: "Se o relatório indicar sinais de alerta, recomendamos consultar um advogado ou profissional especializado em direito imobiliário rural para uma avaliação aprofundada. O AgroLex é uma ferramenta de análise documental inicial — o parecer definitivo cabe a um especialista."
   },
   {
     q: "Preciso de um advogado para usar a plataforma?",
-    a: "Não. O sistema foi feito para qualquer pessoa que precise verificar a segurança de um imóvel rural — produtor, comprador, vendedor, corretor. Mas o relatório também serve como base técnica para seu advogado de confiança."
+    a: "Não. O sistema foi feito para qualquer pessoa que precise verificar a segurança de um imóvel rural — produtor, comprador, vendedor, corretor. O relatório serve como base técnica para sua decisão e também pode ser levado ao seu advogado de confiança."
   },
   {
     q: "Quanto tempo leva para receber o resultado?",
@@ -37,6 +37,49 @@ const faqData = [
   {
     q: "Meus documentos ficam protegidos?",
     a: "Sim. Toda a transmissão é criptografada (TLS 1.3) e os arquivos armazenados com AES-256. Você pode excluir permanentemente seus dados a qualquer momento. Seguimos rigorosamente a LGPD."
+  }
+];
+
+const modulesData = [
+  { 
+    icone: <BookOpen size={24} />, 
+    titulo: "Matrículas e títulos", 
+    desc: "Identifique registros, averbações e informações que podem revelar riscos antes da negociação." 
+  },
+  { 
+    icone: <GitBranch size={24} />, 
+    titulo: "Cadeia dominial", 
+    desc: "Entenda a trajetória dos proprietários e perceba quebras ou lacunas na origem da área." 
+  },
+  { 
+    icone: <Landmark size={24} />, 
+    titulo: "INCRA e origem pública", 
+    desc: "Avalie títulos fundiários, origem da área e documentos relacionados à regularidade da propriedade." 
+  },
+  { 
+    icone: <MapPin size={24} />, 
+    titulo: "Georreferenciamento", 
+    desc: "Verifique áreas, confrontações e dados territoriais que podem indicar divergências relevantes." 
+  },
+  { 
+    icone: <FileSearch size={24} />, 
+    titulo: "Riscos registrais", 
+    desc: "Localize inconsistências documentais que podem comprometer compra, venda ou regularização." 
+  },
+  { 
+    icone: <Scale size={24} />, 
+    titulo: "Indícios de nulidades", 
+    desc: "Encontre sinais que exigem atenção jurídica antes que o problema vire prejuízo." 
+  },
+  { 
+    icone: <AlertTriangle size={24} />, 
+    titulo: "Documentos ausentes", 
+    desc: "Descubra quais documentos podem estar faltando para uma avaliação mais segura do imóvel." 
+  },
+  { 
+    icone: <Layers size={24} />, 
+    titulo: "Cruzamento documental", 
+    desc: "Compare informações entre documentos e identifique divergências que passariam despercebidas." 
   }
 ];
 
@@ -53,18 +96,18 @@ const riscosOcultos = [
 const casosReais = [
   {
     problema: "Comprador ia adquirir fazenda de 800 ha no MATOPIBA",
-    descoberta: "AgroLex identificou sobreposição de 120 ha com terra pública não demarcada (INCRA)",
-    beneficio: "Cliente recusou a compra e evitou prejuízo estimado em R$ 4,8 milhões"
+    descoberta: "Problema identificado: sobreposição de 120 ha com terra pública não demarcada (INCRA)",
+    beneficio: "Decisão mais segura tomada: cliente recusou a compra e evitou uma negociação de alto risco"
   },
   {
     problema: "Produtor rural precisava financiar 4 matrículas para safra",
-    descoberta: "Duas matrículas tinham cláusula resolutiva não cumprida — banco rejeitaria o financiamento",
-    beneficio: "Regularizou as cláusulas em 15 dias e o crédito foi aprovado sem glosa"
+    descoberta: "Sinal de alerta encontrado: duas matrículas tinham cláusula resolutiva não cumprida — banco rejeitaria o financiamento",
+    beneficio: "Decisão mais segura tomada: regularizou as cláusulas em 15 dias e o crédito foi aprovado sem glosa"
   },
   {
     problema: "Escritório de advocacia analisava ação de usucapião rural",
-    descoberta: "Cadeia dominial apontava nulidade na 2ª alienação (venda por procuração inválida)",
-    beneficio: "Advogado usou o dossiê como prova técnica e venceu a ação"
+    descoberta: "Sinal de alerta encontrado: cadeia dominial apontava nulidade na 2ª alienação (venda por procuração inválida)",
+    beneficio: "Decisão mais segura tomada: advogado usou o dossiê como prova técnica e venceu a ação"
   },
 ];
 
@@ -137,29 +180,28 @@ export default function Home() {
               </motion.div>
 
               <motion.h1 variants={itemVariants} className="text-4xl md:text-6xl font-extrabold mb-6 leading-tight tracking-tight">
-                Descubra riscos ocultos em uma
+                Antes de comprar ou negociar uma
                 <br/>
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-gold to-yellow-400">
                   propriedade rural
                 </span>
                 <br/>
-                antes que eles virem prejuízo
+                descubra o que os documentos podem estar escondendo
               </motion.h1>
               <motion.p variants={itemVariants} className="text-lg md:text-xl mb-6 text-gray-300 font-light max-w-2xl leading-relaxed">
-                Em 3 minutos, analisamos matrículas, títulos, INCRA, cadeia de proprietários e documentos do imóvel. 
-                Você descobre se a propriedade é segura para comprar, vender ou regularizar.
+                Em poucos minutos, o AgroLex organiza matrículas, títulos, cadeia de proprietários e documentos enviados para apontar sinais de risco, inconsistências e pontos que merecem atenção antes da decisão.
               </motion.p>
 
               {/* Micro-benefícios */}
               <motion.div variants={itemVariants} className="flex flex-wrap justify-center md:justify-start gap-4 mb-8">
                 <span className="inline-flex items-center gap-1.5 text-gray-300 text-sm">
-                  <CheckCircle2 size={16} className="text-brand-gold" /> Mais segurança para negociar
+                  <CheckCircle2 size={16} className="text-brand-gold" /> Mais clareza antes de negociar
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-gray-300 text-sm">
-                  <CheckCircle2 size={16} className="text-brand-gold" /> Identificação de riscos ocultos
+                  <CheckCircle2 size={16} className="text-brand-gold" /> Sinais de risco organizados
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-gray-300 text-sm">
-                  <CheckCircle2 size={16} className="text-brand-gold" /> Relatórios completos e objetivos
+                  <CheckCircle2 size={16} className="text-brand-gold" /> Decisão mais informada
                 </span>
               </motion.div>
               
@@ -174,36 +216,11 @@ export default function Home() {
                 </Link>
               </motion.div>
 
-              {/* Gatilho de urgência */}
+              {/* Microcopy */}
               <motion.div variants={itemVariants} className="mt-4">
                 <span className="inline-flex items-center gap-2 text-brand-gold/80 text-xs font-bold uppercase tracking-widest">
-                  <Clock size={14} /> Análise concluída em até 5 minutos
+                  <Clock size={14} /> Mais clareza antes de comprar, vender ou regularizar
                 </span>
-              </motion.div>
-
-              {/* Prova Social — Benefícios verificáveis (substitui métricas fictícias) */}
-              <motion.div variants={itemVariants} className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl">
-                <div className="flex items-center gap-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl px-5 py-3">
-                  <FileSearch size={20} className="text-brand-gold" />
-                  <div className="text-left">
-                    <p className="text-white font-bold text-sm">Matrículas e títulos</p>
-                    <p className="text-gray-400 text-xs">Análise completa de documentos</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl px-5 py-3">
-                  <GitBranch size={20} className="text-brand-gold" />
-                  <div className="text-left">
-                    <p className="text-white font-bold text-sm">Cadeia dominial</p>
-                    <p className="text-gray-400 text-xs">Rastreamento de proprietários</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl px-5 py-3">
-                  <Globe size={20} className="text-brand-gold" />
-                  <div className="text-left">
-                    <p className="text-white font-bold text-sm">INCRA e origem pública</p>
-                    <p className="text-gray-400 text-xs">Cruzamento com bases oficiais</p>
-                  </div>
-                </div>
               </motion.div>
             </div>
 
@@ -291,7 +308,7 @@ export default function Home() {
                 </div>
 
                 <p className="text-gray-500 text-[10px] mt-3 text-center">
-                  * Scores demonstrativos. Cada propriedade tem resultado único.
+                  * Análise demonstrativa baseada nas informações presentes nos documentos enviados. Cada propriedade tem resultado único.
                 </p>
               </div>
             </motion.div>
@@ -299,8 +316,45 @@ export default function Home() {
         </motion.div>
       </main>
 
+      {/* ===== 8 CARDS — O QUE O AGROLEX ANALISA ===== */}
+      <section className="py-24 px-4 relative z-10 bg-gradient-to-b from-[#051F15] to-[#03150D]">
+        <div className="container mx-auto max-w-7xl">
+          <div className="text-center mb-16">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+            >
+              <h2 className="text-3xl md:text-5xl font-bold mb-4">O que o AgroLex analisa</h2>
+              <p className="text-gray-400 text-lg max-w-4xl mx-auto">
+                Cada documento pode esconder detalhes que mudam o rumo de uma negociação. O AgroLex ajuda você a enxergar esses sinais antes de decidir.
+              </p>
+            </motion.div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {modulesData.map((mod, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.08 }}
+                className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6 hover:bg-white/10 hover:border-brand-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.1)] transition-all duration-300 group flex flex-col"
+              >
+                <div className="w-12 h-12 bg-brand-gold/10 border border-brand-gold/20 rounded-xl flex items-center justify-center mb-4 text-brand-gold group-hover:bg-brand-gold/20 group-hover:border-brand-gold/40 transition-all">
+                  {mod.icone}
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2">{mod.titulo}</h3>
+                <p className="text-gray-400 text-sm leading-relaxed flex-1">{mod.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ===== SCORE AGROLEX (P0) ===== */}
-      <section id="score" className="py-24 px-4 relative z-10 bg-gradient-to-b from-[#051F15] to-[#03150D]">
+      <section id="score" className="py-24 px-4 relative z-10 bg-gradient-to-b from-[#03150D] to-[#051F15]">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-16">
             <motion.div
@@ -308,9 +362,9 @@ export default function Home() {
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
             >
-              <h2 className="text-3xl md:text-5xl font-bold mb-4">Índice de Segurança Fundiária</h2>
+              <h2 className="text-3xl md:text-5xl font-bold mb-4">Transforme documentos complexos em uma leitura simples de risco</h2>
               <p className="text-gray-400 text-lg max-w-3xl mx-auto">
-                Transformamos documentos complexos em scores simples. Veja como uma análise real funciona:
+                Veja em poucos segundos onde estão os pontos mais sensíveis da análise.
               </p>
             </motion.div>
           </div>
@@ -400,10 +454,9 @@ export default function Home() {
       <section id="riscos" className="py-24 px-4 relative z-10 bg-gradient-to-b from-gray-50 to-white">
         <div className="container mx-auto max-w-7xl">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold text-brand-dark mb-4">O que pode estar escondido nos documentos da sua propriedade?</h2>
+            <h2 className="text-3xl md:text-5xl font-bold text-brand-dark mb-4">O problema quase nunca aparece na primeira leitura</h2>
             <p className="text-gray-500 text-lg max-w-3xl mx-auto">
-              A documentação de um imóvel rural pode esconder problemas que colocam em risco todo o seu investimento. 
-              O AgroLex revela cada um deles.
+              Uma matrícula aparentemente regular pode esconder lacunas, divergências e sinais de alerta. O AgroLex organiza essas informações para você decidir com mais segurança.
             </p>
           </div>
 
@@ -459,12 +512,12 @@ export default function Home() {
                 </div>
                 
                 <div className="mb-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-brand-gold mb-1">Descoberta</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-brand-gold mb-1">Sinal de alerta</h4>
                   <p className="text-gray-300 text-sm leading-relaxed">{caso.descoberta}</p>
                 </div>
                 
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-1">Benefício</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-1">Resultado</h4>
                   <p className="text-emerald-300 text-sm leading-relaxed font-medium">{caso.beneficio}</p>
                 </div>
               </motion.div>
@@ -497,9 +550,9 @@ export default function Home() {
             <div className="hidden md:block absolute top-16 left-[16%] right-[16%] h-0.5 bg-gradient-to-r from-transparent via-brand-gold/40 to-transparent"></div>
             
             {[
-              { num: "1", icon: <Upload className="text-brand-gold" size={28} />, title: "Envie os documentos", desc: "Matrícula, CCIR, CAR, SIGEF. O sistema aceita qualquer documento do imóvel em PDF.", result: "Upload em segundos" },
-              { num: "2", icon: <Layers className="text-brand-gold" size={28} />, title: "O AgroLex cruza os dados", desc: "IA especializada varre cada página, cruza com bases oficiais e identifica riscos ocultos.", result: "Análise em camadas" },
-              { num: "3", icon: <FileText className="text-brand-gold" size={28} />, title: "Receba o relatório de risco", desc: "Score de risco, achados críticos e recomendações claras para sua decisão mais segura.", result: "Relatório objetivo" }
+              { num: "1", icon: <Upload className="text-brand-gold" size={28} />, title: "Envie os documentos", desc: "Você envia matrículas, títulos e documentos do imóvel.", result: "Upload em segundos" },
+              { num: "2", icon: <Layers className="text-brand-gold" size={28} />, title: "O AgroLex organiza os sinais de risco", desc: "O sistema analisa as informações em camadas e destaca inconsistências relevantes.", result: "Análise em camadas" },
+              { num: "3", icon: <FileText className="text-brand-gold" size={28} />, title: "Você decide com mais clareza", desc: "Receba uma visão objetiva para comprar, vender, regularizar ou aprofundar a análise.", result: "Relatório objetivo" }
             ].map((step, i) => (
               <motion.div
                 key={i}
@@ -617,7 +670,7 @@ export default function Home() {
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
               {[
                 { icone: <Target size={28} />, titulo: "IA especializada", desc: "Treinada com legislação, jurisprudência e normativas do direito imobiliário rural brasileiro." },
-                { icone: <Layers size={28} />, titulo: "Análise em camadas", desc: "Da matrícula individual ao cruzamento total com bases oficiais (INCRA, SIGEF, CAR)." },
+                { icone: <Layers size={28} />, titulo: "Análise em camadas", desc: "Da matrícula individual ao cruzamento de informações extraídas dos documentos enviados." },
                 { icone: <Zap size={28} />, titulo: "Resultado em minutos", desc: "O que levaria semanas de trabalho manual, a IA entrega em até 5 minutos." },
                 { icone: <ShieldCheck size={28} />, titulo: "Proteção de dados", desc: "Criptografia ponta-a-ponta, conformidade com a LGPD e exclusão permanente sob demanda." },
               ].map((dif, idx) => (

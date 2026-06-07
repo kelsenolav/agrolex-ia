@@ -20,6 +20,7 @@ export default function DashboardPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [riskFilter, setRiskFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 5;
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -381,10 +382,27 @@ export default function DashboardPage() {
   const analisesEmAndamento = analises.filter(a => a.status === 'processing' || a.status === 'pending' || a.status === 'payment_pending' || a.status === 'ready_for_processing').length;
   const riscosAltos = analises.filter(a => a.risk_level?.toLowerCase() === 'alto').length;
   const riscosCriticos = analises.filter(a => a.risk_level?.toLowerCase() === 'critico').length;
+  const riscosMedios = analises.filter(a => a.risk_level?.toLowerCase() === 'medio' || a.risk_level?.toLowerCase() === 'médio').length;
+  const riscosBaixos = analises.filter(a => a.risk_level?.toLowerCase() === 'baixo').length;
+  const semRisco = analises.filter(a => !a.risk_level || a.risk_level.trim() === '').length;
   const totalRiscos = riscosAltos + riscosCriticos;
 
   // Horas economizadas (benchmark: 8h por auditoria concluída)
   const horasEconomizadas = analisesConcluidas * 8;
+
+  // RiskFilter precisa combinar com busca e status
+  const analisesFiltradas = analises.filter(a => {
+    const matchSearch = !searchTerm || 
+      a.properties?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      a.properties?.city?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = !statusFilter || a.status === statusFilter;
+    const matchRisk = !riskFilter || (
+      riskFilter === 'sem_risco'
+        ? !a.risk_level || a.risk_level.trim() === ''
+        : a.risk_level?.toLowerCase() === riskFilter.toLowerCase()
+    );
+    return matchSearch && matchStatus && matchRisk;
+  });
 
   // Score médio do portfólio
   const scoresCompletos = analises
@@ -394,14 +412,6 @@ export default function DashboardPage() {
     ? Math.round(scoresCompletos.reduce((a, b) => a + b, 0) / scoresCompletos.length)
     : null;
 
-  // Filtros
-  const analisesFiltradas = analises.filter(a => {
-    const matchSearch = !searchTerm || 
-      a.properties?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.properties?.city?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchStatus = !statusFilter || a.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
 
   // Paginação — 5 registros por página, considera resultado filtrado
   const totalPaginas = Math.max(1, Math.ceil(analisesFiltradas.length / ITEMS_PER_PAGE));
@@ -436,7 +446,12 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4">
             <Link href="/dashboard/planos" className="flex items-center gap-2 bg-white text-brand-dark border-2 border-brand-gold px-5 py-3 rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm">
               <Plus size={20} className="text-brand-gold" />
-              {credits > 0 ? `${credits} Crédito(s)` : 'Planos'}
+              <div className="flex flex-col items-start leading-tight">
+                <span>{credits > 0 ? `${credits} crédito(s)` : 'Planos'}</span>
+                {credits > 0 && (
+                  <span className="text-[9px] font-normal text-gray-500">Saldo disponível para novas auditorias</span>
+                )}
+              </div>
             </Link>
             <Link href="/dashboard/nova-analise" className="flex items-center gap-2 bg-brand-gold text-brand-green px-5 py-3 rounded-lg font-bold hover:brightness-110 transition-all shadow-lg hover:-translate-y-1">
               <Plus size={20} />
@@ -445,8 +460,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Cards Executivos Premium */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-5 mb-10">
+        {/* BLOCO 5 — KPIs (Cards Executivos Premium) */}
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-5 mb-10">
           {/* Card 1 — Auditorias Realizadas */}
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
@@ -505,10 +520,28 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Card 5 — Índice AgroLex */}
+          {/* BLOCO 3 — Card 5: Demandam ação imediata */}
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow cursor-default">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Demandam ação imediata</span>
+              <div className={`p-2 ${totalRiscos > 0 ? 'bg-red-100' : 'bg-green-100'} rounded-lg`}>
+                <AlertTriangle size={18} className={totalRiscos > 0 ? 'text-red-600' : 'text-green-600'} />
+              </div>
+            </div>
+            <p className="text-3xl font-black text-gray-800">{totalRiscos}</p>
+            <div className="flex items-center gap-1 text-xs text-gray-400">
+              {totalRiscos > 0 ? (
+                <span>{totalRiscos} {totalRiscos === 1 ? 'análise' : 'análises'} com risco crítico ou alto</span>
+              ) : (
+                <span>Nenhuma análise crítica ou de alto risco</span>
+              )}
+            </div>
+          </div>
+
+          {/* Card 6 — Segurança Fundiária (Índice AgroLex) */}
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
-              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Índice AgroLex</span>
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">SEGURANÇA FUNDIÁRIA</span>
               <div className={`p-2 rounded-lg ${
                 scoreMedio !== null && scoreMedio < 40 ? 'bg-red-100' :
                 scoreMedio !== null && scoreMedio < 70 ? 'bg-amber-100' : 'bg-green-100'
@@ -523,12 +556,110 @@ export default function DashboardPage() {
               scoreMedio !== null && scoreMedio < 40 ? 'text-red-600' :
               scoreMedio !== null && scoreMedio < 70 ? 'text-amber-600' : 'text-green-600'
             }`}>
-              {scoreMedio !== null ? scoreMedio : '--'}
+              {scoreMedio !== null ? `${scoreMedio}/100` : '--'}
             </p>
             <div className="flex items-center gap-1 text-xs text-gray-400">
-              Índice de Segurança Fundiária
+              {scoreMedio !== null
+                ? scoreMedio < 40
+                  ? 'Baixa segurança documental'
+                  : scoreMedio < 70
+                    ? 'Atenção recomendada'
+                    : 'Boa segurança documental'
+                : 'Índice de Segurança Fundiária'}
             </div>
           </div>
+        </div>
+
+        {/* BLOCO 1 — Resumo Executivo por Risco */}
+        <div className="mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+          <div className="flex items-center gap-2 mb-4">
+            <Layers size={18} className="text-brand-green" />
+            <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">Resumo Executivo</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {/* Críticos */}
+            <button
+              onClick={() => { setRiskFilter('critico'); setCurrentPage(1); }}
+              className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                riskFilter === 'critico'
+                  ? 'border-red-500 bg-red-50 shadow-md'
+                  : 'border-red-200 bg-red-50/50 hover:border-red-400'
+              }`}
+            >
+              <span className="text-2xl font-black text-red-700">{riscosCriticos}</span>
+              <span className="text-xs font-bold text-red-600 uppercase mt-1">Críticos</span>
+              <span className="text-[10px] text-red-400 mt-0.5">{riscosCriticos === 1 ? 'análise' : 'análises'}</span>
+            </button>
+            {/* Altos */}
+            <button
+              onClick={() => { setRiskFilter('alto'); setCurrentPage(1); }}
+              className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                riskFilter === 'alto'
+                  ? 'border-amber-500 bg-amber-50 shadow-md'
+                  : 'border-amber-200 bg-amber-50/50 hover:border-amber-400'
+              }`}
+            >
+              <span className="text-2xl font-black text-amber-700">{riscosAltos}</span>
+              <span className="text-xs font-bold text-amber-600 uppercase mt-1">Altos</span>
+              <span className="text-[10px] text-amber-400 mt-0.5">{riscosAltos === 1 ? 'análise' : 'análises'}</span>
+            </button>
+            {/* Médios */}
+            <button
+              onClick={() => { setRiskFilter('medio'); setCurrentPage(1); }}
+              className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                riskFilter === 'medio'
+                  ? 'border-blue-500 bg-blue-50 shadow-md'
+                  : 'border-blue-200 bg-blue-50/50 hover:border-blue-400'
+              }`}
+            >
+              <span className="text-2xl font-black text-blue-700">{riscosMedios}</span>
+              <span className="text-xs font-bold text-blue-600 uppercase mt-1">Médios</span>
+              <span className="text-[10px] text-blue-400 mt-0.5">{riscosMedios === 1 ? 'análise' : 'análises'}</span>
+            </button>
+            {/* Baixos */}
+            <button
+              onClick={() => { setRiskFilter('baixo'); setCurrentPage(1); }}
+              className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                riskFilter === 'baixo'
+                  ? 'border-green-500 bg-green-50 shadow-md'
+                  : 'border-green-200 bg-green-50/50 hover:border-green-400'
+              }`}
+            >
+              <span className="text-2xl font-black text-green-700">{riscosBaixos}</span>
+              <span className="text-xs font-bold text-green-600 uppercase mt-1">Baixos</span>
+              <span className="text-[10px] text-green-400 mt-0.5">{riscosBaixos === 1 ? 'análise' : 'análises'}</span>
+            </button>
+            {/* Sem risco */}
+            <button
+              onClick={() => { setRiskFilter('sem_risco'); setCurrentPage(1); }}
+              className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                riskFilter === 'sem_risco'
+                  ? 'border-gray-500 bg-gray-50 shadow-md'
+                  : 'border-gray-200 bg-gray-50/50 hover:border-gray-400'
+              }`}
+            >
+              <span className="text-2xl font-black text-gray-700">{semRisco}</span>
+              <span className="text-xs font-bold text-gray-600 uppercase mt-1">Sem risco</span>
+              <span className="text-[10px] text-gray-400 mt-0.5">{semRisco === 1 ? 'análise' : 'análises'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* BLOCO 2 — Semáforo Executivo */}
+        <div className="mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-2xl">
+              {riscosCriticos > 0 ? '🔴' : riscosAltos > 0 ? '🟠' : '🟢'}
+            </span>
+            <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">Status Geral da Carteira</span>
+          </div>
+          <p className="text-sm text-gray-700">
+            {riscosCriticos > 0
+              ? '🔴 Existem análises críticas que exigem atenção imediata.'
+              : riscosAltos > 0
+                ? '🟠 Existem análises que merecem atenção prioritária.'
+                : '🟢 Nenhum risco elevado identificado no momento.'}
+          </p>
         </div>
 
         {/* SPRINT 5 — ISF Analytics Card (bloco discreto) */}
@@ -569,6 +700,43 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* BLOCO 4 — Ação Recomendada (enriquecida) */}
+        <div className="mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle size={18} className={
+              riscosCriticos > 0 ? 'text-red-600' :
+              riscosAltos > 0 ? 'text-amber-600' : 'text-green-600'
+            } />
+            <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">Ação Recomendada</span>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-gray-700">
+              {riscosCriticos > 0
+                ? `${riscosCriticos} ${riscosCriticos === 1 ? 'análise crítica' : 'análises críticas'} exigem revisão documental imediata.`
+                : riscosAltos > 0
+                  ? `${riscosAltos} ${riscosAltos === 1 ? 'análise de alto risco' : 'análises de alto risco'} merecem atenção prioritária.`
+                  : 'Nenhum risco elevado identificado no momento.'}
+            </p>
+            <a
+              href="#tabela-auditorias"
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm whitespace-nowrap ${
+                riscosCriticos > 0
+                  ? 'bg-red-600 text-white hover:brightness-110'
+                  : riscosAltos > 0
+                    ? 'bg-amber-600 text-white hover:brightness-110'
+                    : 'bg-brand-green text-white hover:brightness-110'
+              }`}
+            >
+              {riscosCriticos > 0
+                ? 'Ver auditorias críticas'
+                : riscosAltos > 0
+                  ? 'Ver auditorias de alto risco'
+                  : 'Ver todas as auditorias'}
+              <ArrowUpRight size={14} />
+            </a>
+          </div>
+        </div>
+
         {/* Filtros e Busca */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
           <div>
@@ -597,11 +765,23 @@ export default function DashboardPage() {
               <option value="pending">Pendente</option>
               <option value="error">Falha</option>
             </select>
+            <select
+              value={riskFilter}
+              onChange={e => { setRiskFilter(e.target.value); setCurrentPage(1); }}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold"
+            >
+              <option value="">Todos os Riscos</option>
+              <option value="critico">Crítico</option>
+              <option value="alto">Alto</option>
+              <option value="medio">Médio</option>
+              <option value="baixo">Baixo</option>
+              <option value="sem_risco">Sem risco</option>
+            </select>
           </div>
         </div>
 
         {/* Tabela de Auditorias */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+        <div id="tabela-auditorias" className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
           {loading ? (
              <div className="p-10 text-center text-gray-500">Carregando seus dados...</div>
           ) : analisesFiltradas.length === 0 ? (
@@ -618,7 +798,13 @@ export default function DashboardPage() {
                   <th className="px-6 py-4 font-semibold">Documento</th>
                   <th className="px-6 py-4 font-semibold">Status da IA</th>
                   <th className="px-6 py-4 font-semibold">Risco</th>
-                  <th className="px-6 py-4 font-semibold">Score</th>
+                  <th className="px-6 py-4 font-semibold group relative cursor-help">
+                    ISF
+                    <span className="ml-1 text-[10px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">ⓘ</span>
+                    <div className="absolute left-0 top-full mt-1 w-64 bg-gray-800 text-white text-[11px] rounded-lg p-2 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 leading-relaxed">
+                      ISF (Índice de Segurança Fundiária): quanto maior o valor, maior a segurança documental estimada.
+                    </div>
+                  </th>
                   <th className="px-6 py-4 font-semibold">Módulos Sugeridos</th>
                   <th className="px-6 py-4 font-semibold">Ação</th>
                 </tr>
@@ -664,12 +850,10 @@ export default function DashboardPage() {
                         </div>
                         <span className="text-sm text-gray-500 ml-6">{analise.properties?.city}, {analise.properties?.state}</span>
                         {complementaryChildren && complementaryChildren.length > 0 && (
-                          <div className="mt-1 ml-6 flex flex-wrap gap-1">
-                            {complementaryChildren.map((child, idx) => (
-                              <span key={idx} className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-medium">
-                                +{child.modules.length} módulo(s) complementar(es)
-                              </span>
-                            ))}
+                          <div className="mt-1 ml-6">
+                            <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-medium">
+                              {complementaryChildren.length} {complementaryChildren.length === 1 ? 'documento complementar' : 'documentos complementares'}
+                            </span>
                           </div>
                         )}
                       </td>
@@ -703,7 +887,7 @@ export default function DashboardPage() {
                               scoreData.faixa === 'critico' ? 'bg-red-500' :
                               scoreData.faixa === 'atencao' ? 'bg-amber-500' : 'bg-green-500'
                             }`} />
-                            {scoreData.score}
+                            ISF {scoreData.score}
                           </span>
                         ) : (
                           <span className="text-gray-400 text-sm font-medium">-</span>
