@@ -7,14 +7,6 @@ const nextConfig: NextConfig = {
     'pdf-parse',
     'pdf2json',
   ],
-  experimental: {
-    outputFileTracingIgnores: [
-      './node_modules/pdfjs-dist/**',
-      './node_modules/@napi-rs/canvas/**',
-      './node_modules/pdf-parse/**',
-      './node_modules/pdf2json/**',
-    ],
-  },
 };
 
 export default nextConfig;
