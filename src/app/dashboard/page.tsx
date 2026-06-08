@@ -24,12 +24,21 @@ import type { ISFLevel } from '@/lib/isf/isfTaxonomy';
 import { getCommercialAccess, type TrialProfile } from '@/lib/commercial/trial';
 import { getPlanPermissions } from '@/lib/commercial/plans';
 
+const planLimits: Record<string, number> = {
+  trial: 10,
+  starter: 150,
+  pro: 1000,
+  premium: 5000,
+  enterprise: 5000,
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [userName, setUserName] = useState("Profissional");
   const [analises, setAnalises] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
   const [credits, setCredits] = useState(0);
+  const [planType, setPlanType] = useState<string>('trial');
   const [loadingAnalysisId, setLoadingAnalysisId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -130,6 +139,9 @@ export default function DashboardPage() {
         const { getUserSubscription } = await import('@/lib/subscriptions');
         currentSub = await getUserSubscription(session.user.id);
         setCredits(currentSub.credits_available);
+        if (currentSub && currentSub.plan_type) {
+          setPlanType(currentSub.plan_type);
+        }
       } catch (err) {
         console.error('Erro ao buscar assinatura:', err);
       }
@@ -539,7 +551,7 @@ export default function DashboardPage() {
           <div className="mb-8 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-amber-500 rounded-r-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h3 className="font-extrabold text-amber-900 text-lg">Seu teste gratuito terminou.</h3>
-              <p className="text-amber-800 text-sm font-medium">Você já utilizou seu acesso experimental ou créditos de análise. Escolha um dos nossos planos para continuar mitigar riscos.</p>
+              <p className="text-amber-800 text-sm font-medium">Você já utilizou seu acesso experimental ou limite de páginas. Escolha um dos nossos planos para continuar a mitigar riscos.</p>
             </div>
             <div className="flex gap-2 flex-wrap">
               <Link
@@ -573,9 +585,9 @@ export default function DashboardPage() {
             <Link href="/dashboard/planos" className="flex items-center gap-2 bg-white text-brand-dark border-2 border-brand-gold px-5 py-3 rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm">
               <Plus size={20} className="text-brand-gold" />
               <div className="flex flex-col items-start leading-tight">
-                <span>{credits > 0 ? `${credits} crédito(s)` : 'Planos'}</span>
+                <span>{credits > 0 ? `${credits} páginas` : 'Planos'}</span>
                 {credits > 0 && (
-                  <span className="text-[9px] font-normal text-gray-500">Saldo disponível para novas auditorias</span>
+                  <span className="text-[9px] font-normal text-gray-500">Saldo de páginas disponível</span>
                 )}
               </div>
             </Link>
@@ -618,17 +630,26 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Card 3 — Horas Economizadas */}
+          {/* Card 3 — Consumo Mensal */}
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
-              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Horas Economizadas</span>
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Saldo de Páginas</span>
               <div className="p-2 bg-blue-100 rounded-lg">
-                <Clock size={18} className="text-blue-600" />
+                <Layers size={18} className="text-blue-600" />
               </div>
             </div>
-            <p className="text-3xl font-black text-gray-800">{horasEconomizadas}h</p>
-            <div className="flex items-center gap-1 text-xs text-gray-400">
-              Tempo poupado para sua equipe
+            <p className="text-2xl font-black text-gray-800 font-sans">
+              {credits} pág(s) restando
+            </p>
+            <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mt-1">
+              <div 
+                className="bg-brand-green h-full rounded-full transition-all duration-500" 
+                style={{ width: `${Math.min(100, (credits / (planLimits[planType] || 10)) * 100)}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">
+              <span>Plano: {planType.toUpperCase()}</span>
+              <Link href="/dashboard/planos" className="text-brand-gold hover:underline font-bold">Comprar páginas</Link>
             </div>
           </div>
 

@@ -71,7 +71,7 @@ describe('Subscriptions module tests', () => {
       user_id: mockUserId,
       plan_type: 'pro',
       status: 'active',
-      credits_available: 25,
+      credits_available: 1000,
       started_at: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
       expires_at: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
     };
@@ -99,7 +99,7 @@ describe('Subscriptions module tests', () => {
 
     const sub = await activateSubscription(mockUserId, 'pro');
     expect(sub.plan_type).toBe('pro');
-    expect(sub.credits_available).toBe(25);
+    expect(sub.credits_available).toBe(1000);
   });
 
   it('verifica se tem créditos disponíveis (hasAvailableCredits)', async () => {

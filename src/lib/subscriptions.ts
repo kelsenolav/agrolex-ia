@@ -8,6 +8,7 @@ export interface Subscription {
   user_id: string;
   plan_type: PlanType;
   status: SubscriptionStatus;
+  // credits_available representa páginas disponíveis no modelo comercial P1.
   credits_available: number;
   started_at: string;
   expires_at: string | null;
@@ -16,19 +17,19 @@ export interface Subscription {
 }
 
 export const PLAN_CREDITS: Record<PlanType, number> = {
-  trial: 1,
-  starter: 10,
-  pro: 25,
-  premium: 60,
-  enterprise: 200,
+  trial: 10,
+  starter: 150,
+  pro: 1000,
+  premium: 5000,
+  enterprise: 5000,
 };
 
 export const PLAN_PRICES: Record<PlanType, number> = {
   trial: 0,
-  starter: 99.9,
-  pro: 199.9,
-  premium: 499.9,
-  enterprise: 1499.9,
+  starter: 149.9,
+  pro: 399.9,
+  premium: 999.9,
+  enterprise: 9999.9,
 };
 
 function createAdminClient() {

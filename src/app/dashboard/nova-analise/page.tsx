@@ -588,8 +588,8 @@ export default function NovaAnalisePage() {
             <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <ShieldAlert size={40} className="text-amber-600" />
             </div>
-            <h1 className="text-2xl font-extrabold text-gray-800 mb-3">Sua análise gratuita já foi utilizada</h1>
-            <p className="text-gray-600 mb-8 max-w-md mx-auto">Para continuar utilizando o AgroLex e acessar análises completas, desbloqueie o acesso profissional.</p>
+            <h1 className="text-2xl font-extrabold text-gray-800 mb-3">Seu limite de páginas gratuitas já foi atingido</h1>
+            <p className="text-gray-600 mb-8 max-w-md mx-auto">Para continuar utilizando o AgroLex e processar mais páginas de matrícula, assine um de nossos planos.</p>
             <Link
               href="/dashboard/planos"
               onClick={async () => {

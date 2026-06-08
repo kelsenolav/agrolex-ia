@@ -119,7 +119,7 @@ export async function POST(req: Request) {
         })
         .eq('id', order.id);
 
-      // Determinar o plano comprado através do campo payment_method salvo na ordem ('plan_starter', etc)
+      // Determinar o plano ou pacote comprado através do campo payment_method salvo na ordem ('plan_starter', 'pack_extra_100_pages', etc)
       const paymentMethod = order.payment_method || '';
       if (paymentMethod.startsWith('plan_')) {
         const planType = paymentMethod.replace('plan_', '') as PlanType;
@@ -127,6 +127,33 @@ export async function POST(req: Request) {
         // Ativar a assinatura do usuário!
         await activateSubscription(order.user_id, planType);
         console.log(`✅ Assinatura do usuário ${order.user_id} para o plano ${planType} ativada via Webhook`);
+      } else if (paymentMethod.startsWith('pack_')) {
+        const packType = paymentMethod.replace('pack_', '');
+        const extraPacks: Record<string, number> = {
+          extra_100_pages: 100,
+          extra_500_pages: 500,
+          extra_1000_pages: 1000,
+        };
+        const pagesToAdd = extraPacks[packType] || 0;
+        
+        if (pagesToAdd > 0) {
+          const { data: sub } = await supabaseAdmin
+            .from('subscriptions')
+            .select('credits_available')
+            .eq('user_id', order.user_id)
+            .maybeSingle();
+            
+          if (sub) {
+            await supabaseAdmin
+              .from('subscriptions')
+              .update({
+                credits_available: sub.credits_available + pagesToAdd,
+                updated_at: new Date().toISOString()
+              })
+              .eq('user_id', order.user_id);
+            console.log(`✅ Adicionado ${pagesToAdd} páginas avulsas para o usuário ${order.user_id} via Webhook`);
+          }
+        }
       }
     }
 
