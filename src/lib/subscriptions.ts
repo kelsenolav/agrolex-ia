@@ -177,3 +177,21 @@ export async function consumeCredits(userId: string): Promise<boolean> {
 
   return !!data;
 }
+
+// credits_available representa páginas disponíveis no modelo comercial P1/P2.
+export async function consumePages(userId: string, pagesCount: number): Promise<boolean> {
+  if (pagesCount <= 0) return false;
+
+  const supabaseAdmin = createAdminClient();
+  const { data, error } = await supabaseAdmin.rpc('consume_subscription_pages', {
+    user_id_param: userId,
+    pages_count: pagesCount,
+  });
+
+  if (error) {
+    console.error('[subscriptions] Erro ao consumir páginas via RPC:', error.message);
+    return false;
+  }
+
+  return !!data;
+}

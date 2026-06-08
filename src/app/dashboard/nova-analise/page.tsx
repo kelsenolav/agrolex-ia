@@ -103,6 +103,7 @@ export default function NovaAnalisePage() {
   const [leadErrors, setLeadErrors] = useState<Record<string, string[]>>({});
   const [leadSaving, setLeadSaving] = useState(false);
   const [pageReady, setPageReady] = useState(false);
+  const [pagesBlockInfo, setPagesBlockInfo] = useState<{ available: number, required: number, shortage: number } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -456,7 +457,6 @@ export default function NovaAnalisePage() {
         return;
       }
       const userId = session.user.id;
-
       const name = formData.get('nome') as string;
       const state = formData.get('estado') as string;
       const city = formData.get('municipio') as string;
@@ -538,12 +538,40 @@ export default function NovaAnalisePage() {
           document_id: firstDocId,
           property_id: property.id,
           user_id: userId,
-          status: 'payment_pending',
+          status: 'ready_for_processing',
           findings: findingsJson
         }).select().single();
       if (analysisError) throw new Error("Erro ao criar Análise: " + analysisError.message);
 
-      showToast("Auditoria criada com sucesso! Redirecionando...", 'success');
+      // Chamada imediata para API analyze para validação de saldo e páginas no backend
+      const analyzeRes = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ analysisId: analysis.id })
+      });
+
+      if (analyzeRes.status === 402) {
+        const analyzeData = await analyzeRes.json();
+        // Reverte a análise para payment_pending já que bloqueou
+        await supabase.from('analyses').update({ status: 'payment_pending' }).eq('id', analysis.id);
+        
+        if (analyzeData.blockInfo) {
+          setPagesBlockInfo(analyzeData.blockInfo);
+        } else {
+          showToast(analyzeData.error || 'Saldo insuficiente.', 'error');
+        }
+        return;
+      }
+
+      if (!analyzeRes.ok) {
+        const errorData = await analyzeRes.json().catch(() => ({}));
+        throw new Error(errorData.error || "Erro no processamento da análise");
+      }
+
+      showToast("Auditoria criada e processamento iniciado! Redirecionando...", 'success');
       setTimeout(() => router.push('/dashboard'), 1500);
       
     } catch (error: unknown) {
@@ -614,6 +642,42 @@ export default function NovaAnalisePage() {
             >
               Quero Acesso Completo <ArrowLeft size={20} className="rotate-180" />
             </Link>
+          </div>
+        ) : pagesBlockInfo ? (
+          <div className="bg-white p-10 rounded-2xl shadow-xl border-t-4 border-red-500 text-center">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Layers size={40} className="text-red-600" />
+            </div>
+            <h1 className="text-2xl font-extrabold text-gray-800 mb-3">Saldo Insuficiente</h1>
+            <div className="bg-gray-50 rounded-xl p-6 max-w-md mx-auto mb-8 border border-gray-200">
+              <p className="text-gray-700 text-lg mb-2">Você possui <strong>{pagesBlockInfo.available} páginas</strong> disponíveis.</p>
+              <p className="text-gray-700 text-lg mb-2">Este documento possui <strong>{pagesBlockInfo.required} páginas</strong>.</p>
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <p className="text-red-600 font-bold text-lg">
+                  São necessárias mais {pagesBlockInfo.shortage} páginas para processar este arquivo.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Link
+                href="/dashboard/planos"
+                className="inline-flex items-center justify-center gap-2 bg-brand-gold text-brand-green px-6 py-3 rounded-xl font-bold text-lg hover:brightness-110 transition-all shadow-md w-full sm:w-auto"
+              >
+                Comprar páginas
+              </Link>
+              <Link
+                href="/dashboard/planos"
+                className="inline-flex items-center justify-center gap-2 bg-brand-green text-white px-6 py-3 rounded-xl font-bold text-lg hover:bg-green-800 transition-all shadow-md w-full sm:w-auto"
+              >
+                Fazer upgrade
+              </Link>
+            </div>
+            <button 
+              onClick={() => setPagesBlockInfo(null)}
+              className="mt-6 text-gray-500 hover:text-gray-800 underline transition-colors"
+            >
+              Voltar e editar anexos
+            </button>
           </div>
         ) : (
         <div className="bg-white p-8 rounded-2xl shadow-xl border-t-4 border-brand-gold">

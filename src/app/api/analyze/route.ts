@@ -444,6 +444,67 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nenhum documento anexado para a análise da propriedade' }, { status: 400 });
     }
 
+    // --- FASE P2: DOWNLOAD PRÉVIO E CONTAGEM DE PÁGINAS ---
+    const downloadResults = await Promise.all(
+      documents.map(async (doc) => {
+        const downloadPromise = supabaseAdmin.storage.from('documents').download(doc.file_path);
+        const { data: fileData, error: downloadError } = await withTimeout(
+          downloadPromise,
+          10000,
+          `download_${doc.file_path}`
+        );
+        return { doc, fileData, downloadError };
+      })
+    );
+
+    let totalPages = 0;
+    const { countPdfPagesFromBuffer } = await import('@/lib/pdf/pageCounter.server');
+
+    for (const { doc, fileData, downloadError } of downloadResults) {
+      if (downloadError || !fileData) {
+        return NextResponse.json({ error: `Falha no download do documento: ${doc.file_path}` }, { status: 500 });
+      }
+      
+      const arrayBuffer = await fileData.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      (doc as any)._prefetchedBuffer = buffer;
+
+      if (doc.file_path.toLowerCase().endsWith('.pdf') || doc.document_type?.toLowerCase().includes('matrícula') || doc.document_type === 'Certidão Inteiro Teor' || doc.document_type === 'Matrícula') {
+        const pages = await countPdfPagesFromBuffer(buffer);
+        totalPages += pages;
+      } else {
+        totalPages += 1;
+      }
+    }
+
+    // Consultar Saldo
+    const { data: subData } = await supabaseAdmin
+      .from('subscriptions')
+      .select('credits_available')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .maybeSingle();
+    
+    const availablePages = subData?.credits_available || 0;
+
+    if (totalPages > availablePages) {
+      return NextResponse.json({ 
+        error: `Você possui ${availablePages} páginas disponíveis. Este documento possui ${totalPages} páginas. São necessárias mais ${totalPages - availablePages} páginas para processar este arquivo.`,
+        blockInfo: { available: availablePages, required: totalPages, shortage: totalPages - availablePages }
+      }, { status: 402 });
+    }
+
+    // Consumir páginas antes de iniciar a IA e marcar processing
+    const { consumePages } = await import('@/lib/subscriptions');
+    const consumed = await consumePages(user.id, totalPages);
+    if (!consumed) {
+      return NextResponse.json({ 
+        error: 'Falha ao debitar páginas do saldo (saldo insuficiente ou concorrente).',
+        blockInfo: { available: availablePages, required: totalPages, shortage: totalPages - availablePages }
+      }, { status: 402 });
+    }
+    // ----------------------------------------------------
+
     const caseFileDocuments: CaseFileDocument[] = documents.map((doc: any) => ({
       name: doc.file_path?.split('/').pop() || doc.file_path || 'Documento',
       type: doc.document_type || null,
@@ -555,32 +616,17 @@ export async function POST(req: Request) {
       let geminiParts: any[] = [];
       let polygonCoords: [number, number][] = [];
 
-      // Downloads paralelos com timeout individual de 10s por arquivo
-      // Mantém a ordem lógica original dos documentos
-      const downloadResults = await Promise.all(
-        documents.map(async (doc) => {
-          const downloadPromise = supabaseAdmin.storage.from('documents').download(doc.file_path);
-          const { data: fileData, error: downloadError } = await withTimeout(
-            downloadPromise,
-            10000,
-            `download_${doc.file_path}`
-          );
-          return { doc, fileData, downloadError };
-        })
-      );
-
-      // Verificar falhas e processar resultados na ordem original
-      for (const { doc, fileData, downloadError } of downloadResults) {
-        if (downloadError || !fileData) {
-          throw new Error(`Falha ou tempo limite excedido no download do arquivo: ${doc.file_path}`);
-        }
+      // Os downloads já foram feitos na Fase P2, reaproveitando buffers:
+      for (const { doc } of downloadResults) {
+        const buffer = (doc as any)._prefetchedBuffer;
+        if (!buffer) continue;
 
         const isKml = doc.file_path.toLowerCase().endsWith('.kml') || doc.document_type === 'KML' || doc.document_type?.includes('KML');
         const isGpx = doc.file_path.toLowerCase().endsWith('.gpx') || doc.document_type === 'GPX' || doc.document_type?.includes('GPX');
 
         if (isKml || isGpx) {
           try {
-            const textContent = await fileData.text();
+            const textContent = buffer.toString('utf-8');
             const coords = isKml ? parseKmlCoordinates(textContent) : parseGpxCoordinates(textContent);
             if (coords.length > 0) {
               polygonCoords = coords;
@@ -591,8 +637,7 @@ export async function POST(req: Request) {
         }
         
         if (doc.file_path.toLowerCase().endsWith('.pdf') || doc.document_type?.toLowerCase().includes('matrícula') || doc.document_type === 'Certidão Inteiro Teor' || doc.document_type === 'Matrícula') {
-          const arrayBuffer = await fileData.arrayBuffer();
-          const base64Data = Buffer.from(arrayBuffer).toString('base64');
+          const base64Data = buffer.toString('base64');
           
           geminiParts.push({
             inlineData: {

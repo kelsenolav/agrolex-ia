@@ -3,6 +3,7 @@ import {
   activateSubscription,
   hasAvailableCredits,
   consumeCredits,
+  consumePages,
   PLAN_CREDITS,
   type PlanType,
 } from '../subscriptions';
@@ -135,5 +136,29 @@ describe('Subscriptions module tests', () => {
 
     expect(first).toBe(true);
     expect(second).toBe(false);
+  });
+
+  it('consome a quantidade exata de páginas via RPC consumePages', async () => {
+    mockSupabase.rpc.mockResolvedValueOnce({ data: true, error: null });
+
+    const ok = await consumePages(mockUserId, 230);
+    expect(ok).toBe(true);
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('consume_subscription_pages', {
+      user_id_param: mockUserId,
+      pages_count: 230
+    });
+  });
+
+  it('consumePages retorna false se o saldo for insuficiente', async () => {
+    mockSupabase.rpc.mockResolvedValueOnce({ data: false, error: null });
+
+    const ok = await consumePages(mockUserId, 5000);
+    expect(ok).toBe(false);
+  });
+
+  it('consumePages não chama RPC se pagesCount <= 0', async () => {
+    const ok = await consumePages(mockUserId, 0);
+    expect(ok).toBe(false);
+    expect(mockSupabase.rpc).not.toHaveBeenCalledWith('consume_subscription_pages', expect.anything());
   });
 });
