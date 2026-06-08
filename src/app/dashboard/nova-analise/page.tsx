@@ -289,6 +289,13 @@ export default function NovaAnalisePage() {
 
       showToast('Dados salvos com sucesso! Prossiga com sua auditoria.', 'success');
       setLeadModalOpen(false);
+      
+      // Sincronizar o profiles para salvar que o lead_id está preenchido ou atualizar localmente
+      await supabase
+        .from('profiles')
+        .update({ lead_id: session.user.id })
+        .eq('id', session.user.id);
+
     } catch (err) {
       console.error('Erro ao salvar lead:', err);
       showToast('Erro ao salvar seus dados.', 'error');
@@ -989,19 +996,45 @@ export default function NovaAnalisePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">Estado (UF) *</label>
-                  <input
-                    type="text"
-                    maxLength={2}
+                  <select
                     value={leadForm.estado}
-                    onChange={(e) => setLeadForm({ ...leadForm, estado: e.target.value.toUpperCase() })}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-green outline-none ${leadErrors.estado ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                    placeholder="EX: TO"
-                  />
+                    onChange={(e) => setLeadForm({ ...leadForm, estado: e.target.value })}
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-brand-green outline-none bg-white ${leadErrors.estado ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                  >
+                    <option value="">Selecione...</option>
+                    <option value="AC">AC - Acre</option>
+                    <option value="AL">AL - Alagoas</option>
+                    <option value="AP">AP - Amapá</option>
+                    <option value="AM">AM - Amazonas</option>
+                    <option value="BA">BA - Bahia</option>
+                    <option value="CE">CE - Ceará</option>
+                    <option value="DF">DF - Distrito Federal</option>
+                    <option value="ES">ES - Espírito Santo</option>
+                    <option value="GO">GO - Goiás</option>
+                    <option value="MA">MA - Maranhão</option>
+                    <option value="MT">MT - Mato Grosso</option>
+                    <option value="MS">MS - Mato Grosso do Sul</option>
+                    <option value="MG">MG - Minas Gerais</option>
+                    <option value="PA">PA - Pará</option>
+                    <option value="PB">PB - Paraíba</option>
+                    <option value="PR">PR - Paraná</option>
+                    <option value="PE">PE - Pernambuco</option>
+                    <option value="PI">PI - Piauí</option>
+                    <option value="RJ">RJ - Rio de Janeiro</option>
+                    <option value="RN">RN - Rio Grande do Norte</option>
+                    <option value="RS">RS - Rio Grande do Sul</option>
+                    <option value="RO">RO - Rondônia</option>
+                    <option value="RR">RR - Roraima</option>
+                    <option value="SC">SC - Santa Catarina</option>
+                    <option value="SP">SP - São Paulo</option>
+                    <option value="SE">SE - Sergipe</option>
+                    <option value="TO">TO - Tocantins</option>
+                  </select>
                   {leadErrors.estado && <p className="text-red-600 text-xs mt-1 font-medium">{leadErrors.estado[0]}</p>}
                 </div>
               </div>
             </div>
-
+ 
             <button
               onClick={handleLeadSubmit}
               disabled={leadSaving}
@@ -1013,7 +1046,7 @@ export default function NovaAnalisePage() {
                 <>Salvar e Continuar <ArrowLeft size={20} className="rotate-180" /></>
               )}
             </button>
-
+ 
             <p className="text-xs text-gray-400 text-center mt-4">
               Seus dados são protegidos e não serão compartilhados.
             </p>

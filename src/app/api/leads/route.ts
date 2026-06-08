@@ -46,13 +46,29 @@ export async function POST(req: Request) {
       .upsert(payload, { onConflict: 'user_id' });
 
     if (error) {
-      console.error('Erro no admin upsert:', error);
+      console.error('Erro no admin upsert leads:', error);
       return NextResponse.json({ 
         error: error.message || 'Erro ao salvar os dados no banco.',
         details: error.details || '',
         code: error.code || '',
         hint: error.hint || ''
       }, { status: 500 });
+    }
+
+    // Integrar resilientemente com marketing_leads
+    try {
+      await supabaseAdmin
+        .from('marketing_leads')
+        .upsert({
+          user_id: user.id,
+          nome: payload.nome,
+          email: payload.email,
+          whatsapp: payload.telefone,
+          origem: 'nova-analise',
+          ultima_atividade: new Date().toISOString()
+        }, { onConflict: 'email' });
+    } catch (mktErr) {
+      console.warn('Aviso fail-safe: erro ao espelhar em marketing_leads:', mktErr);
     }
 
     return NextResponse.json({ ok: true });
