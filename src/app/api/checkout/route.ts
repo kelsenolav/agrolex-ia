@@ -84,7 +84,7 @@ export async function POST(req: Request) {
 
     if (orderInsertError || !order) {
       console.error('Erro ao criar ordem para assinatura:', orderInsertError);
-      return NextResponse.json({ error: 'Erro interno ao iniciar pedido' }, { status: 500 });
+      return NextResponse.json({ error: orderInsertError?.message ? `Erro interno ao iniciar pedido: ${orderInsertError.message}` : 'Erro interno ao iniciar pedido' }, { status: 500 });
     }
 
     try {

@@ -15,7 +15,7 @@
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
-export type AiProvider = 'gemini' | 'openai';
+export type AiProvider = 'gemini' | 'claude' | 'openai' | 'groq';
 
 export interface AiProviderResult {
   /** Texto gerado pela IA (markdown) */
@@ -255,6 +255,153 @@ async function generateWithOpenAI(
   };
 }
 
+// ── Claude (Anthropic) ────────────────────────────────────────────────────────
+
+/**
+ * Converte parts no formato Gemini para um prompt compatível com Claude.
+ * Claude suporta PDFs em base64.
+ */
+async function generateWithClaude(
+  parts: GeminiPart[],
+  options: AiGenerateOptions = {}
+): Promise<AiProviderResult> {
+  const claudeKey = getEnvVar('ANTHROPIC_API_KEY', '');
+  if (!claudeKey) {
+    throw new Error('ANTHROPIC_API_KEY não configurada.');
+  }
+
+  const { Anthropic } = await import('@anthropic-ai/sdk');
+  const anthropic = new Anthropic({ apiKey: claudeKey });
+  
+  const modelName = getEnvVar('CLAUDE_MODEL', 'claude-3-5-sonnet-20241022');
+  const timeoutMs = options.timeoutMs || 90000;
+  const maxTokens = options.maxOutputTokens || 8192;
+  
+  let systemPrompt = 'Você é um auditor jurídico especializado em direito registral imobiliário brasileiro. Produza pareceres técnicos em português (Brasil), em formato Markdown, com as seções: Identificação, Documentos Analisados, Cadeia Dominial, Achados, Classificação de Risco, Recomendações.';
+  const contentBlocks: any[] = [];
+  
+  for (const part of parts) {
+    if (part.text) {
+      if (part.text.length > 1000 || part.text.includes('\n') || part.text.includes('ATENÇÃO')) {
+        systemPrompt += "\n\n" + part.text;
+      } else {
+        contentBlocks.push({ type: 'text', text: part.text });
+      }
+    }
+    if (part.inlineData && part.inlineData.mimeType === 'application/pdf') {
+      contentBlocks.push({
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: 'application/pdf',
+          data: part.inlineData.data
+        }
+      });
+    }
+  }
+  
+  if (contentBlocks.length === 0) {
+    contentBlocks.push({ type: 'text', text: "Inicie a análise baseada nas instruções do sistema." });
+  }
+
+  const startTime = Date.now();
+  
+  const messagePromise = anthropic.messages.create({
+    model: modelName,
+    max_tokens: maxTokens,
+    system: systemPrompt,
+    messages: [
+      { role: 'user', content: contentBlocks }
+    ]
+  });
+  
+  const completion = await withTimeout(messagePromise, timeoutMs, 'claude_generation');
+  const durationMs = Date.now() - startTime;
+  
+  let text = '';
+  if (completion.content && completion.content.length > 0) {
+    text = (completion.content.find((c: any) => c.type === 'text') as any)?.text || '';
+  }
+  
+  if (!text || text.trim().length < 50) {
+    throw new Error('Claude retornou resposta vazia ou muito curta.');
+  }
+  
+  return {
+    text,
+    provider_used: 'claude',
+    fallback_triggered: true,
+    fallback_reason: null,
+    duration_ms: durationMs,
+  };
+}
+
+// ── Groq (Llama) ──────────────────────────────────────────────────────────────
+
+/**
+ * Gera conteúdo usando Groq via SDK da OpenAI com baseURL customizada.
+ */
+async function generateWithGroq(
+  parts: GeminiPart[],
+  options: AiGenerateOptions = {}
+): Promise<AiProviderResult> {
+  const groqKey = getEnvVar('GROQ_API_KEY', '');
+  if (!groqKey) {
+    throw new Error('GROQ_API_KEY não configurada.');
+  }
+
+  const openaiModule = await import('openai');
+  const OpenAIConstructor =
+    (openaiModule as any).default?.default ??
+    (openaiModule as any).default ??
+    (openaiModule as any).OpenAI ??
+    openaiModule;
+    
+  if (typeof OpenAIConstructor !== 'function') {
+    throw new Error('Falha ao importar construtor OpenAI para uso no Groq.');
+  }
+  
+  const openai: any = new OpenAIConstructor({ 
+    apiKey: groqKey,
+    baseURL: 'https://api.groq.com/openai/v1'
+  });
+
+  const modelName = getEnvVar('GROQ_MODEL', 'llama-3.1-70b-versatile');
+  const timeoutMs = options.timeoutMs || 90000;
+  const maxTokens = options.maxOutputTokens || 4096;
+
+  const { systemPrompt, userPrompt } = geminiPartsToOpenAIMessages(parts);
+
+  const startTime = Date.now();
+
+  const completionPromise = openai.chat.completions.create({
+    model: modelName,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    max_tokens: maxTokens,
+    temperature: 0.3,
+  });
+
+  const completion = await withTimeout(completionPromise, timeoutMs, 'groq_generation');
+  const durationMs = Date.now() - startTime;
+
+  const text = (completion as any)?.choices?.[0]?.message?.content || '';
+
+  if (!text || text.trim().length < 50) {
+    throw new Error('Groq retornou resposta vazia ou muito curta.');
+  }
+
+  return {
+    text,
+    provider_used: 'groq',
+    fallback_triggered: true,
+    fallback_reason: null,
+    duration_ms: durationMs,
+  };
+}
+
 // ── Gemini ────────────────────────────────────────────────────────────────────
 
 /**
@@ -343,55 +490,64 @@ export async function generateWithFallback(
 ): Promise<FallbackResult> {
   const allowFallback = options.allowFallback !== false;
   const attempts: FallbackResult['attempts'] = [];
-
-  // ── Tentativa 1: Gemini ──
-  try {
-    const geminiResult = await generateWithGemini(parts, options);
-    attempts.push({ provider: 'gemini', success: true, duration_ms: geminiResult.duration_ms });
-
-    return {
-      ...geminiResult,
-      attempts,
-    };
-  } catch (geminiError: unknown) {
-    const errorMessage = geminiError instanceof Error ? geminiError.message : String(geminiError);
-    attempts.push({ provider: 'gemini', success: false, error: errorMessage });
-
-    // Se fallback não for permitido, lança o erro imediatamente
-    if (!allowFallback) {
-      throw geminiError;
-    }
-
-    // Se o erro NÃO for elegível para fallback, lança imediatamente
-    if (!isFallbackEligible(errorMessage)) {
-      throw geminiError;
-    }
-
-    // ── Tentativa 2: OpenAI (fallback) ──
-    const fallbackReason = classifyFallbackReason(errorMessage);
-
+  
+  const providersToTry: AiProvider[] = ['gemini', 'claude', 'openai', 'groq'];
+  
+  let lastErrorMessage = '';
+  let lastFallbackReason: string | null = null;
+  
+  for (let i = 0; i < providersToTry.length; i++) {
+    const provider = providersToTry[i];
+    
     try {
-      const openaiResult = await generateWithOpenAI(parts, options);
-      attempts.push({ provider: 'openai', success: true, duration_ms: openaiResult.duration_ms });
-
+      let result: AiProviderResult;
+      
+      switch (provider) {
+        case 'gemini':
+          result = await generateWithGemini(parts, options);
+          break;
+        case 'claude':
+          result = await generateWithClaude(parts, options);
+          break;
+        case 'openai':
+          result = await generateWithOpenAI(parts, options);
+          break;
+        case 'groq':
+          result = await generateWithGroq(parts, options);
+          break;
+        default:
+          throw new Error('Provedor desconhecido');
+      }
+      
+      attempts.push({ provider, success: true, duration_ms: result.duration_ms });
+      
       return {
-        ...openaiResult,
-        fallback_triggered: true,
-        fallback_reason: fallbackReason,
+        ...result,
+        fallback_triggered: i > 0,
+        fallback_reason: i > 0 ? lastFallbackReason : null,
         attempts,
       };
-    } catch (openaiError: unknown) {
-      const openaiErrorMessage = openaiError instanceof Error ? openaiError.message : String(openaiError);
-      attempts.push({ provider: 'openai', success: false, error: openaiErrorMessage });
-
-      // Ambos falharam — lança erro combinado
-      throw new Error(
-        `Todos os provedores de IA falharam. Gemini: ${errorMessage.slice(0, 200)} | OpenAI: ${openaiErrorMessage.slice(0, 200)}`,
-      );
+      
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      attempts.push({ provider, success: false, error: errorMessage });
+      lastErrorMessage = errorMessage;
+      
+      if (!allowFallback) {
+        throw error;
+      }
+      
+      if (!isFallbackEligible(errorMessage)) {
+        throw error;
+      }
+      
+      lastFallbackReason = classifyFallbackReason(errorMessage);
     }
   }
+
+  throw new Error(`Todos os provedores de IA falharam na cascata. Último erro: ${lastErrorMessage.slice(0, 200)}`);
 }
 
 // ── Exportações ───────────────────────────────────────────────────────────────
 
-export { generateWithGemini, generateWithOpenAI, geminiPartsToOpenAIMessages };
+export { generateWithGemini, generateWithClaude, generateWithOpenAI, generateWithGroq, geminiPartsToOpenAIMessages };

@@ -5,6 +5,39 @@
 ---
 
 - **Data**: 08/06/2026
+- **Bloco**: HOTFIX P1.1 — CASCATA DE FALLBACKS MULTI-IA
+- **Arquivos alterados**:
+  - `src/lib/aiProviders.ts` — Adicionados provedores `claude` (Anthropic SDK) e `groq` (OpenAI compatível), refatorado `generateWithFallback` para cascata sequencial de 4 níveis.
+  - `src/lib/processingStages.ts` — Atualizada a tipagem de provedor de IA de `'gemini' | 'openai'` para a união genérica `AiProvider` nas interfaces e na função `markStageProviderInfo`.
+  - `src/app/api/analyze/route.ts` — Lógica do endpoint adaptada para o tipo de retorno `AiProvider` completo.
+  - `AGENTS.md`
+- **Alterações implementadas**:
+  1. Criação do sistema de cascata resiliente de 4 níveis: Gemini -> Claude -> OpenAI -> Groq.
+  2. Implementação das integrações com SDK `@anthropic-ai/sdk` para Claude e compatibilidade OpenAI para Groq.
+  3. Resolução de incompatibilidades de tipo TypeScript em `processingStages.ts`.
+- **Validações**: `npx tsc --noEmit` (✓ - resolvidos erros de tipos de IA no stage de processamento)
+- **Deploy em produção**: **NÃO EFETUADO** (aguardando chaves de ambiente `ANTHROPIC_API_KEY` e `GROQ_API_KEY`).
+
+---
+
+- **Data**: 08/06/2026
+- **Bloco**: HOTFIX P1.0 — PROCESSAMENTO ASSÍNCRONO + AUTO-CHAINING (ANTI-TIMEOUT)
+- **Arquivos alterados**:
+  - `src/app/api/analyze/route.ts` — Lógica movida para função de background async (`waitUntil()`) e limite de tempo `maxDuration` expandido para 300 segundos.
+  - `src/lib/pdf/pageCounter.server.ts` — Substituída biblioteca problemática `pdf-parse` por contador nativo em Regex para evitar crashes no Turbopack.
+  - `src/app/dashboard/nova-analise/page.tsx` — Backend não segura mais o cliente; o redirect ao painel principal agora é imediato.
+  - `src/app/dashboard/page.tsx` — Implementado *polling* a cada 5s e sistema de *Auto-Chain* para orquestração automática das etapas das análises no frontend.
+  - `AGENTS.md`
+- **Alterações implementadas**:
+  1. Confiabilidade no upload de grandes PDFs (>23 páginas) solucionada enviando a chamada da IA para um Background Job nativo Vercel.
+  2. Crash fatal de leitura de PDF mitigado definitivamente com parser nativo em Node.
+  3. Atualização das *copies* na tela alertando sobre duração máxima de 5 minutos, garantindo total neutralidade e sem expor marcas registradas de IAs externas (Google/OpenAI).
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓)
+- **Deploy em produção**: **NÃO EFETUADO** (aguardando autorização).
+
+---
+
+- **Data**: 08/06/2026
 - **Bloco**: HOTFIX P0.5.1 — ATOMICIDADE DE CRÉDITOS + IDEMPOTÊNCIA DO WEBHOOK
 - **Arquivos criados**:
   - `supabase/migrations/20260608_consume_subscription_credit.sql` *(novo)* — Nova migration contendo a função RPC `consume_subscription_credit`.

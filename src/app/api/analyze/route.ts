@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import { createClient } from '@supabase/supabase-js';
 import { buildLegalAuditPrompt } from '@/lib/auditPromptBuilder';
 import { MODULE_PRICES, buildDocumentProfile } from '@/lib/auditModules';
 import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRecommendationsFromReport } from '@/lib/reportExtractors';
 import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocument, type CaseFileRecommendedModule } from '@/lib/caseFile';
 import { buildRecommendedModules } from '@/lib/recommendations';
-import { generateWithFallback, type FallbackResult } from '@/lib/aiProviders';
+import { generateWithFallback, type FallbackResult, type AiProvider } from '@/lib/aiProviders';
 import { calcularISF, calcularComparacao } from '@/lib/isf/isfV2';
 import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
 import { calcularScoreAgroLex } from '@/types/analise';
@@ -20,7 +21,7 @@ import {
   type ProcessingStages,
 } from '@/lib/processingStages';
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutId: NodeJS.Timeout;
@@ -355,18 +356,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Acesso negado: a análise não pertence ao usuário' }, { status: 403 });
     }
 
+    // Consultar Assinatura Centralizada (inclui lógica de internal_test)
+    const { getUserSubscription } = await import('@/lib/subscriptions');
+    const userSubData = await getUserSubscription(user.id);
+    const planType = userSubData.plan_type;
+
     // CAMADA 2: Bloqueio Backend contra bypass de trial
     const { getTrialStatus } = await import('@/lib/trial/trialControl');
     const trialStatus = await getTrialStatus(user.id, user.email || '');
-
-    // Buscar plan_type do profile
-    const { data: userProfile } = await supabaseAdmin
-      .from('profiles')
-      .select('plan_type')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    const planType = userProfile?.plan_type || 'trial';
 
     if (planType === 'trial' && trialStatus.used) {
       return NextResponse.json({
@@ -392,7 +389,8 @@ export async function POST(req: Request) {
         (forceRetry === true && isRetryExhausted)
       );
 
-    if (currentStatus !== 'ready_for_processing' && !isRecoverableRetry) {
+    const validStatuses = ['ready_for_processing', 'payment_pending', 'pending'];
+    if (!validStatuses.includes(currentStatus) && !isRecoverableRetry) {
       return NextResponse.json({ error: 'Status atual inválido para iniciar processamento' }, { status: 400 });
     }
 
@@ -477,15 +475,8 @@ export async function POST(req: Request) {
       }
     }
 
-    // Consultar Saldo
-    const { data: subData } = await supabaseAdmin
-      .from('subscriptions')
-      .select('credits_available')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .maybeSingle();
-    
-    const availablePages = subData?.credits_available || 0;
+    // Consultar Saldo a partir do userSubData já obtido
+    const availablePages = userSubData.credits_available || 0;
 
     if (totalPages > availablePages) {
       return NextResponse.json({ 
@@ -495,13 +486,15 @@ export async function POST(req: Request) {
     }
 
     // Consumir páginas antes de iniciar a IA e marcar processing
-    const { consumePages } = await import('@/lib/subscriptions');
-    const consumed = await consumePages(user.id, totalPages);
-    if (!consumed) {
-      return NextResponse.json({ 
-        error: 'Falha ao debitar páginas do saldo (saldo insuficiente ou concorrente).',
-        blockInfo: { available: availablePages, required: totalPages, shortage: totalPages - availablePages }
-      }, { status: 402 });
+    if (planType !== 'internal_test') {
+      const { consumePages } = await import('@/lib/subscriptions');
+      const consumed = await consumePages(user.id, totalPages);
+      if (!consumed) {
+        return NextResponse.json({ 
+          error: 'Falha ao debitar páginas do saldo (saldo insuficiente ou concorrente).',
+          blockInfo: { available: availablePages, required: totalPages, shortage: totalPages - availablePages }
+        }, { status: 402 });
+      }
     }
     // ----------------------------------------------------
 
@@ -609,190 +602,235 @@ export async function POST(req: Request) {
       }
     }
 
-    // Bloco de processamento principal síncrono
-    try {
-      const startedAt = Date.now();
-      let geminiMs = 0;
-      let geminiParts: any[] = [];
-      let polygonCoords: [number, number][] = [];
+    const runBackground = async () => {
+      try {
+        const startedAt = Date.now();
+        let geminiMs = 0;
+        let geminiParts: any[] = [];
+        let polygonCoords: [number, number][] = [];
 
-      // Os downloads já foram feitos na Fase P2, reaproveitando buffers:
-      for (const { doc } of downloadResults) {
-        const buffer = (doc as any)._prefetchedBuffer;
-        if (!buffer) continue;
+        // Os downloads já foram feitos na Fase P2, reaproveitando buffers:
+        for (const { doc } of downloadResults) {
+          const buffer = (doc as any)._prefetchedBuffer;
+          if (!buffer) continue;
 
-        const isKml = doc.file_path.toLowerCase().endsWith('.kml') || doc.document_type === 'KML' || doc.document_type?.includes('KML');
-        const isGpx = doc.file_path.toLowerCase().endsWith('.gpx') || doc.document_type === 'GPX' || doc.document_type?.includes('GPX');
+          const isKml = doc.file_path.toLowerCase().endsWith('.kml') || doc.document_type === 'KML' || doc.document_type?.includes('KML');
+          const isGpx = doc.file_path.toLowerCase().endsWith('.gpx') || doc.document_type === 'GPX' || doc.document_type?.includes('GPX');
 
-        if (isKml || isGpx) {
-          try {
-            const textContent = buffer.toString('utf-8');
-            const coords = isKml ? parseKmlCoordinates(textContent) : parseGpxCoordinates(textContent);
-            if (coords.length > 0) {
-              polygonCoords = coords;
+          if (isKml || isGpx) {
+            try {
+              const textContent = buffer.toString('utf-8');
+              const coords = isKml ? parseKmlCoordinates(textContent) : parseGpxCoordinates(textContent);
+              if (coords.length > 0) {
+                polygonCoords = coords;
+              }
+            } catch (e) {
+              console.error("[Geo Parser] Erro ao ler arquivo KML/GPX:", e);
             }
-          } catch (e) {
-            console.error("[Geo Parser] Erro ao ler arquivo KML/GPX:", e);
+          }
+          
+          if (doc.file_path.toLowerCase().endsWith('.pdf') || doc.document_type?.toLowerCase().includes('matrícula') || doc.document_type === 'Certidão Inteiro Teor' || doc.document_type === 'Matrícula') {
+            const base64Data = buffer.toString('base64');
+            
+            geminiParts.push({
+              inlineData: {
+                data: base64Data,
+                mimeType: "application/pdf"
+              }
+            });
+            geminiParts.push({
+              text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`
+            });
           }
         }
+
+        if (geminiParts.length === 0 && polygonCoords.length === 0) {
+          throw new Error('Documentos ilegíveis ou insuficientes para análise fundiária');
+        }
+
+        // FASE 3 — Calcular amountPaid apenas para módulos novos (não processados no pai)
+        const amountPaid = modulesToProcess.reduce((acc: number, mod: string) => acc + (MODULE_PRICES[mod] || 0), 0);
+
+        // Normalização em memória para montagem do prompt
+        const normalizedModules = Array.from(new Set(selectedModules.map((m: string) => {
+          if (m === "titulos_incra") return "origem_publica";
+          if (m === "registros") return "cadeia_dominial";
+          if (m === "nulidades" || m === "forense") return "nulidades_fraudes";
+          if (m === "cruzamento") return "cruzamento_total";
+          return m;
+        })));
+        const isFastChainOfTitleOnly = normalizedModules.length === 1 && normalizedModules[0] === "cadeia_dominial";
         
-        if (doc.file_path.toLowerCase().endsWith('.pdf') || doc.document_type?.toLowerCase().includes('matrícula') || doc.document_type === 'Certidão Inteiro Teor' || doc.document_type === 'Matrícula') {
-          const base64Data = buffer.toString('base64');
-          
-          geminiParts.push({
-            inlineData: {
-              data: base64Data,
-              mimeType: "application/pdf"
-            }
+        const instructions = buildLegalAuditPrompt(normalizedModules, documents);
+
+        // Para matrículas densas, adicionar instrução de concisão ao prompt
+        const pdfPartsCountForPrompt = geminiParts.filter(p => p.inlineData?.mimeType === 'application/pdf').length;
+        if (pdfPartsCountForPrompt >= 2) {
+          const denseSuffix = `\n\nATENÇÃO: Os documentos anexados são densos e extensos. Produza o parecer de forma objetiva e concisa, focando nos pontos juridicamente relevantes. Evite transcrições longas de atos repetitivos. Agrupe eventos por período. Limite a resposta a no máximo 2.000 palavras. Priorize qualidade sobre volume.`;
+          geminiParts.unshift({ text: instructions + denseSuffix });
+        } else {
+          geminiParts.unshift({ text: instructions });
+        }
+
+        let markdownResponse = "";
+        let providerUsed: AiProvider = 'gemini';
+        let fallbackTriggered = false;
+        let fallbackReason: string | null = null;
+
+        if (geminiParts.length > 1) {
+          await supabaseAdmin
+            .from('analyses')
+            .update({ findings: { ...updatedFindings, current_step: "Sintetizando Parecer Técnico Forense com Inteligência Artificial..." } })
+            .eq('id', analysisId);
+
+          // Detectar documentos densos: múltiplos PDFs ou muitos parts (>6 indica matrícula densa)
+          const pdfPartsCount = geminiParts.filter(p => p.inlineData?.mimeType === 'application/pdf').length;
+          const isDenseDocument = pdfPartsCount >= 3 || geminiParts.length > 12;
+
+          // Timeout adaptativo: 110s para documentos densos, 90s para documentos simples
+          const aiTimeoutMs = isDenseDocument ? 110000 : 90000;
+
+          const result: FallbackResult = await generateWithFallback(geminiParts, {
+            geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+            ...(isFastChainOfTitleOnly ? { maxOutputTokens: 4096 } : {}),
+            timeoutMs: aiTimeoutMs,
           });
-          geminiParts.push({
-            text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`
-          });
+
+          markdownResponse = result.text;
+          geminiMs = result.duration_ms;
+          providerUsed = result.provider_used;
+          fallbackTriggered = result.fallback_triggered;
+          fallbackReason = result.fallback_reason;
+        } else {
+          markdownResponse = `### PARECER TÉCNICO GEOESPACIAL (APENAS GEOMETRIA KML/GPX)\n\nFoi efetuado o upload de arquivo de geometria de limites físicos e georreferenciamento em formato digital nativo. Não foram inseridas matrículas textuais em PDF para análise textual.\n\n* **Limite Físico Importado:** ${polygonCoords.length} pontos de curva detectados.\n* **Status de Integração:** Geometria disponível no visualizador de mapas 3D.`;
         }
-      }
 
-      if (geminiParts.length === 0 && polygonCoords.length === 0) {
-        throw new Error('Documentos ilegíveis ou insuficientes para análise fundiária');
-      }
-
-      // FASE 3 — Calcular amountPaid apenas para módulos novos (não processados no pai)
-      const amountPaid = modulesToProcess.reduce((acc: number, mod: string) => acc + (MODULE_PRICES[mod] || 0), 0);
-
-      // Normalização em memória para montagem do prompt
-      const normalizedModules = Array.from(new Set(selectedModules.map((m: string) => {
-        if (m === "titulos_incra") return "origem_publica";
-        if (m === "registros") return "cadeia_dominial";
-        if (m === "nulidades" || m === "forense") return "nulidades_fraudes";
-        if (m === "cruzamento") return "cruzamento_total";
-        return m;
-      })));
-      const isFastChainOfTitleOnly = normalizedModules.length === 1 && normalizedModules[0] === "cadeia_dominial";
-      
-      const instructions = buildLegalAuditPrompt(normalizedModules, documents);
-
-      // Para matrículas densas, adicionar instrução de concisão ao prompt
-      const pdfPartsCountForPrompt = geminiParts.filter(p => p.inlineData?.mimeType === 'application/pdf').length;
-      if (pdfPartsCountForPrompt >= 2) {
-        const denseSuffix = `\n\nATENÇÃO: Os documentos anexados são densos e extensos. Produza o parecer de forma objetiva e concisa, focando nos pontos juridicamente relevantes. Evite transcrições longas de atos repetitivos. Agrupe eventos por período. Limite a resposta a no máximo 2.000 palavras. Priorize qualidade sobre volume.`;
-        geminiParts.unshift({ text: instructions + denseSuffix });
-      } else {
-        geminiParts.unshift({ text: instructions });
-      }
-
-      let markdownResponse = "";
-      let providerUsed: 'gemini' | 'openai' = 'gemini';
-      let fallbackTriggered = false;
-      let fallbackReason: string | null = null;
-
-      if (geminiParts.length > 1) {
-        await supabaseAdmin
-          .from('analyses')
-          .update({ findings: { ...updatedFindings, current_step: "Sintetizando Parecer Técnico Forense com Inteligência Artificial..." } })
-          .eq('id', analysisId);
-
-        // Detectar documentos densos: múltiplos PDFs ou muitos parts (>6 indica matrícula densa)
-        const pdfPartsCount = geminiParts.filter(p => p.inlineData?.mimeType === 'application/pdf').length;
-        const isDenseDocument = pdfPartsCount >= 3 || geminiParts.length > 12;
-
-        // Timeout adaptativo: 110s para documentos densos, 90s para documentos simples
-        const aiTimeoutMs = isDenseDocument ? 110000 : 90000;
-
-        const result: FallbackResult = await generateWithFallback(geminiParts, {
-          geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-          ...(isFastChainOfTitleOnly ? { maxOutputTokens: 4096 } : {}),
-          timeoutMs: aiTimeoutMs,
-        });
-
-        markdownResponse = result.text;
-        geminiMs = result.duration_ms;
-        providerUsed = result.provider_used;
-        fallbackTriggered = result.fallback_triggered;
-        fallbackReason = result.fallback_reason;
-      } else {
-        markdownResponse = `### PARECER TÉCNICO GEOESPACIAL (APENAS GEOMETRIA KML/GPX)\n\nFoi efetuado o upload de arquivo de geometria de limites físicos e georreferenciamento em formato digital nativo. Não foram inseridas matrículas textuais em PDF para análise textual.\n\n* **Limite Físico Importado:** ${polygonCoords.length} pontos de curva detectados.\n* **Status de Integração:** Geometria disponível no visualizador de mapas 3D.`;
-      }
-
-      // Validar retorno da IA
-      if (!markdownResponse || markdownResponse.trim().length < 120 || markdownResponse.includes("PLACEHOLDER")) {
-        throw new Error("A IA gerou um laudo incompleto ou muito curto.");
-      }
-
-      if (isFastChainOfTitleOnly) {
-        const fastQualityIssue = validateFastChainOfTitleResponse(markdownResponse);
-        if (fastQualityIssue) {
-          const qualityError = new Error(fastQualityIssue);
-          (qualityError as any).technicalErrorType = 'ai_incomplete_response';
-          (qualityError as any).userMessage = 'A IA retornou um parecer incompleto. Tente reprocessar.';
-          (qualityError as any).findingsCurrentStep = 'A IA retornou um parecer incompleto. Tente reprocessar.';
-          throw qualityError;
+        // Validar retorno da IA
+        if (!markdownResponse || markdownResponse.trim().length < 120 || markdownResponse.includes("PLACEHOLDER")) {
+          throw new Error("A IA gerou um laudo incompleto ou muito curto.");
         }
-      }
 
-      const derivedRisk = deriveRiskLevelFromResumo(markdownResponse);
-      const riskLevel = derivedRisk.level;
-      const riskLevelSource = derivedRisk.source;
-
-      let latitude: number | null = null;
-      let longitude: number | null = null;
-
-      if (polygonCoords.length > 0) {
-        let latSum = 0;
-        let lngSum = 0;
-        for (const c of polygonCoords) {
-          latSum += c[0];
-          lngSum += c[1];
+        if (isFastChainOfTitleOnly) {
+          const fastQualityIssue = validateFastChainOfTitleResponse(markdownResponse);
+          if (fastQualityIssue) {
+            const qualityError = new Error(fastQualityIssue);
+            (qualityError as any).technicalErrorType = 'ai_incomplete_response';
+            (qualityError as any).userMessage = 'A IA retornou um parecer incompleto. Tente reprocessar.';
+            (qualityError as any).findingsCurrentStep = 'A IA retornou um parecer incompleto. Tente reprocessar.';
+            throw qualityError;
+          }
         }
-        latitude = latSum / polygonCoords.length;
-        longitude = lngSum / polygonCoords.length;
-      }
 
-      const coordsMatch = markdownResponse.match(/COORDS:\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
-      if (coordsMatch) {
-        if (polygonCoords.length === 0) {
-          latitude = parseFloat(coordsMatch[1]);
-          longitude = parseFloat(coordsMatch[2]);
+        const derivedRisk = deriveRiskLevelFromResumo(markdownResponse);
+        const riskLevel = derivedRisk.level;
+        const riskLevelSource = derivedRisk.source;
+
+        let latitude: number | null = null;
+        let longitude: number | null = null;
+
+        if (polygonCoords.length > 0) {
+          let latSum = 0;
+          let lngSum = 0;
+          for (const c of polygonCoords) {
+            latSum += c[0];
+            lngSum += c[1];
+          }
+          latitude = latSum / polygonCoords.length;
+          longitude = lngSum / polygonCoords.length;
         }
-        markdownResponse = markdownResponse.replace(/COORDS:\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+/i, '').trim();
-      }
 
-      // FASE 5 — Marcar etapa atual como concluída (se houver stage)
-      const stageCompletedAt = new Date().toISOString();
-      let allStagesCompleted = false;
-      let hasMoreStages = false;
+        const coordsMatch = markdownResponse.match(/COORDS:\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
+        if (coordsMatch) {
+          if (polygonCoords.length === 0) {
+            latitude = parseFloat(coordsMatch[1]);
+            longitude = parseFloat(coordsMatch[2]);
+          }
+          markdownResponse = markdownResponse.replace(/COORDS:\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+/i, '').trim();
+        }
 
-      if (currentStageId) {
-        // FASE 5.1 — Registrar provider info no stage
-        processingStages = {
-          ...processingStages,
-          stages: markStageProviderInfo(processingStages, currentStageId, {
-            provider_used: providerUsed,
-            fallback_triggered: fallbackTriggered,
-            fallback_reason: fallbackReason,
-          }),
-        };
+        // FASE 5 — Marcar etapa atual como concluída (se houver stage)
+        const stageCompletedAt = new Date().toISOString();
+        let allStagesCompleted = false;
+        let hasMoreStages = false;
 
-        // Extrair resumo curto (primeiras 200 chars do primeiro parágrafo relevante)
-        const stageSummary = markdownResponse
-          .replace(/^#+\s+/gm, '')
-          .split(/\n\n/)[0]
-          ?.slice(0, 200)
-          ?.trim() || `Etapa ${currentStageId} concluída`;
+        if (currentStageId) {
+          // FASE 5.1 — Registrar provider info no stage
+          processingStages = {
+            ...processingStages,
+            stages: markStageProviderInfo(processingStages, currentStageId, {
+              provider_used: providerUsed,
+              fallback_triggered: fallbackTriggered,
+              fallback_reason: fallbackReason,
+            }),
+          };
 
-        processingStages = {
-          ...processingStages,
-          stages: markStageCompleted(processingStages, currentStageId, stageSummary, stageCompletedAt),
-        };
+          // Extrair resumo curto (primeiras 200 chars do primeiro parágrafo relevante)
+          const stageSummary = markdownResponse
+            .replace(/^#+\s+/gm, '')
+            .split(/\n\n/)[0]
+            ?.slice(0, 200)
+            ?.trim() || `Etapa ${currentStageId} concluída`;
 
-        allStagesCompleted = isProcessingFinished(processingStages);
-        hasMoreStages = !allStagesCompleted && getCurrentStage(processingStages) !== null;
-      }
+          processingStages = {
+            ...processingStages,
+            stages: markStageCompleted(processingStages, currentStageId, stageSummary, stageCompletedAt),
+          };
 
-      // Se há mais etapas pendentes, salvar progresso e voltar para ready_for_processing
-      if (hasMoreStages) {
-        const partialFindings = {
+          allStagesCompleted = isProcessingFinished(processingStages);
+          hasMoreStages = !allStagesCompleted && getCurrentStage(processingStages) !== null;
+        }
+
+        // Se há mais etapas pendentes, salvar progresso e voltar para ready_for_processing
+        if (hasMoreStages) {
+          const partialFindings = {
+            ...updatedFindings,
+            current_step: `Etapa ${currentStageId} concluída. Aguardando processamento da próxima etapa.`,
+            processing_stage_completed_at: stageCompletedAt,
+            case_file: {
+              ...updatedFindings.case_file,
+              provider_used: providerUsed,
+              fallback_triggered: fallbackTriggered,
+              fallback_reason: fallbackReason,
+              processing_stages: processingStages,
+            },
+          };
+
+          await supabaseAdmin
+            .from('analyses')
+            .update({
+              status: 'ready_for_processing',
+              findings: partialFindings
+            })
+            .eq('id', analysisId);
+
+          return;
+        }
+
+        // Fluxo normal: todas as etapas concluídas (ou sem stage)
+        const completedAt = new Date().toISOString();
+        const postprocessStartAt = Date.now();
+        const resultJson = {
           ...updatedFindings,
-          current_step: `Etapa ${currentStageId} concluída. Aguardando processamento da próxima etapa.`,
-          processing_stage_completed_at: stageCompletedAt,
+          isHtmlResumo: false,
+          resumo: markdownResponse,
+          problemas: [],
+          recomendacoes: [],
+          documentosFaltantes: [],
+          linhaDoTempo: [],
+          checklist: [],
+          amountPaid: amountPaid,
+          modulesSelected: selectedModules,
+          latitude,
+          longitude,
+          polygon: polygonCoords.length > 0 ? polygonCoords : null,
+          current_step: "Parecer técnico concluído.",
+          completed_at: completedAt,
+          risk_level_source: riskLevelSource,
+          ...(riskLevelSource === 'ai_section' ? { risk_level_detected_at: completedAt } : {}),
+          processing_metrics: {
+            gemini_ms: geminiMs,
+            total_ms: Date.now() - startedAt
+          },
           case_file: {
             ...updatedFindings.case_file,
             provider_used: providerUsed,
@@ -802,213 +840,128 @@ export async function POST(req: Request) {
           },
         };
 
-        const { error: partialUpdateError } = await supabaseAdmin
+        await supabaseAdmin
           .from('analyses')
           .update({
-            status: 'ready_for_processing',
-            findings: partialFindings
+            status: 'completed',
+            risk_level: riskLevel,
+            findings: resultJson
           })
           .eq('id', analysisId);
 
-        if (partialUpdateError) {
-          throw new Error("Erro ao salvar progresso da etapa: " + partialUpdateError.message);
-        }
-
-        return NextResponse.json({
-          success: true,
-          simulador: false,
-          analysisId: analysisId,
-          status: 'processing_stage_completed',
-          stage_id: currentStageId,
-          message: `Etapa concluída. Próxima etapa disponível para processamento.`,
-          stages: processingStages,
-        });
-      }
-
-      // Fluxo normal: todas as etapas concluídas (ou sem stage)
-      const completedAt = new Date().toISOString();
-      const postprocessStartAt = Date.now();
-      const resultJson = {
-        ...updatedFindings,
-        isHtmlResumo: false,
-        resumo: markdownResponse,
-        problemas: [],
-        recomendacoes: [],
-        documentosFaltantes: [],
-        linhaDoTempo: [],
-        checklist: [],
-        amountPaid: amountPaid,
-        modulesSelected: selectedModules,
-        latitude,
-        longitude,
-        polygon: polygonCoords.length > 0 ? polygonCoords : null,
-        current_step: "Parecer técnico concluído.",
-        completed_at: completedAt,
-        risk_level_source: riskLevelSource,
-        ...(riskLevelSource === 'ai_section' ? { risk_level_detected_at: completedAt } : {}),
-        processing_metrics: {
-          gemini_ms: geminiMs,
-          total_ms: Date.now() - startedAt
-        },
-        case_file: {
-          ...updatedFindings.case_file,
-          provider_used: providerUsed,
-          fallback_triggered: fallbackTriggered,
-          fallback_reason: fallbackReason,
-          processing_stages: processingStages,
-        },
-      };
-
-      const { error: dbError } = await supabaseAdmin
-        .from('analyses')
-        .update({
-          status: 'completed',
-          risk_level: riskLevel,
-          findings: resultJson
-        })
-        .eq('id', analysisId);
-
-      if (dbError) throw new Error("Erro ao salvar resultado final: " + dbError.message);
-
-      try {
-        const parsedProblemas = extractProblemsFromReport(markdownResponse);
-        const parsedDocumentosFaltantes = extractMissingDocumentsFromReport(markdownResponse);
-        const parsedRecomendacoes = extractRecommendationsFromReport(markdownResponse);
-        const postprocessMs = Date.now() - postprocessStartAt;
-        const totalMs = Date.now() - startedAt;
-        let caseFileExtractError: string | null = null;
-        let enrichedCaseFile = resultJson.case_file;
-
         try {
-          enrichedCaseFile = updateCaseFileWithBasicFacts(resultJson.case_file, {
-            now: new Date().toISOString(),
-            property: {
-              name: propertyData?.name || null,
-              state: propertyData?.state || null,
-              city: propertyData?.city || null,
-              car_number: propertyData?.car_number || null,
-              declared_area_ha: propertyData?.area ?? null,
-              owner_document: propertyData?.cpf_cnpj || null
-            },
-            resumo: markdownResponse,
-            problemas: parsedProblemas,
-            documentosFaltantes: parsedDocumentosFaltantes,
-            recomendacoes: parsedRecomendacoes,
-            riskLevel
-          });
-        } catch (caseFileError: any) {
-          caseFileExtractError = ((caseFileError && (caseFileError.message || caseFileError.toString())) || 'Erro desconhecido no case_file')
-            .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
-          console.error('[CaseFile] Falha ao enriquecer fatos bÃ¡sicos:', caseFileExtractError);
-        }
+          const parsedProblemas = extractProblemsFromReport(markdownResponse);
+          const parsedDocumentosFaltantes = extractMissingDocumentsFromReport(markdownResponse);
+          const parsedRecomendacoes = extractRecommendationsFromReport(markdownResponse);
+          const postprocessMs = Date.now() - postprocessStartAt;
+          const totalMs = Date.now() - startedAt;
+          let caseFileExtractError: string | null = null;
+          let enrichedCaseFile = resultJson.case_file;
 
-        // FASE 3 — Mesclar module_results do pai com os novos módulos processados
-        // O case_file herdado já contém module_results do pai; adicionamos os novos
-        const parentModuleResults = parentCaseFile?.module_results || {};
-        const newModuleResults: Record<string, { status: string; summary: string; completed_at: string }> = {};
-        for (const modId of modulesToProcess) {
-          newModuleResults[modId] = {
-            status: 'completed',
-            summary: `Módulo ${modId} processado na análise complementar`,
-            completed_at: completedAt
-          };
-        }
-        enrichedCaseFile = {
-          ...enrichedCaseFile,
-          module_results: {
-            ...parentModuleResults,
-            ...newModuleResults
-          }
-        };
-
-        // FASE 2 — Recommended Modules: calcular sugestões em try/catch próprio
-        // (não altera fluxo existente; falha aqui não bloqueia o postprocess)
-        let recommendedModules: CaseFileRecommendedModule[] = [];
-        let recommendationsError: string | null = null;
-        try {
-          const docProfile = buildDocumentProfile(documents);
-          recommendedModules = buildRecommendedModules({
-            caseFile: enrichedCaseFile,
-            docProfile,
-            selectedModules,
-            now: new Date().toISOString()
-          });
-          if (recommendedModules.length > 0) {
-            enrichedCaseFile = {
-              ...enrichedCaseFile,
-              recommended_modules: recommendedModules
-            };
-            console.log(`[Recommendations] ${recommendedModules.length} módulo(s) recomendado(s) para análise ${analysisId}.`);
-          }
-        } catch (recError: any) {
-          recommendationsError = ((recError && (recError.message || recError.toString())) || 'Erro desconhecido nas recomendações')
-            .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
-          console.error('[Recommendations] Falha ao calcular recomendações:', recommendationsError);
-        }
-
-        // ─── ISF v2 — CÁLCULO DETERMINÍSTICO ───────────────────────────────────
-        // Executa APENAS com dados reais da análise. 100% determinístico.
-        // Não altera fluxo existente. Falha aqui não bloqueia o postprocess.
-        let isfPayload: Record<string, unknown> = {};
-        let isfError: string | null = null;
-        try {
-          // 1. Calcular ISF v2 a partir dos problemas extraídos do parecer
-          const isfResult = calcularISF(parsedProblemas as any);
-
-          // 2. Calcular score legado (v1) para telemetria de divergência
-          const legacyScoreData = calcularScoreAgroLex(
-            {
+          try {
+            enrichedCaseFile = updateCaseFileWithBasicFacts(resultJson.case_file, {
+              now: new Date().toISOString(),
+              property: {
+                name: propertyData?.name || null,
+                state: propertyData?.state || null,
+                city: propertyData?.city || null,
+                car_number: propertyData?.car_number || null,
+                declared_area_ha: propertyData?.area ?? null,
+                owner_document: propertyData?.cpf_cnpj || null
+              },
+              resumo: markdownResponse,
               problemas: parsedProblemas,
               documentosFaltantes: parsedDocumentosFaltantes,
               recomendacoes: parsedRecomendacoes,
-              resumo: markdownResponse,
-            } as any,
-            riskLevel
-          );
-
-          // 3. Calcular comparação entre v1 e v2
-          const comparison = calcularComparacao(legacyScoreData.score, isfResult.isf_score);
-
-          // 4. Gerar payload completo para persistência (isf_v2 + score_comparison)
-          isfPayload = gerarPayloadISFCompleto(isfResult, comparison);
-
-          console.log(
-            `[ISF v2] Análise ${analysisId}: legado=${legacyScoreData.score}, isf=${isfResult.isf_score}, ` +
-            `diferença=${comparison.difference}, risk_level=${isfResult.risk_level}`
-          );
-        } catch (isfCalcError: any) {
-          isfError = ((isfCalcError && (isfCalcError.message || isfCalcError.toString())) || 'Erro desconhecido no ISF v2')
-            .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
-          console.error('[ISF v2] Falha ao calcular ISF v2:', isfError);
-        }
-
-        const patchedFindings = {
-          ...resultJson,
-          problemas: parsedProblemas,
-          recomendacoes: parsedRecomendacoes,
-          documentosFaltantes: parsedDocumentosFaltantes,
-          case_file: enrichedCaseFile,
-          ...(caseFileExtractError ? { case_file_extract_error: caseFileExtractError } : {}),
-          ...isfPayload,
-          ...(isfError ? { isf_v2_error: isfError } : {}),
-          structured_extract_source: 'local_parser',
-          structured_extract_at: new Date().toISOString(),
-          processing_metrics: {
-            gemini_ms: geminiMs,
-            postprocess_ms: postprocessMs,
-            total_ms: totalMs
+              riskLevel
+            });
+          } catch (caseFileError: any) {
+            caseFileExtractError = ((caseFileError && (caseFileError.message || caseFileError.toString())) || 'Erro desconhecido no case_file')
+              .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
+            console.error('[CaseFile] Falha ao enriquecer fatos básicos:', caseFileExtractError);
           }
-        };
 
-        const { error: patchError } = await supabaseAdmin
-          .from('analyses')
-          .update({ findings: patchedFindings })
-          .eq('id', analysisId);
+          const parentModuleResults = parentCaseFile?.module_results || {};
+          const newModuleResults: Record<string, { status: string; summary: string; completed_at: string }> = {};
+          for (const modId of modulesToProcess) {
+            newModuleResults[modId] = {
+              status: 'completed',
+              summary: `Módulo ${modId} processado na análise complementar`,
+              completed_at: completedAt
+            };
+          }
+          enrichedCaseFile = {
+            ...enrichedCaseFile,
+            module_results: {
+              ...parentModuleResults,
+              ...newModuleResults
+            }
+          };
 
-        if (patchError) {
-          console.error('[Postprocess] Falha ao salvar extração estruturada:', patchError.message);
-        } else {
-          // Registrar telemetria: trial_completed
+          let recommendedModules: CaseFileRecommendedModule[] = [];
+          let recommendationsError: string | null = null;
+          try {
+            const docProfile = buildDocumentProfile(documents);
+            recommendedModules = buildRecommendedModules({
+              caseFile: enrichedCaseFile,
+              docProfile,
+              selectedModules,
+              now: new Date().toISOString()
+            });
+            if (recommendedModules.length > 0) {
+              enrichedCaseFile = {
+                ...enrichedCaseFile,
+                recommended_modules: recommendedModules
+              };
+            }
+          } catch (recError: any) {
+            recommendationsError = ((recError && (recError.message || recError.toString())) || 'Erro desconhecido nas recomendações')
+              .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
+          }
+
+          let isfPayload: Record<string, unknown> = {};
+          let isfError: string | null = null;
+          try {
+            const isfResult = calcularISF(parsedProblemas as any);
+            const legacyScoreData = calcularScoreAgroLex(
+              {
+                problemas: parsedProblemas,
+                documentosFaltantes: parsedDocumentosFaltantes,
+                recomendacoes: parsedRecomendacoes,
+                resumo: markdownResponse,
+              } as any,
+              riskLevel
+            );
+            const comparison = calcularComparacao(legacyScoreData.score, isfResult.isf_score);
+            isfPayload = gerarPayloadISFCompleto(isfResult, comparison);
+          } catch (isfCalcError: any) {
+            isfError = ((isfCalcError && (isfCalcError.message || isfCalcError.toString())) || 'Erro desconhecido no ISF v2')
+              .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
+          }
+
+          const patchedFindings = {
+            ...resultJson,
+            problemas: parsedProblemas,
+            recomendacoes: parsedRecomendacoes,
+            documentosFaltantes: parsedDocumentosFaltantes,
+            case_file: enrichedCaseFile,
+            ...(caseFileExtractError ? { case_file_extract_error: caseFileExtractError } : {}),
+            ...isfPayload,
+            ...(isfError ? { isf_v2_error: isfError } : {}),
+            structured_extract_source: 'local_parser',
+            structured_extract_at: new Date().toISOString(),
+            processing_metrics: {
+              gemini_ms: geminiMs,
+              postprocess_ms: postprocessMs,
+              total_ms: totalMs
+            }
+          };
+
+          await supabaseAdmin
+            .from('analyses')
+            .update({ findings: patchedFindings })
+            .eq('id', analysisId);
+
           if (planType === 'trial') {
             try {
               const { markTrialUsed, trackTrialEvent } = await import('@/lib/trial/trialControl');
@@ -1018,159 +971,124 @@ export async function POST(req: Request) {
               console.error('Erro ao trackear trial_completed:', e);
             }
           }
+        } catch (postprocessError: any) {
+          const postprocessMs = Date.now() - postprocessStartAt;
+          const totalMs = Date.now() - startedAt;
+          const structuredError = (postprocessError && (postprocessError.message || postprocessError.toString())) || 'Erro desconhecido na extração estruturada';
+          const failedFindings = {
+            ...resultJson,
+            structured_extract_source: 'local_parser',
+            structured_extract_at: new Date().toISOString(),
+            structured_extract_error: structuredError.replace(/https?:\/\/\S+/gi, '[REDACTED_URL]'),
+            processing_metrics: {
+              gemini_ms: geminiMs,
+              postprocess_ms: postprocessMs,
+              total_ms: totalMs
+            }
+          };
+          await supabaseAdmin
+            .from('analyses')
+            .update({ findings: failedFindings })
+            .eq('id', analysisId);
         }
-      } catch (postprocessError: any) {
-        const postprocessMs = Date.now() - postprocessStartAt;
-        const totalMs = Date.now() - startedAt;
-        const structuredError = (postprocessError && (postprocessError.message || postprocessError.toString())) || 'Erro desconhecido na extração estruturada';
-        console.error('[Postprocess] Erro na extração estruturada:', structuredError);
+      } catch (innerError: any) {
+        console.error("[Background Process] Erro no processamento:", innerError);
+
+        const rawMessage = (innerError && (innerError.message || innerError.toString())) || '';
+        const messageLower = rawMessage.toLowerCase();
+        const isTimeout = messageLower.includes("timeout:");
+        const forcedTechnicalErrorType = innerError?.technicalErrorType;
+
+        const isAiUnavailable = ['503', 'service unavailable', 'high demand'].some(p => messageLower.includes(p));
+        const isAiQuotaExceeded = ['429', 'too many requests', 'quota', 'rate limit'].some(p => messageLower.includes(p));
+
+        let technicalErrorType = 'processing_failed';
+        let userMessage = 'Não foi possível concluir o parecer técnico neste momento.';
+        let findingsCurrentStep = 'Falha no processamento do parecer técnico.';
+
+        if (forcedTechnicalErrorType === 'ai_incomplete_response') {
+          technicalErrorType = 'ai_incomplete_response';
+          findingsCurrentStep = innerError?.findingsCurrentStep || 'A IA retornou um parecer incompleto.';
+        } else if (isAiQuotaExceeded) {
+          technicalErrorType = 'ai_quota_exceeded';
+          findingsCurrentStep = 'Limite temporário da IA atingido.';
+        } else if (isTimeout) {
+          technicalErrorType = 'ai_timeout';
+          findingsCurrentStep = 'A IA demorou mais que o esperado.';
+        } else if (isAiUnavailable) {
+          technicalErrorType = 'ai_unavailable';
+          findingsCurrentStep = 'IA temporariamente indisponível.';
+        }
+
+        const sanitizedMessage = rawMessage.replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
+        const failedAt = new Date().toISOString();
+        const recoverableFailureType = isRecoverableErrorType(technicalErrorType) ? technicalErrorType : null;
+        
+        const currentRetryCount = getRetryCount(updatedFindings);
+        const isTimeoutExhausted = recoverableFailureType === 'ai_timeout' && currentRetryCount >= 5;
+        const isRecoverableFailure = Boolean(recoverableFailureType) && !isTimeoutExhausted;
+        
+        let retryState: any = null;
+        if (isTimeoutExhausted) {
+          retryState = {
+            available: false,
+            exhausted: true,
+            reason: "max_ai_timeout_attempts",
+            retry_count: currentRetryCount,
+            last_error_type: "ai_timeout",
+            last_error_at: failedAt
+          };
+          findingsCurrentStep = "A IA excedeu o tempo limite. Esta análise exige processamento em etapas.";
+        } else if (recoverableFailureType) {
+          retryState = buildRetryState(updatedFindings, recoverableFailureType, failedAt);
+        }
+
+        let stageAwareProcessingStages = updatedFindings.case_file.processing_stages;
+        if (currentStageId) {
+          stageAwareProcessingStages = {
+            ...(stageAwareProcessingStages || processingStages),
+            stages: markStageError(stageAwareProcessingStages || processingStages, currentStageId, sanitizedMessage || 'Erro desconhecido', failedAt),
+          };
+        }
 
         const failedFindings = {
-          ...resultJson,
-          structured_extract_source: 'local_parser',
-          structured_extract_at: new Date().toISOString(),
-          structured_extract_error: structuredError.replace(/https?:\/\/\S+/gi, '[REDACTED_URL]'),
-          processing_metrics: {
-            gemini_ms: geminiMs,
-            postprocess_ms: postprocessMs,
-            total_ms: totalMs
+          ...updatedFindings,
+          current_step: findingsCurrentStep,
+          error_message: sanitizedMessage || 'Erro no processamento interno',
+          technical_error_type: isTimeoutExhausted ? 'max_ai_timeout_attempts' : technicalErrorType,
+          failed_at: failedAt,
+          retry_available: isRecoverableFailure,
+          retry_reason: isTimeoutExhausted ? "max_ai_timeout_attempts" : (isRecoverableFailure ? technicalErrorType : null),
+          retry_exhausted: isTimeoutExhausted ? true : undefined,
+          ...(retryState ? { retry_state: retryState } : {}),
+          case_file: {
+            ...updatedFindings.case_file,
+            ...(retryState ? { retry_state: retryState } : {}),
+            processing_stages: stageAwareProcessingStages,
           }
         };
 
-        const { error: patchError } = await supabaseAdmin
+        await supabaseAdmin
           .from('analyses')
-          .update({ findings: failedFindings })
+          .update({
+            status: 'error',
+            findings: failedFindings
+          })
           .eq('id', analysisId);
 
-        if (patchError) {
-          console.error('[Postprocess] Falha ao salvar erro de extração estruturada:', patchError.message);
-        }
+        console.error("[Background] Erro na IA:", userMessage, technicalErrorType);
       }
+    };
 
-      return NextResponse.json({
-        success: true,
-        simulador: false,
-        analysisId: analysisId,
-        status: 'completed'
-      });
+    waitUntil(runBackground());
 
-    } catch (innerError: any) {
-      console.error("[Synchronous AI Process] Erro no processamento interno:", innerError);
-
-      const rawMessage = (innerError && (innerError.message || innerError.toString())) || '';
-      const messageLower = rawMessage.toLowerCase();
-      const isTimeout = messageLower.includes("timeout:");
-      const forcedTechnicalErrorType = innerError?.technicalErrorType;
-
-      const aiUnavailableIndicators = [
-        '503',
-        'service unavailable',
-        'high demand',
-        'model is currently experiencing high demand'
-      ];
-
-      const isAiUnavailable = aiUnavailableIndicators.some(p => messageLower.includes(p));
-
-      const aiQuotaIndicators = [
-        '429',
-        'too many requests',
-        'quota',
-        'resource exhausted',
-        'resource has been exhausted',
-        'rate limit',
-        'rate exceeded',
-        'quota exceeded'
-      ];
-
-      const isAiQuotaExceeded = aiQuotaIndicators.some(p => messageLower.includes(p));
-
-      let technicalErrorType = 'processing_failed';
-      let userMessage = 'Não foi possível concluir o parecer técnico neste momento. Tente novamente ou contate o suporte.';
-      let findingsCurrentStep = 'Falha no processamento do parecer técnico.';
-
-      if (forcedTechnicalErrorType === 'ai_incomplete_response') {
-        technicalErrorType = 'ai_incomplete_response';
-        findingsCurrentStep = innerError?.findingsCurrentStep || 'A IA retornou um parecer incompleto. Tente reprocessar.';
-        userMessage = innerError?.userMessage || 'A IA retornou um parecer incompleto. Tente reprocessar.';
-      } else if (isAiQuotaExceeded) {
-        technicalErrorType = 'ai_quota_exceeded';
-        findingsCurrentStep = 'Limite temporário da IA atingido. Tente novamente mais tarde.';
-        userMessage = 'Limite temporário da IA atingido. Tente novamente mais tarde.';
-      } else if (isTimeout) {
-        technicalErrorType = 'ai_timeout';
-        findingsCurrentStep = 'A IA demorou mais que o esperado para concluir. Voce pode tentar novamente sem reenviar os documentos.';
-        userMessage = 'A IA demorou mais que o esperado para concluir. Voce pode tentar novamente sem reenviar os documentos.';
-      } else if (isAiUnavailable) {
-        technicalErrorType = 'ai_unavailable';
-        // Mensagem de etapa salva de forma amigável
-        findingsCurrentStep = 'IA temporariamente indisponível. Tente novamente em alguns minutos.';
-        userMessage = 'A IA está temporariamente indisponível. Tente reprocessar em alguns minutos.';
-      }
-
-      // Sanitize any URLs to avoid leaking endpoints
-      const sanitizedMessage = rawMessage.replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
-      const failedAt = new Date().toISOString();
-      const recoverableFailureType = isRecoverableErrorType(technicalErrorType) ? technicalErrorType : null;
-      
-      const currentRetryCount = getRetryCount(updatedFindings);
-      const isTimeoutExhausted = recoverableFailureType === 'ai_timeout' && currentRetryCount >= 5;
-      
-      const isRecoverableFailure = Boolean(recoverableFailureType) && !isTimeoutExhausted;
-      let retryState: any = null;
-
-      if (isTimeoutExhausted) {
-        retryState = {
-          available: false,
-          exhausted: true,
-          reason: "max_ai_timeout_attempts",
-          retry_count: currentRetryCount,
-          last_error_type: "ai_timeout",
-          last_error_at: failedAt
-        };
-        findingsCurrentStep = "A IA excedeu o tempo limite em múltiplas tentativas. Esta análise exige processamento em etapas.";
-        userMessage = "A IA excedeu o tempo limite em múltiplas tentativas. Esta análise exige processamento em etapas.";
-      } else if (recoverableFailureType) {
-        retryState = buildRetryState(updatedFindings, recoverableFailureType, failedAt);
-      }
-
-      // FASE 5 — Marcar etapa atual como erro (se houver stage)
-      let stageAwareProcessingStages = updatedFindings.case_file.processing_stages;
-      if (currentStageId) {
-        stageAwareProcessingStages = {
-          ...(stageAwareProcessingStages || processingStages),
-          stages: markStageError(stageAwareProcessingStages || processingStages, currentStageId, sanitizedMessage || 'Erro desconhecido', failedAt),
-        };
-      }
-
-      const failedFindings = {
-        ...updatedFindings,
-        current_step: findingsCurrentStep,
-        error_message: sanitizedMessage || 'Erro no processamento interno',
-        technical_error_type: isTimeoutExhausted ? 'max_ai_timeout_attempts' : technicalErrorType,
-        failed_at: failedAt,
-        retry_available: isRecoverableFailure,
-        retry_reason: isTimeoutExhausted ? "max_ai_timeout_attempts" : (isRecoverableFailure ? technicalErrorType : null),
-        retry_exhausted: isTimeoutExhausted ? true : undefined,
-        ...(retryState ? { retry_state: retryState } : {}),
-        case_file: {
-          ...updatedFindings.case_file,
-          ...(retryState ? { retry_state: retryState } : {}),
-          // FASE 5 — Preservar processing_stages com erro da etapa atual
-          processing_stages: stageAwareProcessingStages,
-        }
-      };
-
-      await supabaseAdmin
-        .from('analyses')
-        .update({
-          status: 'error',
-          findings: failedFindings
-        })
-        .eq('id', analysisId);
-
-      const statusCode = isAiUnavailable ? 503 : 500;
-      return NextResponse.json({ error: userMessage, type: technicalErrorType }, { status: statusCode });
-    }
+    return NextResponse.json({
+      success: true,
+      simulador: false,
+      analysisId: analysisId,
+      status: 'processing',
+      message: 'Processamento em background iniciado'
+    });
 
   } catch (error: any) {
     console.error('Erro geral no POST /api/analyze:', error);

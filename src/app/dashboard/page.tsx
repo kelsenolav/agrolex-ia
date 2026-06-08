@@ -201,6 +201,30 @@ export default function DashboardPage() {
     checkUserAndFetchData();
   }, [router]);
 
+  // Polling para atualizações em background
+  useEffect(() => {
+    const hasProcessing = analises.some(a => a.status === 'processing');
+    
+    // Auto-chain para etapas pendentes
+    const hasPendingStage = analises.find(a => 
+      a.status === 'ready_for_processing' && 
+      (a.findings as any)?.current_step?.includes('Aguardando processamento da próxima etapa')
+    );
+
+    if (!hasProcessing && !hasPendingStage) return;
+
+    // Se houver uma etapa pendente esperando chain e não estiver carregando algo
+    if (hasPendingStage && !loadingAnalysisId) {
+      handleStartAnalysis(hasPendingStage.id, hasPendingStage.properties?.id ?? '', { isAutoChain: true });
+    }
+
+    const interval = setInterval(() => {
+      refreshAnalises();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [analises, loadingAnalysisId]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     await fetch('/api/auth/session', { method: 'DELETE' });
@@ -208,42 +232,11 @@ export default function DashboardPage() {
     router.refresh();
   };
 
-  // FASE 4 — Pagamento via Mercado Pago (sandbox) com fallback dev
+  // Refatorado na P0.5: Não há mais pagamento por análise individual. Redireciona para o fluxo de tentar iniciar a IA.
   const handlePayNow = async (analysisId: string) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        showToast("Sua sessão expirou, faça login novamente.", 'error');
-        setTimeout(() => router.push('/login'), 2000);
-        return;
-      }
-
-      const res = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ analysisId })
-      });
-
-      if (!res.ok) {
-        const result = await res.json();
-        throw new Error(result.error || 'Erro ao iniciar pagamento');
-      }
-
-      const data = await res.json();
-
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-      } else {
-        showToast('Pagamento aprovado! Análise liberada para processamento.', 'success');
-        await refreshAnalises();
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Erro desconhecido';
-      console.error('Erro ao iniciar pagamento:', err);
-      showToast("Erro ao processar pagamento: " + message, 'error');
+    const analise = analises.find(a => a.id === analysisId);
+    if (analise) {
+      handleStartAnalysis(analysisId, analise.properties?.id ?? '');
     }
   };
 
@@ -372,6 +365,13 @@ export default function DashboardPage() {
         },
         body: JSON.stringify({ analysisId, propertyId, forceRetry: retryOptions?.forceRetry === true })
       });
+
+      if (res.status === 402) {
+        delete chainCountRef.current[analysisId];
+        showToast("Saldo insuficiente. Redirecionando para planos...", 'error');
+        setTimeout(() => router.push('/dashboard/planos'), 1500);
+        return;
+      }
 
       if (!res.ok) {
         const result = await res.json();
@@ -656,7 +656,7 @@ export default function DashboardPage() {
               />
             </div>
             <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">
-              <span>Plano: {planType.toUpperCase()}</span>
+              <span>Plano: {planType === 'internal_test' ? 'INTERNO DE TESTES' : planType.toUpperCase()}</span>
               <Link href="/dashboard/planos" className="text-brand-gold hover:underline font-bold">Comprar páginas</Link>
             </div>
           </div>
@@ -1154,7 +1154,7 @@ export default function DashboardPage() {
                             onClick={() => handlePayNow(analise.id)}
                             className="bg-brand-gold text-brand-green px-4 py-2 rounded text-xs font-bold hover:brightness-110 transition-all shadow"
                           >
-                            Pagar e Liberar →
+                            Processar Pendência →
                           </button>
                         ) : (
                           <span className="text-gray-400 text-sm font-medium">-</span>
@@ -1330,7 +1330,10 @@ export default function DashboardPage() {
               </svg>
             </div>
             <h3 className="text-lg font-bold text-gray-800 mb-2">Auditoria Fundiária em Processamento</h3>
-            <p className="text-sm text-gray-500 mb-4">Esta operação pode levar até 2 minutos para documentos complexos.</p>
+            <p className="text-sm text-gray-500 mb-4">Esta operação pode levar até 5 minutos para documentos complexos.</p>
+            <p className="text-xs text-amber-700 bg-amber-50 p-3 rounded-md border border-amber-200 font-medium">
+              ⚠️ Nota: Como este serviço utiliza Inteligência Artificial generativa, a operação está sujeita à disponibilidade dos servidores e pode apresentar momentos de instabilidade. Caso ocorra alguma falha de conexão, tente novamente após alguns minutos.
+            </p>
             <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-brand-green font-semibold text-sm animate-pulse">
               {rotatingMessage}
             </div>

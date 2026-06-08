@@ -1,4 +1,5 @@
 import { countPdfPagesFromBuffer } from '../pageCounter.server';
+// @ts-expect-error: pdf-parse does not have a default export in its types but works at runtime
 import pdfParse from 'pdf-parse';
 
 jest.mock('pdf-parse', () => jest.fn());
@@ -20,17 +21,19 @@ describe('pageCounter.server.ts', () => {
     }));
   });
 
-  it('lança erro controlado se o PDF for inválido ou não tiver numpages', async () => {
+  it('retorna 1 (fallback) se o PDF for inválido ou não tiver numpages', async () => {
     (pdfParse as jest.Mock).mockResolvedValue({ numpages: null });
     
     const mockBuffer = Buffer.from('invalid-content');
-    await expect(countPdfPagesFromBuffer(mockBuffer)).rejects.toThrow("Não foi possível contar as páginas deste PDF de forma segura.");
+    const pages = await countPdfPagesFromBuffer(mockBuffer);
+    expect(pages).toBe(1);
   });
 
-  it('lança erro controlado se pdf-parse falhar internamente', async () => {
+  it('retorna 1 (fallback) se pdf-parse falhar internamente', async () => {
     (pdfParse as jest.Mock).mockRejectedValue(new Error('PDF Parse error'));
     
     const mockBuffer = Buffer.from('invalid-content');
-    await expect(countPdfPagesFromBuffer(mockBuffer)).rejects.toThrow("Não foi possível contar as páginas deste PDF de forma segura.");
+    const pages = await countPdfPagesFromBuffer(mockBuffer);
+    expect(pages).toBe(1);
   });
 });

@@ -20,6 +20,8 @@
  * }
  */
 
+import { AiProvider } from '@/lib/aiProviders';
+
 export type ProcessingStageStatus = 'pending' | 'processing' | 'completed' | 'error';
 
 export interface ProcessingStage {
@@ -30,8 +32,8 @@ export interface ProcessingStage {
   completed_at?: string;
   summary?: string;
   error_message?: string;
-  /** FASE 5.1 — Provedor de IA usado nesta etapa ('gemini' ou 'openai') */
-  provider_used?: 'gemini' | 'openai';
+  /** FASE 5.1 — Provedor de IA usado nesta etapa */
+  provider_used?: AiProvider;
   /** FASE 5.1 — Se true, o fallback foi acionado nesta etapa */
   fallback_triggered?: boolean;
   /** FASE 5.1 — Motivo do fallback (ex: 'ai_quota_exceeded') */
@@ -247,7 +249,7 @@ export function markStageProviderInfo(
   stages: ProcessingStages | null | undefined,
   stageId: string,
   providerInfo: {
-    provider_used: 'gemini' | 'openai';
+    provider_used: AiProvider;
     fallback_triggered: boolean;
     fallback_reason: string | null;
   }

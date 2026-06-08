@@ -47,12 +47,22 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error('Erro no admin upsert:', error);
-      return NextResponse.json({ error: 'Erro ao salvar os dados no banco.' }, { status: 500 });
+      return NextResponse.json({ 
+        error: error.message || 'Erro ao salvar os dados no banco.',
+        details: error.details || '',
+        code: error.code || '',
+        hint: error.hint || ''
+      }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Erro na API leads:', err);
-    return NextResponse.json({ error: 'Erro interno.' }, { status: 500 });
+    return NextResponse.json({ 
+      error: err.message || 'Erro interno.',
+      details: err.stack || '',
+      code: '',
+      hint: ''
+    }, { status: 500 });
   }
 }

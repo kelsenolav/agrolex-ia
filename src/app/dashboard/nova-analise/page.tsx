@@ -271,9 +271,18 @@ export default function NovaAnalisePage() {
       });
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        console.error('Erro ao salvar lead:', errData);
-        showToast(errData.error || 'Erro ao salvar seus dados. Tente novamente.', 'error');
+        let errData: any = {};
+        try {
+          errData = await res.json();
+        } catch (e) {
+          errData = { error: 'O servidor não retornou um JSON válido.' };
+        }
+        console.error('Erro ao salvar lead:', JSON.stringify({
+          status: res.status,
+          statusText: res.statusText,
+          errData
+        }, null, 2));
+        showToast('Não foi possível salvar seus dados agora. Tente novamente ou revise os campos.', 'error');
         setLeadSaving(false);
         return;
       }

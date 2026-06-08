@@ -51,6 +51,11 @@ const PLAN_FEATURES: Record<PlanType, string[]> = {
     'Treinamento onboarding',
     'Relatórios personalizados',
   ],
+  internal_test: [
+    'Até 999.999 páginas',
+    'Acesso irrestrito',
+    'Todos os recursos liberados',
+  ],
 };
 
 const PLAN_HIGHLIGHTS: Record<PlanType, string[]> = {
@@ -59,6 +64,7 @@ const PLAN_HIGHLIGHTS: Record<PlanType, string[]> = {
   profissional: ['1.000 páginas/mês', 'Todos os módulos', 'Cadeia dominial'],
   business: ['5.000 páginas/mês', 'Geoespacial', 'Suporte VIP'],
   enterprise: ['Customizado', 'API', 'Suporte 24/7'],
+  internal_test: ['Teste interno', 'Sem limites'],
 };
 
 export default function PlanosPage() {

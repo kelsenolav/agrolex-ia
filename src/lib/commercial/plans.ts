@@ -4,7 +4,7 @@
  * Definição centralizada de planos, limites e permissões.
  */
 
-export type PlanType = 'trial' | 'starter' | 'profissional' | 'business' | 'enterprise';
+export type PlanType = 'trial' | 'starter' | 'profissional' | 'business' | 'enterprise' | 'internal_test';
 
 export interface PlanPermissions {
   maxAnalyses: number;
@@ -88,6 +88,19 @@ export const PLANS: Record<PlanType, Plan> = {
       canUsePremiumModules: true,
     },
   },
+  internal_test: {
+    id: 'internal_test',
+    label: 'Plano Interno de Testes',
+    description: 'Acesso interno liberado',
+    price: null,
+    permissions: {
+      maxAnalyses: 999999,
+      canExportPdf: true,
+      canUseComplementaryAnalysis: true,
+      canAccessFullReport: true,
+      canUsePremiumModules: true,
+    },
+  },
 };
 
 export interface ExtraPack {
@@ -125,7 +138,7 @@ export function getPlanPermissions(planType: string | undefined | null): PlanPer
  * Lista de planos disponíveis (público).
  */
 export function listPlans(): Plan[] {
-  return Object.values(PLANS);
+  return Object.values(PLANS).filter(p => p.id !== 'internal_test');
 }
 
 /**
@@ -146,5 +159,6 @@ export function toDisplayPlanName(planKey: string): string {
   if (planKey === 'starter') return 'Start';
   if (planKey === 'trial') return 'Trial Gratuito';
   if (planKey === 'enterprise') return 'Enterprise';
+  if (planKey === 'internal_test') return 'Plano Interno de Testes';
   return planKey;
 }

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-export type PlanType = 'trial' | 'starter' | 'pro' | 'premium' | 'enterprise';
+export type PlanType = 'trial' | 'starter' | 'pro' | 'premium' | 'enterprise' | 'internal_test';
 export type SubscriptionStatus = 'active' | 'expired' | 'cancelled';
 
 export interface Subscription {
@@ -22,6 +22,7 @@ export const PLAN_CREDITS: Record<PlanType, number> = {
   pro: 1000,
   premium: 5000,
   enterprise: 5000,
+  internal_test: 999999,
 };
 
 export const PLAN_PRICES: Record<PlanType, number> = {
@@ -30,6 +31,7 @@ export const PLAN_PRICES: Record<PlanType, number> = {
   pro: 399.9,
   premium: 999.9,
   enterprise: 9999.9,
+  internal_test: 0,
 };
 
 function createAdminClient() {
@@ -49,6 +51,26 @@ function createAdminClient() {
  */
 export async function getUserSubscription(userId: string): Promise<Subscription> {
   const supabaseAdmin = createAdminClient();
+
+  const internalTestEmails = (process.env.INTERNAL_TEST_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
+  if (internalTestEmails.length > 0 && internalTestEmails[0] !== '') {
+    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId);
+    const userEmail = userData?.user?.email?.toLowerCase();
+    if (userEmail && internalTestEmails.includes(userEmail)) {
+      const nowStr = new Date().toISOString();
+      return {
+        id: 'internal-test-id',
+        user_id: userId,
+        plan_type: 'internal_test' as PlanType,
+        status: 'active',
+        credits_available: 999999,
+        started_at: nowStr,
+        expires_at: null,
+        created_at: nowStr,
+        updated_at: nowStr,
+      };
+    }
+  }
 
   const { data, error } = await supabaseAdmin
     .from('subscriptions')

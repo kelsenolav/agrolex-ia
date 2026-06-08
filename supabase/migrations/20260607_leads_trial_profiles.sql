@@ -44,13 +44,6 @@ CREATE INDEX IF NOT EXISTS idx_leads_converteu ON public.leads(converteu);
 CREATE INDEX IF NOT EXISTS idx_leads_plano ON public.leads(plano);
 
 -- ============================================================
--- BLOCO 2.5: Índice para trial_analysis_id em profiles
--- ============================================================
-
-CREATE INDEX IF NOT EXISTS idx_profiles_trial_analysis_id
-ON public.profiles(trial_analysis_id);
-
--- ============================================================
 -- BLOCO 3: Campos de assinatura/trial em profiles
 -- ============================================================
 -- NOTA: credits NÃO é adicionado aqui porque já existe na tabela.
@@ -64,6 +57,13 @@ ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ DEFAULT now(),
     ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT now() + interval '7 days',
     ADD COLUMN IF NOT EXISTS lead_id UUID NULL REFERENCES public.leads(lead_id) ON DELETE SET NULL;
+
+-- ============================================================
+-- BLOCO 2.5: Índice para trial_analysis_id em profiles
+-- ============================================================
+
+CREATE INDEX IF NOT EXISTS idx_profiles_trial_analysis_id
+ON public.profiles(trial_analysis_id);
 
 -- ============================================================
 -- BLOCO 3.5: Garantir NOT NULL e valores padrão em subscription_status e plan_type
