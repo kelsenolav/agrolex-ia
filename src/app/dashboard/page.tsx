@@ -136,11 +136,19 @@ export default function DashboardPage() {
       // Buscar Assinatura & Créditos Reais
       let currentSub;
       try {
-        const { getUserSubscription } = await import('@/lib/subscriptions');
-        currentSub = await getUserSubscription(session.user.id);
-        setCredits(currentSub.credits_available);
-        if (currentSub && currentSub.plan_type) {
-          setPlanType(currentSub.plan_type);
+        const res = await fetch('/api/subscription', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+        if (res.ok) {
+          currentSub = await res.json();
+          setCredits(currentSub.credits_available);
+          if (currentSub && currentSub.plan_type) {
+            setPlanType(currentSub.plan_type);
+          }
+        } else {
+          console.error('Erro ao buscar assinatura:', await res.text());
         }
       } catch (err) {
         console.error('Erro ao buscar assinatura:', err);

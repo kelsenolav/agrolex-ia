@@ -252,10 +252,14 @@ export default function NovaAnalisePage() {
         return;
       }
 
-      // Upsert no lead
-      const { error: leadError } = await supabase
-        .from('leads')
-        .upsert({
+      // Upsert no lead via API (bypassing RLS do client)
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
           user_id: session.user.id,
           nome: payload.nome,
           email: payload.email,
@@ -263,11 +267,13 @@ export default function NovaAnalisePage() {
           cidade: payload.cidade || null,
           estado: payload.estado || null,
           origem: 'nova-analise',
-        }, { onConflict: 'user_id' });
+        })
+      });
 
-      if (leadError) {
-        console.error('Erro ao salvar lead:', leadError);
-        showToast('Erro ao salvar seus dados. Tente novamente.', 'error');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error('Erro ao salvar lead:', errData);
+        showToast(errData.error || 'Erro ao salvar seus dados. Tente novamente.', 'error');
         setLeadSaving(false);
         return;
       }
