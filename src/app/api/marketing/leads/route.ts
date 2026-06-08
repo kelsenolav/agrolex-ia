@@ -234,6 +234,84 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    // ─── ACTION: update_interest_status ──────────────────────────────────────
+    if (action === 'update_interest_status') {
+      const { email, status } = body;
+
+      if (!email || typeof email !== 'string') {
+        return NextResponse.json({ error: 'E-mail obrigatório.' }, { status: 400 });
+      }
+
+      const statusValidos = ['Novo', 'Contato Realizado', 'Qualificado', 'Aguardando Mercado Pago', 'Convertido'];
+      if (!status || !statusValidos.includes(status)) {
+        return NextResponse.json({ error: 'Status de interesse inválido.' }, { status: 400 });
+      }
+
+      const now = new Date().toISOString();
+
+      const { data: existingLead } = await supabaseAdmin
+        .from('marketing_leads')
+        .select('id, metadata')
+        .eq('email', email.trim().toLowerCase())
+        .maybeSingle();
+
+      if (!existingLead) {
+        return NextResponse.json({ error: 'Lead não encontrado.' }, { status: 404 });
+      }
+
+      const baseMetadata = (existingLead.metadata as Record<string, unknown> | null) ?? {};
+      const currentEvents = Array.isArray(baseMetadata.commercial_events) ? baseMetadata.commercial_events : [];
+      const newEvent = {
+        type: 'lead_status_changed',
+        timestamp: now,
+        meta: { status_anterior: (baseMetadata.interest_info as any)?.interest_status || 'Novo', novo_status: status },
+      };
+
+      const updatedEvents = [...currentEvents, newEvent];
+
+      // Atualiza interest_status estruturado (caso a coluna exista) + metadata JSONB
+      const payload: Record<string, unknown> = {
+        ultima_atividade: now,
+        interest_status: status,
+        metadata: {
+          ...baseMetadata,
+          commercial_events: updatedEvents,
+          interest_info: {
+            ...((baseMetadata.interest_info as Record<string, unknown>) ?? {}),
+            interest_status: status,
+          }
+        }
+      };
+
+      // Se status for Convertido, atualiza também a flag converteu de marketing_leads
+      if (status === 'Convertido') {
+        payload.converteu = true;
+        payload.converted_at = now;
+      }
+
+      let { error } = await supabaseAdmin
+        .from('marketing_leads')
+        .update(payload)
+        .eq('email', email.trim().toLowerCase());
+
+      if (error) {
+        console.warn('[marketing/leads] Erro ao salvar status estruturado, tentando fallback...', error.message);
+        // Remove interest_status do payload principal para tentar fallback sem essa coluna
+        delete payload.interest_status;
+        const { error: fallbackError } = await supabaseAdmin
+          .from('marketing_leads')
+          .update(payload)
+          .eq('email', email.trim().toLowerCase());
+
+        if (fallbackError) {
+          console.error('[marketing/leads] status update fallback error:', fallbackError.message);
+          return NextResponse.json({ error: 'Erro ao atualizar status (fallback).' }, { status: 500 });
+        }
+      }
+
+      return NextResponse.json({ ok: true });
+    }
+
     // ─── ACTION: get_trial_status ───────────────────────────────────────────
     if (action === 'get_trial_status') {
       const { userId, email } = body;
