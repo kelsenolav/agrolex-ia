@@ -103,6 +103,11 @@ export async function POST(req: Request) {
 
     // Se o pagamento foi aprovado
     if (status === 'approved') {
+      if (order.status === 'approved') {
+        console.log(`[webhook] Ordem ${order.id} já está aprovada. Evento já processado.`);
+        return NextResponse.json({ success: true, message: 'Evento já processado' });
+      }
+
       // Atualizar ordem
       await supabaseAdmin
         .from('orders')

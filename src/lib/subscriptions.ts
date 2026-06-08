@@ -163,29 +163,16 @@ export async function hasAvailableCredits(userId: string): Promise<boolean> {
   return sub.credits_available > 0;
 }
 
-/**
- * Consome 1 crédito da assinatura do usuário.
- */
 export async function consumeCredits(userId: string): Promise<boolean> {
   const supabaseAdmin = createAdminClient();
-  const sub = await getUserSubscription(userId);
-  
-  if (sub.status !== 'active' || sub.credits_available <= 0) {
-    return false;
-  }
-
-  const { error } = await supabaseAdmin
-    .from('subscriptions')
-    .update({
-      credits_available: sub.credits_available - 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', userId);
+  const { data, error } = await supabaseAdmin.rpc('consume_subscription_credit', {
+    user_id_param: userId,
+  });
 
   if (error) {
-    console.error('[subscriptions] Erro ao consumir crédito:', error.message);
+    console.error('[subscriptions] Erro ao consumir crédito via RPC:', error.message);
     return false;
   }
 
-  return true;
+  return !!data;
 }

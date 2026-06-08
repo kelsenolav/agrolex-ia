@@ -5,6 +5,25 @@
 ---
 
 - **Data**: 08/06/2026
+- **Bloco**: HOTFIX P0.5.1 — ATOMICIDADE DE CRÉDITOS + IDEMPOTÊNCIA DO WEBHOOK
+- **Arquivos criados**:
+  - `supabase/migrations/20260608_consume_subscription_credit.sql` *(novo)* — Nova migration contendo a função RPC `consume_subscription_credit`.
+  - `src/app/api/webhook/mercadopago/__tests__/route.test.ts` *(novo)* — Testes unitários para validar a idempotência do webhook.
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/lib/subscriptions.ts` — Refatoração de `consumeCredits` para invocar a RPC atômica `consume_subscription_credit` no banco.
+  - `src/app/api/webhook/mercadopago/route.ts` — Implementação de verificação de status da ordem para retornar imediatamente se já foi processado/aprovado.
+  - `src/lib/__tests__/subscriptions.test.ts` — Atualização dos testes unitários simulando chamadas da RPC e verificando proteção contra consumo concorrente simultâneo.
+- **Alterações implementadas**:
+  1. Correção de race condition no decremento de créditos: a aplicação não realiza mais o cálculo localmente; agora chama a RPC que faz um UPDATE atômico com verificação de saldo na cláusula WHERE.
+  2. Correção de falta de idempotência no webhook: agora, se o webhook receber um status `approved` para uma ordem que já consta como aprovada, ele retorna sucesso (`HTTP 200`) e aborta a re-execução para não repor/resetar créditos.
+  3. Adicionados testes unitários robustos simulando concorrência (dois requests paralelos, onde somente um consome o último crédito restante) e validando o comportamento idempotente do webhook.
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), `npm test` (477/477 — ✓), `npm run build` (✓)
+- **Deploy em produção**: **NÃO EFETUADO**
+
+---
+
+- **Data**: 08/06/2026
 - **Bloco**: SPRINT COMERCIAL P0.5 — MERCADO PAGO + ATIVAÇÃO DE PLANOS
 - **Arquivos criados**:
   - `src/lib/subscriptions.ts` *(novo)* — Biblioteca de gerenciamento de assinaturas, controle de créditos e planos.

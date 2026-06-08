@@ -18,6 +18,7 @@ jest.mock('@supabase/supabase-js', () => {
     insert: jest.fn().mockReturnThis(),
     single: jest.fn(),
     maybeSingle: jest.fn(),
+    rpc: jest.fn(),
   };
   return {
     createClient: jest.fn(() => mSupabase),
@@ -111,17 +112,28 @@ describe('Subscriptions module tests', () => {
     expect(hasCredits).toBe(true);
   });
 
-  it('consome crédito de uma assinatura ativa', async () => {
-    mockSupabase.maybeSingle.mockResolvedValueOnce({
-      data: { plan_type: 'starter', status: 'active', credits_available: 5 },
-      error: null,
-    });
-    mockSupabase.update.mockReturnThis();
+  it('consome crédito de uma assinatura ativa via RPC', async () => {
+    mockSupabase.rpc.mockResolvedValueOnce({ data: true, error: null });
 
     const ok = await consumeCredits(mockUserId);
     expect(ok).toBe(true);
-    expect(mockSupabase.update).toHaveBeenCalledWith(
-      expect.objectContaining({ credits_available: 4 })
-    );
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('consume_subscription_credit', {
+      user_id_param: mockUserId,
+    });
+  });
+
+  it('evita consumo concorrente simultâneo se saldo = 1 (apenas um sucesso)', async () => {
+    // Primeira chamada retorna true (sucesso), segunda retorna false (sem saldo restante)
+    mockSupabase.rpc
+      .mockResolvedValueOnce({ data: true, error: null })
+      .mockResolvedValueOnce({ data: false, error: null });
+
+    const [first, second] = await Promise.all([
+      consumeCredits(mockUserId),
+      consumeCredits(mockUserId)
+    ]);
+
+    expect(first).toBe(true);
+    expect(second).toBe(false);
   });
 });
