@@ -5,18 +5,33 @@
 ---
 
 - **Data**: 07/06/2026
-- **Bloco**: SPRINT COMERCIAL P0.4 — Núcleo de Captura de Interesse (Fase 1-4, 6-7, 9)
+- **Bloco**: SPRINT COMERCIAL P0.4 + P0.4B — Captura de Interesse e Dashboard Comercial Admin
 - **Arquivos criados**:
-  - `src/components/commercial/InterestModal.tsx` *(novo)* — Componente React de captura de interesse com telemetria e fila de prioridade comercial.
-  - `supabase/migrations/20260607_marketing_leads_interest.sql` *(novo)* — SQL sugerido com colunas de interesse comercial em `marketing_leads`.
+  - `src/components/commercial/InterestModal.tsx` *(novo)* — Componente React de captura de interesse.
+  - `supabase/migrations/20260607_marketing_leads_interest.sql` *(novo)* — SQL sugerido com colunas de interesse comercial.
+  - `src/app/dashboard/leads/page.tsx` *(novo)* — Dashboard comercial prioritário completo de leads com KPIs executivos.
 - **Arquivos alterados**:
   - `AGENTS.md`
-  - `src/lib/commercial/scoring.ts` — Adicionados novos tipos de eventos e lógica de score de interesse.
-  - `src/lib/commercial/__tests__/scoring.test.ts` — Novos testes unitários para a pontuação de interesse.
-  - `src/app/api/marketing/leads/route.ts` — Nova action `register_interest` com suporte a fallback em `metadata` JSONB.
-  - `src/app/dashboard/planos/page.tsx` — Integração de escolha de planos starter/profissional/empresarial para acionar o formulário de interesse.
-  - `src/app/dashboard/resultado/page.tsx` — Interceptação dos CTAs da prévia trial para capturar dados de interesse no modal.
-- **Rotas afetadas**: `/dashboard/planos`, `/dashboard/resultado`, `/api/marketing/leads`
+  - `src/lib/commercial/scoring.ts` — Lógica de score de interesse comercial.
+  - `src/lib/commercial/__tests__/scoring.test.ts` — Testes de score de interesse comercial.
+  - `src/app/api/marketing/leads/route.ts` — Actions `register_interest` e `update_interest_status` com fallback resiliente em metadata JSONB.
+  - `src/app/dashboard/planos/page.tsx` — Integração de planos starter/profissional/empresarial para acionar o modal de interesse.
+  - `src/app/dashboard/resultado/page.tsx` — Interceptação dos CTAs da prévia trial para abrir o modal de interesse.
+- **Rotas afetadas**: `/dashboard/planos`, `/dashboard/resultado`, `/dashboard/leads`, `/api/marketing/leads`
+- **Alterações implementadas**:
+  1. Captura e persistência resiliente de interesse comercial em `marketing_leads` (plano, volume, perfil e status).
+  2. Painel comercial CRM em `/dashboard/leads` ordenado por Score Comercial (leads mais quentes primeiro).
+  3. 5 KPIs executivos no topo: Total Interessados, Lead Score Médio, Plano Mais Desejado, Potencial Mensal, Perfil Frequente.
+  4. Filtros avançados: Plano, Perfil, Status, Score Mínimo.
+  5. Ações rápidas de alteração de status (`Novo`, `Contato Realizado`, `Qualificado`, `Aguardando Mercado Pago`, `Convertido`).
+  6. Widget "Oportunidades Quentes" listando Top 10 leads interessados por pontuação de temperatura.
+  7. Telemetria avançada de ações comerciais: `commercial_dashboard_view`, `lead_status_changed`, `lead_priority_view`.
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), `npm test` (468/468 — ✓), `npm run build` (✓)
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` (autorização explícita do usuário em 07/06/2026)
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard → HTTP 200 (redirect para login) ✓
+- **Commits inclusos**: `ea9ffce` (P0.4) e `7c80ed9` (P0.4B)
+
+---
 - **Alterações implementadas**:
   1. Criação do modal de interesse comercial coletando Nome, Email, WhatsApp, Perfil, Plano e Volume mensal estimado.
   2. Implementação de tracking de eventos específicos: `interest_modal_open`, `interest_form_started`, `interest_form_completed`, `interest_plan_selected`, `interest_volume_selected`.
