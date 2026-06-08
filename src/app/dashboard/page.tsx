@@ -124,36 +124,32 @@ export default function DashboardPage() {
       const name = session.user.user_metadata?.full_name;
       if (name) setUserName(name.split(' ')[0]);
 
-      // Buscar Créditos
-      const { data: profile } = await supabase.from('profiles').select('credits').eq('id', session.user.id).single();
-      if (profile) setCredits(profile.credits || 0);
-
-      // SPRINT COMERCIAL P0.2 — Buscar status do trial no marketing_leads e registrar telemetria
+      // Buscar Assinatura & Créditos Reais
+      let currentSub;
       try {
-        const trialRes = await fetch('/api/marketing/leads', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'get_trial_status', userId: session.user.id, email: session.user.email })
-        });
-        if (trialRes.ok) {
-          const trialStatusData = await trialRes.json();
-          if (trialStatusData.used === true) {
-            setTrialUsed(true);
-            await fetch('/api/marketing/leads', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'track_event',
-                userId: session.user.id,
-                email: session.user.email,
-                eventType: 'conversion_banner_view',
-                meta: { origem: 'banner_dashboard_esgotado' }
-              })
-            });
-          }
-        }
+        const { getUserSubscription } = await import('@/lib/subscriptions');
+        currentSub = await getUserSubscription(session.user.id);
+        setCredits(currentSub.credits_available);
       } catch (err) {
-        console.error('Erro ao verificar status do trial:', err);
+        console.error('Erro ao buscar assinatura:', err);
+      }
+
+      // SPREAD TRIAL → PLANO PAGO: Bloquear nova análise se o teste gratuito/créditos acabaram
+      if (currentSub) {
+        if (currentSub.plan_type === 'trial') {
+          // Se o plano for trial e ele já usou (ou se tem 0 créditos), consideramos o trial terminado
+          const { data: analysesCount } = await supabase
+            .from('analyses')
+            .select('id', { count: 'exact' })
+            .eq('user_id', session.user.id);
+          const hasUsedTrial = (analysesCount?.length || 0) >= 1;
+          if (hasUsedTrial || currentSub.credits_available === 0) {
+            setTrialUsed(true);
+          }
+        } else if (currentSub.credits_available === 0) {
+          // Se for outro plano com 0 créditos, exibe aviso ou bloqueia
+          setTrialUsed(true); // Reutiliza o estado de bloqueio/aviso de upgrade
+        }
       }
 
       // Buscar Análises reais do Banco de Dados
@@ -542,33 +538,29 @@ export default function DashboardPage() {
         {trialUsed && (
           <div className="mb-8 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-amber-500 rounded-r-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h3 className="font-extrabold text-amber-900 text-lg">Sua análise gratuita foi concluída.</h3>
-              <p className="text-amber-800 text-sm font-medium">Você já utilizou seu acesso experimental. Continue utilizando o AgroLex para avaliar novos imóveis e acessar relatórios completos.</p>
+              <h3 className="font-extrabold text-amber-900 text-lg">Seu teste gratuito terminou.</h3>
+              <p className="text-amber-800 text-sm font-medium">Você já utilizou seu acesso experimental ou créditos de análise. Escolha um dos nossos planos para continuar mitigar riscos.</p>
             </div>
-            <Link
-              href="/dashboard/planos"
-              onClick={async () => {
-                try {
-                  const { data: { session } } = await supabase.auth.getSession();
-                  if (session) {
-                    await fetch('/api/marketing/leads', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        action: 'track_event',
-                        userId: session.user.id,
-                        email: session.user.email,
-                        eventType: 'conversion_banner_click',
-                        meta: { origem: 'banner_dashboard_esgotado' }
-                      })
-                    });
-                  }
-                } catch (e) {}
-              }}
-              className="px-6 py-2.5 bg-brand-gold text-brand-green font-black rounded-lg hover:brightness-110 transition-all text-sm shadow-md flex-shrink-0"
-            >
-              Continuar Utilizando o AgroLex
-            </Link>
+            <div className="flex gap-2 flex-wrap">
+              <Link
+                href="/dashboard/planos"
+                className="px-4 py-2 bg-brand-green text-white font-bold rounded-lg hover:brightness-110 transition-all text-xs shadow-md"
+              >
+                Assinar Starter
+              </Link>
+              <Link
+                href="/dashboard/planos"
+                className="px-4 py-2 bg-brand-gold text-brand-green font-bold rounded-lg hover:brightness-110 transition-all text-xs shadow-md"
+              >
+                Assinar Pro
+              </Link>
+              <Link
+                href="/dashboard/planos"
+                className="px-4 py-2 bg-gray-900 text-white font-bold rounded-lg hover:brightness-110 transition-all text-xs shadow-md"
+              >
+                Assinar Premium
+              </Link>
+            </div>
           </div>
         )}
         {/* Header */}

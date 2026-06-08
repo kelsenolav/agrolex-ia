@@ -324,14 +324,51 @@ export default function PlanosPage() {
                           console.error(e);
                         }
 
-                        if (plan.id === 'trial') {
+                        // Para os planos starter, pro, premium, empresarial, inicia o checkout Mercado Pago
+                        const iniciarCheckout = async (pId: string) => {
+                          try {
+                            const { data: { session } } = await supabase.auth.getSession();
+                            if (!session) {
+                              router.push('/login');
+                              return;
+                            }
+                            
+                            const res = await fetch('/api/checkout', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${session.access_token}`
+                              },
+                              body: JSON.stringify({ planType: pId })
+                            });
+
+                            if (!res.ok) {
+                              const err = await res.json();
+                              alert('Erro ao iniciar assinatura: ' + (err.error || 'Erro interno'));
+                              return;
+                            }
+
+                            const data = await res.json();
+                            if (data.checkoutUrl) {
+                              window.location.href = data.checkoutUrl;
+                            } else {
+                              alert('Assinatura ativada com sucesso!');
+                              window.location.href = '/dashboard';
+                            }
+                          } catch (e: any) {
+                            alert('Falha na requisição de pagamento');
+                          }
+                        };
+                        
+                        let planKey: string = plan.id;
+                        if (planKey === 'profissional') planKey = 'pro';
+                        if (planKey === 'empresarial') planKey = 'enterprise';
+                        if (planKey === 'trial') {
                           router.push('/dashboard/nova-analise');
                           return;
                         }
 
-                        // Para os planos starter (Usuário Ocasional), profissional e empresarial, abre o Modal de Interesse
-                        setSelectedPlanForModal(displayLabel);
-                        setIsModalOpen(true);
+                        iniciarCheckout(planKey);
                       }}
                       className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${
                         isPremium
@@ -356,16 +393,6 @@ export default function PlanosPage() {
           <p className="mt-1">Dúvidas? Entre em contato pelo WhatsApp: (63) 9 9999-9999</p>
         </div>
       </main>
-
-      {/* Modal de Interesse Comercial */}
-      <InterestModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        defaultPlan={selectedPlanForModal}
-        userEmail={userEmail}
-        userName={userName}
-        userId={userId}
-      />
     </div>
   );
 }

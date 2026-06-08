@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getPayment, isSandbox } from '@/lib/payments/mercadopago';
+import { getPayment, verifyWebhookSignature } from '@/lib/payments/mercadopago';
+import { activateSubscription, type PlanType } from '@/lib/subscriptions';
 
 export async function POST(req: Request) {
   try {
@@ -15,12 +16,16 @@ export async function POST(req: Request) {
       auth: { persistSession: false }
     });
 
-    // Ler o corpo da requisição
-    const body = await req.json().catch(() => ({}));
+    // Validar origem / assinatura do webhook
+    const rawBody = await req.clone().text();
+    const headers = req.headers;
+    if (!verifyWebhookSignature(headers, rawBody)) {
+      console.warn('Webhook MP: assinatura inválida detectada.');
+      return NextResponse.json({ error: 'Assinatura inválida' }, { status: 403 });
+    }
 
-    // Mercado Pago pode enviar notificações de dois tipos:
-    // 1. Tipo 'payment' com data.id (notificação de pagamento)
-    // 2. Tipo 'merchant_order' (notificação de ordem)
+    // Ler o corpo da requisição
+    const body = JSON.parse(rawBody || '{}');
 
     let paymentId: string | null = null;
 
@@ -44,8 +49,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: 'No payment ID found' });
     }
 
-    console.log(`Webhook MP: processing payment ${paymentId} (sandbox: ${isSandbox()})`);
-
     // Consultar status real do pagamento na API do Mercado Pago
     let paymentData;
     try {
@@ -61,31 +64,34 @@ export async function POST(req: Request) {
       status_detail,
       payment_type_id,
       installments,
-      transaction_amount,
-      external_reference: analysisId,
+      external_reference: orderId, // Aqui o external_reference agora é o orderId!
       date_approved,
-      date_created,
     } = paymentData;
 
-    console.log(`Pagamento ${providerPaymentId}: status=${status}, detail=${status_detail}, analysis=${analysisId}`);
+    console.log(`Pagamento ${providerPaymentId}: status=${status}, detail=${status_detail}, order=${orderId}`);
+
+    if (!orderId) {
+      console.warn('Webhook MP: pagamento sem orderId (external_reference).');
+      return NextResponse.json({ success: true, message: 'No orderId' });
+    }
 
     // Buscar a ordem associada
-    const { data: order } = await supabaseAdmin
+    const { data: order, error: fetchOrderError } = await supabaseAdmin
       .from('orders')
-      .select('id, user_id')
-      .eq('preference_id', analysisId ? undefined : undefined)
-      .or(analysisId ? `analysis_id.eq.${analysisId}` : `preference_id.eq.${providerPaymentId}`)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .select('*')
+      .eq('id', orderId)
       .maybeSingle();
 
-    const orderId = order?.id;
+    if (fetchOrderError || !order) {
+      console.warn(`Ordem ${orderId} não encontrada.`);
+      return NextResponse.json({ error: 'Ordem não encontrada' }, { status: 404 });
+    }
 
     // Registrar payment no banco
     await supabaseAdmin
       .from('payments')
       .insert({
-        order_id: orderId || undefined,
+        order_id: order.id,
         provider: 'mercadopago',
         provider_payment_id: String(providerPaymentId),
         status,
@@ -96,91 +102,40 @@ export async function POST(req: Request) {
       });
 
     // Se o pagamento foi aprovado
-    if (status === 'approved' && analysisId) {
+    if (status === 'approved') {
       // Atualizar ordem
-      if (orderId) {
-        await supabaseAdmin
-          .from('orders')
-          .update({
-            status: 'approved',
-            payment_id: String(providerPaymentId),
-            payment_method: payment_type_id,
-            paid_at: date_approved ? new Date(date_approved).toISOString() : new Date().toISOString(),
-          })
-          .eq('id', orderId);
-      }
+      await supabaseAdmin
+        .from('orders')
+        .update({
+          status: 'approved',
+          payment_id: String(providerPaymentId),
+          payment_method: payment_type_id,
+          paid_at: date_approved ? new Date(date_approved).toISOString() : new Date().toISOString(),
+        })
+        .eq('id', order.id);
 
-      // Atualizar análise: payment_pending → ready_for_processing
-      const { data: analysis } = await supabaseAdmin
-        .from('analyses')
-        .select('id, status, findings')
-        .eq('id', analysisId)
-        .single();
-
-      if (analysis) {
-        const currentStatus = (analysis.status || '').toLowerCase().trim();
-        if (currentStatus === 'payment_pending' || currentStatus === 'pending') {
-          const findings = analysis.findings || {};
-          const updatedFindings = {
-            ...findings,
-            payment_mode: 'mercadopago',
-            payment_status: 'approved',
-            payment_id: String(providerPaymentId),
-            payment_approved_at: date_approved || new Date().toISOString(),
-            current_step: 'Pagamento aprovado. Aguardando início da análise.',
-            ready_for_processing_at: new Date().toISOString(),
-          };
-
-          await supabaseAdmin
-            .from('analyses')
-            .update({
-              status: 'ready_for_processing',
-              findings: updatedFindings,
-            })
-            .eq('id', analysisId);
-
-          console.log(`✅ Análise ${analysisId} liberada para processamento`);
-        }
+      // Determinar o plano comprado através do campo payment_method salvo na ordem ('plan_starter', etc)
+      const paymentMethod = order.payment_method || '';
+      if (paymentMethod.startsWith('plan_')) {
+        const planType = paymentMethod.replace('plan_', '') as PlanType;
+        
+        // Ativar a assinatura do usuário!
+        await activateSubscription(order.user_id, planType);
+        console.log(`✅ Assinatura do usuário ${order.user_id} para o plano ${planType} ativada via Webhook`);
       }
     }
 
     // Se o pagamento foi rejeitado ou cancelado
-    if ((status === 'rejected' || status === 'cancelled' || status === 'refunded') && analysisId) {
-      if (orderId) {
-        await supabaseAdmin
-          .from('orders')
-          .update({
-            status,
-            payment_id: String(providerPaymentId),
-          })
-          .eq('id', orderId);
-      }
-
-      // Atualizar análise com status de pagamento rejeitado
-      const { data: analysis } = await supabaseAdmin
-        .from('analyses')
-        .select('id, findings')
-        .eq('id', analysisId)
-        .single();
-
-      if (analysis) {
-        const findings = analysis.findings || {};
-        const updatedFindings = {
-          ...findings,
-          payment_status: status,
-          payment_status_detail: status_detail,
-          current_step: `Pagamento ${status}. Reenvie o pagamento para continuar.`,
-        };
-
-        await supabaseAdmin
-          .from('analyses')
-          .update({
-            findings: updatedFindings,
-          })
-          .eq('id', analysisId);
-
-        console.log(`⚠️ Pagamento ${providerPaymentId} ${status} para análise ${analysisId}`);
-      }
+    if (status === 'rejected' || status === 'cancelled' || status === 'refunded') {
+      await supabaseAdmin
+        .from('orders')
+        .update({
+          status,
+          payment_id: String(providerPaymentId),
+        })
+        .eq('id', order.id);
+      
+      console.log(`⚠️ Pagamento ${providerPaymentId} ${status} para ordem ${order.id}`);
     }
 
     return NextResponse.json({ success: true, status });

@@ -4,6 +4,30 @@
 
 ---
 
+- **Data**: 08/06/2026
+- **Bloco**: SPRINT COMERCIAL P0.5 — MERCADO PAGO + ATIVAÇÃO DE PLANOS
+- **Arquivos criados**:
+  - `src/lib/subscriptions.ts` *(novo)* — Biblioteca de gerenciamento de assinaturas, controle de créditos e planos.
+  - `src/lib/__tests__/subscriptions.test.ts` *(novo)* — Testes unitários para o gerenciamento de assinaturas.
+  - `supabase/migrations/20260607_subscriptions.sql` *(novo)* — SQL de criação de tabela subscriptions e RLS.
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/app/dashboard/planos/page.tsx` — Correção de tipagem planKey e integração direta com fluxo de checkout Mercado Pago.
+  - `src/app/api/checkout/route.ts` — Nova lógica para geração de preferência de pagamentos de planos (Starter, Pro, Premium, Enterprise) com precificação recalculada estritamente no backend.
+  - `src/app/api/webhook/mercadopago/route.ts` — Webhook de processamento de checkout de planos com ativação de assinatura correspondente e provisionamento de créditos correspondentes ao plano comprado.
+  - `src/app/dashboard/page.tsx` — Exibição de informações sobre assinatura e créditos disponíveis, bloqueando intake de novas análises ou uploads caso créditos estejam zerados ou trial esgotado.
+- **Rotas afetadas**: `/dashboard/planos`, `/api/checkout`, `/api/webhook/mercadopago`, `/dashboard`
+- **Alterações implementadas**:
+  1. Criação do modelo de subscriptions com controle de saldo de créditos por plano (Starter: 10, Pro: 25, Premium: 60, Enterprise: 200).
+  2. Implementação das funções centralizadas `getUserSubscription()`, `consumeCredits()`, `activateSubscription()` e `hasAvailableCredits()`.
+  3. Integração com checkout real Mercado Pago redirecionando diretamente após clique em "Escolher Plano" para os planos pagos.
+  4. Webhook para escutar eventos de status de pagamentos (`approved`, `rejected`, `cancelled`) e gerenciar a liberação automática de assinaturas e seus créditos.
+  5. Travamento e exibição de banners no dashboard e intake de nova análise/uploads quando os créditos do usuário se esgotam ou quando o trial expira.
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), `npm test` (474/474 — ✓), `npm run build` (✓)
+- **Deploy em produção**: **NÃO EFETUADO** (somente ambiente local conforme instruções da sprint)
+
+---
+
 - **Data**: 07/06/2026
 - **Bloco**: SPRINT COMERCIAL P0.4 + P0.4B — Captura de Interesse e Dashboard Comercial Admin
 - **Arquivos criados**:
