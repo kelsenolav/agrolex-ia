@@ -173,8 +173,8 @@ export default function Home() {
         >
           <div className="grid md:grid-cols-5 gap-8 items-center">
             {/* Coluna esquerda — conteúdo principal */}
-            <div className="md:col-span-3 text-center md:text-left">
-              <motion.div variants={itemVariants} className="inline-flex items-center gap-2 px-4 py-2 bg-brand-gold/10 border border-brand-gold/30 rounded-full text-brand-gold text-sm font-bold uppercase tracking-widest mb-6">
+            <div className="md:col-span-3 text-center md:text-left flex flex-col justify-center">
+              <motion.div variants={itemVariants} className="inline-flex w-fit mx-auto md:mx-0 items-center gap-2 px-4 py-2 bg-brand-gold/10 border border-brand-gold/30 rounded-full text-brand-gold text-sm font-bold uppercase tracking-widest mb-6">
                 <ShieldCheck size={16} />
                 Inteligência Fundiária para Decisões Seguras
               </motion.div>
@@ -204,35 +204,37 @@ export default function Home() {
                   <CheckCircle2 size={16} className="text-brand-gold" /> Decisão mais informada
                 </span>
               </motion.div>
-              
-              {/* CTAs */}
-              <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-4">
-                <Link href="/cadastro?next=/dashboard/nova-analise&trial=true" className="group px-8 py-4 bg-gradient-to-r from-brand-gold to-yellow-600 text-brand-dark rounded-full text-lg font-bold hover:scale-105 shadow-[0_0_25px_rgba(212,175,55,0.3)] transition-all flex items-center justify-center gap-3">
-                  Fazer Análise Gratuita
-                  <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-                </Link>
-                <Link href="#como-funciona" className="px-8 py-4 border border-white/20 rounded-full text-lg font-bold hover:bg-white/5 transition-colors flex items-center justify-center gap-2 backdrop-blur-sm">
-                  <Eye size={20} /> Ver Como Funciona
-                </Link>
-              </motion.div>
-
-              {/* Subtexto do CTA gratuito */}
-              <motion.div variants={itemVariants} className="mt-4 flex flex-col gap-1.5">
-                <span className="inline-flex items-center gap-2 text-emerald-400/90 text-sm font-semibold">
-                  <CheckCircle2 size={15} className="flex-shrink-0" />
-                  Teste o AgroLex com 1 matrícula simples. Sem compromisso.
-                </span>
-                <span className="inline-flex items-center gap-2 text-brand-gold/70 text-xs font-bold uppercase tracking-widest">
-                  <Clock size={13} /> Resultado em até 5 minutos · Prévia inteligente gratuita
-                </span>
-              </motion.div>
             </div>
 
-            {/* Coluna direita — Mini Score Flutuante */}
+            {/* Coluna direita — Bloco de Conversão Acoplado ao Quadro Demonstrativo */}
             <motion.div
               variants={itemVariants}
-              className="md:col-span-2"
+              className="md:col-span-2 space-y-6"
             >
+              {/* CTAs e Subtexto reposicionados */}
+              <div className="bg-white/5 backdrop-blur-md border border-brand-gold/30 rounded-2xl p-5 shadow-lg flex flex-col gap-4">
+                <div className="flex flex-col gap-3">
+                  <Link href="/cadastro?next=/dashboard/nova-analise&trial=true" className="group w-full px-6 py-3.5 bg-gradient-to-r from-brand-gold to-yellow-600 text-brand-dark rounded-full text-base font-extrabold hover:scale-[1.02] shadow-[0_0_20px_rgba(212,175,55,0.3)] transition-all flex items-center justify-center gap-2.5">
+                    Fazer Análise Gratuita
+                    <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                  <Link href="#como-funciona" className="w-full px-6 py-3 border border-white/20 rounded-full text-sm font-bold hover:bg-white/5 transition-colors flex items-center justify-center gap-2 backdrop-blur-sm text-gray-300">
+                    <Eye size={16} /> Ver Como Funciona
+                  </Link>
+                </div>
+
+                <div className="flex flex-col gap-1 text-center sm:text-left">
+                  <span className="inline-flex items-center justify-center sm:justify-start gap-1.5 text-emerald-400/90 text-xs font-semibold">
+                    <CheckCircle2 size={13} className="flex-shrink-0" />
+                    Teste o AgroLex com 1 matrícula simples. Sem compromisso.
+                  </span>
+                  <span className="inline-flex items-center justify-center sm:justify-start gap-1.5 text-brand-gold/80 text-[10px] font-black uppercase tracking-widest">
+                    <Clock size={11} /> Resultado em até 5 min · Prévia inteligente grátis
+                  </span>
+                </div>
+              </div>
+
+              {/* Quadro de Análise Demonstrativa */}
               <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-[0_0_40px_rgba(212,175,55,0.15)] hover:shadow-[0_0_50px_rgba(212,175,55,0.25)] transition-all duration-500">
                 {/* Badge */}
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-gold/20 border border-brand-gold/30 rounded-full text-brand-gold text-[10px] font-bold uppercase tracking-widest mb-4">
