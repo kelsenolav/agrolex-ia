@@ -1,39 +1,25 @@
 import { countPdfPagesFromBuffer } from '../pageCounter.server';
-// @ts-expect-error: pdf-parse does not have a default export in its types but works at runtime
-import pdfParse from 'pdf-parse';
-
-jest.mock('pdf-parse', () => jest.fn());
 
 describe('pageCounter.server.ts', () => {
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('retorna a quantidade correta de páginas de um PDF válido', async () => {
-    (pdfParse as jest.Mock).mockResolvedValue({ numpages: 12 });
+  it('retorna a quantidade correta de páginas de um PDF simulado com marcações /Type /Page', async () => {
+    // Simulando um PDF com 3 páginas
+    const mockPdfContent = 'some header\n/Type /Page\n/Type/Page\n/Type   /Page\n/Type /Pages';
+    const mockBuffer = Buffer.from(mockPdfContent, 'binary');
     
-    const mockBuffer = Buffer.from('fake-pdf-content');
     const pages = await countPdfPagesFromBuffer(mockBuffer);
-    
-    expect(pages).toBe(12);
-    expect(pdfParse).toHaveBeenCalledWith(mockBuffer, expect.objectContaining({
-      pagerender: expect.any(Function)
-    }));
+    expect(pages).toBe(3);
   });
 
-  it('retorna 1 (fallback) se o PDF for inválido ou não tiver numpages', async () => {
-    (pdfParse as jest.Mock).mockResolvedValue({ numpages: null });
-    
-    const mockBuffer = Buffer.from('invalid-content');
+  it('retorna 1 (fallback) se não houver marcações /Type /Page', async () => {
+    const mockBuffer = Buffer.from('PDF sem paginas explicitas', 'binary');
     const pages = await countPdfPagesFromBuffer(mockBuffer);
     expect(pages).toBe(1);
   });
 
-  it('retorna 1 (fallback) se pdf-parse falhar internamente', async () => {
-    (pdfParse as jest.Mock).mockRejectedValue(new Error('PDF Parse error'));
-    
-    const mockBuffer = Buffer.from('invalid-content');
-    const pages = await countPdfPagesFromBuffer(mockBuffer);
+  it('retorna 1 (fallback) em caso de erro', async () => {
+    // @ts-expect-error: passamos null para forçar um erro na leitura do buffer
+    const pages = await countPdfPagesFromBuffer(null);
     expect(pages).toBe(1);
   });
 });
+

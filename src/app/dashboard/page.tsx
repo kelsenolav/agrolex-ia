@@ -366,7 +366,7 @@ export default function DashboardPage() {
         body: JSON.stringify({ analysisId, propertyId, forceRetry: retryOptions?.forceRetry === true })
       });
 
-      if (res.status === 402) {
+      if (res.status === 403) {
         delete chainCountRef.current[analysisId];
         showToast("Saldo insuficiente. Redirecionando para planos...", 'error');
         setTimeout(() => router.push('/dashboard/planos'), 1500);
@@ -558,8 +558,8 @@ export default function DashboardPage() {
         {trialUsed && (
           <div className="mb-8 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-amber-500 rounded-r-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h3 className="font-extrabold text-amber-900 text-lg">Seu teste gratuito terminou.</h3>
-              <p className="text-amber-800 text-sm font-medium">Você já utilizou seu acesso experimental ou limite de páginas. Escolha um dos nossos planos para continuar a mitigar riscos.</p>
+              <h3 className="font-extrabold text-amber-900 text-lg">Saldo Excedido / Limite Atingido</h3>
+              <p className="text-amber-800 text-sm font-medium">Você utilizou o limite de páginas do seu plano. Para continuar, compre créditos avulsos ou faça um upgrade.</p>
             </div>
             <div className="flex gap-2 flex-wrap">
               <Link
@@ -599,10 +599,24 @@ export default function DashboardPage() {
                 )}
               </div>
             </Link>
-            <Link href="/dashboard/nova-analise" className="flex items-center gap-2 bg-brand-gold text-brand-green px-5 py-3 rounded-lg font-bold hover:brightness-110 transition-all shadow-lg hover:-translate-y-1">
-              <Plus size={20} />
-              + Nova Auditoria
-            </Link>
+            {credits <= 0 || trialUsed ? (
+              <button
+                onClick={() => {
+                  showToast("Você utilizou o limite de páginas do seu plano. Adquira créditos ou faça upgrade.", "error");
+                  router.push('/dashboard/planos');
+                }}
+                className="flex items-center gap-2 bg-gray-300 text-gray-600 px-5 py-3 rounded-lg font-bold cursor-not-allowed shadow"
+                title="Você utilizou o limite de páginas do seu plano. Compre créditos para continuar."
+              >
+                <Plus size={20} />
+                + Nova Auditoria
+              </button>
+            ) : (
+              <Link href="/dashboard/nova-analise" className="flex items-center gap-2 bg-brand-gold text-brand-green px-5 py-3 rounded-lg font-bold hover:brightness-110 transition-all shadow-lg hover:-translate-y-1">
+                <Plus size={20} />
+                + Nova Auditoria
+              </Link>
+            )}
           </div>
         </div>
 

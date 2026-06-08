@@ -568,7 +568,7 @@ export default function NovaAnalisePage() {
         body: JSON.stringify({ analysisId: analysis.id })
       });
 
-      if (analyzeRes.status === 402) {
+      if (analyzeRes.status === 403) {
         const analyzeData = await analyzeRes.json();
         // Reverte a análise para payment_pending já que bloqueou
         await supabase.from('analyses').update({ status: 'payment_pending' }).eq('id', analysis.id);

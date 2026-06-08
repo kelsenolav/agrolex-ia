@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef, Suspense } from 'react';
+import React, { useEffect, useState, useRef, Suspense, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ShieldCheck, ArrowLeft, AlertTriangle, FileCheck, Info, CheckCircle2, Loader2, Clock, ArrowUpRight, FileText, MapPin, Scale, Landmark, ChevronRight, TrendingUp, AlertCircle, XCircle, Search, FileSignature } from 'lucide-react';
@@ -7,9 +7,10 @@ import { supabase } from '@/lib/supabase';
 import type { Analysis, AnalysisFindings, ReportProblem, TimelineEvent, ChecklistItem, ComplementaryChild } from '@/types/analise';
 import { calcularScoreAgroLex, MODULE_NAMES } from '@/types/analise';
 import ScoreAgroLex from '@/components/ScoreAgroLex';
-import { normalizarRadarISF, pctBarraRadar } from '@/lib/isf/radarNormalizer';
+
 import ISFExplainer from '@/components/isf/ISFExplainer';
 import InterestModal from '@/components/commercial/InterestModal';
+import RadarChartV2 from '@/components/isf/RadarChartV2';
 import {
   getISFStyle,
   getISFLabel,
@@ -60,6 +61,35 @@ function matrizRiscoGrid() {
     }
   }
   return cells;
+}
+
+class LocalErrorBoundary extends React.Component<{ children: React.ReactNode; title?: string }, { hasError: boolean }> {
+  public state = { hasError: false };
+
+  public static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  public componentDidCatch(error: any, errorInfo: any) {
+    console.error("Erro capturado no LocalErrorBoundary:", error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl shadow-sm text-amber-800 flex flex-col gap-2 my-4">
+          <div className="flex items-center gap-2 font-bold text-sm">
+            <AlertTriangle className="text-amber-600" size={18} />
+            <span>{this.props.title || "Não foi possível carregar este painel"}</span>
+          </div>
+          <p className="text-xs text-amber-600 leading-relaxed">
+            Dados do eixo em processamento. O restante do dossiê continua funcionando normalmente.
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function ResultadoContent() {
@@ -315,6 +345,52 @@ function ResultadoContent() {
     }
   }, [isTrialUser, leadId, analise]); // registrarEventoComercial é estável (não muda entre renders)
 
+  const findings = analise?.findings as AnalysisFindings | undefined;
+
+  // ─── SAFE NORMALIZATIONS ──────────────────────
+  // Blindagem contra dados legados onde o campo existe mas não é array
+  const safeDocuments = useMemo(() => Array.isArray(analise?.documents) ? analise.documents : [], [analise]);
+  const safeProblemas = useMemo(() => Array.isArray(findings?.problemas) ? findings.problemas : [], [findings]);
+  const safeDocumentosFaltantes = useMemo(() => Array.isArray(findings?.documentosFaltantes) ? findings.documentosFaltantes : [], [findings]);
+  const safeRecomendacoes = useMemo(() => Array.isArray(findings?.recomendacoes) ? findings.recomendacoes : [], [findings]);
+  const safeLinhaDoTempo = useMemo(() => Array.isArray(findings?.linhaDoTempo) ? findings.linhaDoTempo : [], [findings]);
+  const safeChecklist = useMemo(() => Array.isArray((findings as any)?.checklist) ? (findings as any).checklist : [], [findings]);
+
+  // P1B — Score: ISF v2 como primário, legado como fallback
+  const isfV2FindingsForScore = (findings as unknown as Record<string, unknown>)?.isf_v2 as Record<string, unknown> | undefined ?? null;
+  const isfV2ScoreForScore = (isfV2FindingsForScore as any)?.isf_score ?? null;
+  const scoreData = useMemo(() => {
+    if (!findings) {
+      return {
+        score: 70,
+        faixa: 'seguro' as const,
+        label: 'Seguro',
+        cor: '#059669',
+        bgCor: 'bg-emerald-500',
+        acaoSugerida: 'Propriedade dentro dos padrões fundiários',
+      };
+    }
+    return {
+      ...calcularScoreAgroLex(findings, analise?.risk_level),
+      score: isfV2ScoreForScore !== null ? isfV2ScoreForScore : calcularScoreAgroLex(findings, analise?.risk_level).score,
+    };
+  }, [findings, analise?.risk_level, isfV2ScoreForScore]);
+
+  // Contagem de achados por criticidade
+  const problemas = safeProblemas as ReportProblem[];
+  const { achadosCriticos, achadosAltos, achadosMedios } = useMemo(() => {
+    const criticos = problemas.filter(p => String(p.criticidade || '').toLowerCase().includes('critico')).length;
+    const altos = problemas.filter(p => {
+      const c = String(p.criticidade || '').toLowerCase();
+      return c.includes('alto') && !c.includes('critico');
+    }).length;
+    const medios = problemas.filter(p => {
+      const c = String(p.criticidade || '').toLowerCase();
+      return c.includes('medio') || c.includes('médio');
+    }).length;
+    return { achadosCriticos: criticos, achadosAltos: altos, achadosMedios: medios };
+  }, [problemas]);
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-brand-green" size={48} /></div>;
   }
@@ -377,7 +453,7 @@ function ResultadoContent() {
     );
   }
 
-  const findings = analise.findings as AnalysisFindings | undefined;
+
   const hasParecer = findings?.resumo && String(findings.resumo).trim().length > 0;
 
   if (!isCompleted || !hasParecer) {
@@ -397,15 +473,6 @@ function ResultadoContent() {
     );
   }
 
-  // ─── SAFE NORMALIZATIONS ──────────────────────
-  // Blindagem contra dados legados onde o campo existe mas não é array
-  const safeDocuments = Array.isArray(analise.documents) ? analise.documents : [];
-  const safeProblemas = Array.isArray(findings!.problemas) ? findings!.problemas : [];
-  const safeDocumentosFaltantes = Array.isArray(findings!.documentosFaltantes) ? findings!.documentosFaltantes : [];
-  const safeRecomendacoes = Array.isArray(findings!.recomendacoes) ? findings!.recomendacoes : [];
-  const safeLinhaDoTempo = Array.isArray(findings!.linhaDoTempo) ? findings!.linhaDoTempo : [];
-  const safeChecklist = Array.isArray((findings as any)?.checklist) ? (findings as any).checklist : [];
-
   const propName = analise.properties?.name || 'Propriedade';
   const propLocation = `${analise.properties?.city || ''}, ${analise.properties?.state || ''}`;
   
@@ -413,26 +480,10 @@ function ResultadoContent() {
   const isfV2Findings = (findings as unknown as Record<string, unknown>)?.isf_v2 as Record<string, unknown> | undefined ?? null;
   const isfV2RiskLabel = (isfV2Findings as any)?.risk_label || null;
   const isfV2RiskLevel = (isfV2Findings as any)?.risk_level || null;
-  const isfV2Score = (isfV2Findings as any)?.isf_score ?? null;
   const risco = isfV2RiskLabel || analise.risk_level || "Pendente";
   
   let finalResumo = findings!.isHtmlResumo ? findings!.resumo : parseMarkdown(findings!.resumo);
   const sanitizedResumo = DOMPurify.sanitize(finalResumo);
-
-  // P1B — Score: ISF v2 como primário, legado como fallback
-  const scoreData = {
-    ...calcularScoreAgroLex(findings, analise.risk_level),
-    score: isfV2Score !== null ? isfV2Score : calcularScoreAgroLex(findings, analise.risk_level).score,
-  };
-
-  // ─── RADAR v2 — ISF v2 ─────────────────────────
-  // Tenta usar findings.isf_v2; se não existir, radar v2 fica null
-  const isfV2Data = isfV2Findings;
-  const radarEixos = normalizarRadarISF(isfV2Data);
-  const temRadarV2 = radarEixos !== null && radarEixos.length === 5;
-
-  // ─── ISF EXPLAINER — score_comparison ───────────
-  const scoreComparisonData = (findings as unknown as Record<string, unknown>)?.score_comparison as Record<string, unknown> | undefined ?? null;
 
   // P1B — getRiscoStyle usando taxonomy centralizada em vez de switch hardcoded
   const getRiscoStyle = (r: string) => {
@@ -447,18 +498,6 @@ function ResultadoContent() {
     };
   };
   const styles = getRiscoStyle(risco);
-
-  // Contagem de achados por criticidade
-  const problemas = safeProblemas as ReportProblem[];
-  const achadosCriticos = problemas.filter(p => String(p.criticidade || '').toLowerCase().includes('critico')).length;
-  const achadosAltos = problemas.filter(p => {
-    const c = String(p.criticidade || '').toLowerCase();
-    return c.includes('alto') && !c.includes('critico');
-  }).length;
-  const achadosMedios = problemas.filter(p => {
-    const c = String(p.criticidade || '').toLowerCase();
-    return c.includes('medio') || c.includes('médio');
-  }).length;
 
   // ─── CADEIA DOMINIAL VISUAL ──────────────────────
   const linhaDoTempo = safeLinhaDoTempo as TimelineEvent[];
@@ -504,51 +543,7 @@ function ResultadoContent() {
     );
   }
 
-  // ─── RADAR DE RISCO ────────────────────────────
-  function calcularNivelRisco(valor: number): { nivel: string; pct: number } {
-    if (valor <= 25) return { nivel: 'baixo', pct: 20 };
-    if (valor <= 50) return { nivel: 'medio', pct: 45 };
-    if (valor <= 75) return { nivel: 'alto', pct: 70 };
-    return { nivel: 'critico', pct: 95 };
-  }
 
-  function gerarRadarRisco() {
-    const scoreValor = scoreData.score;
-    const riscoDominial = calcularNivelRisco(scoreValor < 40 ? 95 : scoreValor < 60 ? 70 : scoreValor < 80 ? 45 : 15);
-    const riscoRegistral = calcularNivelRisco(scoreValor < 40 ? 90 : scoreValor < 60 ? 65 : scoreValor < 80 ? 40 : 10);
-    const riscoProcessual = calcularNivelRisco(scoreValor < 40 ? 80 : scoreValor < 60 ? 55 : scoreValor < 80 ? 30 : 5);
-    const riscoCartorial = calcularNivelRisco(scoreValor < 40 ? 85 : scoreValor < 60 ? 60 : scoreValor < 80 ? 35 : 8);
-    const riscoINCRA = calcularNivelRisco(scoreValor < 40 ? 75 : scoreValor < 60 ? 50 : scoreValor < 80 ? 25 : 5);
-
-    const riscos = [
-      { label: 'Risco Dominial', data: riscoDominial },
-      { label: 'Risco Registral', data: riscoRegistral },
-      { label: 'Risco Processual', data: riscoProcessual },
-      { label: 'Risco Cartorial', data: riscoCartorial },
-      { label: 'Risco INCRA', data: riscoINCRA },
-    ];
-
-    return (
-      <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
-          <Search className="text-brand-gold" size={24} /> Radar de Risco AgroLex
-        </h2>
-        <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm print:shadow-none print:bg-white print:border print-radar-risk">
-          <div className="space-y-4">
-            {riscos.map((r, i) => (
-              <div key={i} className="radar-risco-bar">
-                <span className="radar-risco-label">{r.label}</span>
-                <div className="radar-risco-track">
-                  <div className={`radar-risco-fill ${r.data.nivel}`} style={{ width: `${r.data.pct}%` }} />
-                </div>
-                <span className={`radar-risco-badge ${r.data.nivel}`}>{r.data.nivel.toUpperCase()}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
 
   // ─── CHECKLIST INTELIGENTE ─────────────────────
   const documentosBase = [
@@ -1423,54 +1418,23 @@ function ResultadoContent() {
             {/* 5b. CADEIA DOMINIAL VISUAL — Fluxo Visual Law */}
             {!isTrialUser && renderCadeiaDominial()}
 
-            {/* 5c. RADAR DE RISCO AGROLEX — v2 (ISF) ou legado */}
-            {temRadarV2 && radarEixos ? (
-              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
-                  <Search className="text-brand-gold" size={24} /> Radar de Risco AgroLex
-                </h2>
-                <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm print:shadow-none print:bg-white print:border print-radar-risk">
-                  <p className="text-xs text-gray-400 mb-4 font-medium">Baseado no ISF v2 — dados reais da análise</p>
-                  <div className="space-y-4">
-                    {radarEixos.map((eixo, i) => (
-                      <div key={i} className="radar-risco-bar">
-                        <span className="radar-risco-label">{eixo.eixo}</span>
-                        <div className="radar-risco-track">
-                          <div
-                            className={`radar-risco-fill ${eixo.nivel}`}
-                            style={{ width: `${pctBarraRadar(eixo.valor)}%` }}
-                          />
-                        </div>
-                        <span className={`radar-risco-badge ${eixo.nivel}`}>{eixo.labelNivel.toUpperCase()}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </section>
-            ) : (
-              <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
-                  <Search className="text-brand-gold" size={24} /> Radar de Risco AgroLex
-                </h2>
-                <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 shadow-sm print:shadow-none print:bg-white print:border">
-                  <div className="flex items-start gap-3">
-                    <Info size={20} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-bold text-amber-800">ISF v2 ainda não disponível para esta análise.</p>
-                      <p className="text-xs text-amber-600 mt-1">
-                        O radar de risco baseado em dados reais será exibido automaticamente após o processamento completo do ISF v2.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            )}
+            {/* 5c. RADAR DE RISCO AGROLEX — v2 (ISF) */}
+            <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
+                <Search className="text-brand-gold" size={24} /> Radar de Risco AgroLex
+              </h2>
+              <LocalErrorBoundary title="Não foi possível carregar o gráfico do radar">
+                <RadarChartV2 isfEixos={analise.isf_eixos} />
+              </LocalErrorBoundary>
+            </section>
 
             {/* 5d. EXPLICABILIDADE ISF v2 — SPRINT 3 */}
-            <ISFExplainer
-              isfV2Data={isfV2Data}
-              scoreComparisonData={scoreComparisonData}
-            />
+            <LocalErrorBoundary title="Não foi possível carregar o detalhamento dos eixos">
+              <ISFExplainer
+                isfAchados={analise.isf_achados}
+                problemasFallback={findings?.problemas}
+              />
+            </LocalErrorBoundary>
 
             {/* 5e. CHECKLIST DOCUMENTAL INTELIGENTE */}
             {renderChecklist()}

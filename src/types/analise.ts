@@ -85,6 +85,12 @@ export interface Analysis {
   documents?: AnalysisDocument[];
   created_at?: string;
   user_id?: string;
+  isf_score?: number;
+  isf_version?: number;
+  isf_faixa?: string;
+  isf_eixos?: any;
+  isf_explainer?: any;
+  isf_achados?: any;
 }
 
 export type AnalysisStatusType = 'pending' | 'ready_for_processing' | 'processing' | 'completed' | 'error';

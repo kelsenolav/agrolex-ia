@@ -2,6 +2,105 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 08/06/2026
+- **Bloco**: PROMPT DE ESTABILIZAÇÃO E PERFORMANCE P0 — RESILIÊNCIA DE DATA E RUNTIME
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/lib/isf/isfEngine.ts` — Adicionada validação e sanitização robusta (`sanitizarProblema`) no motor de cálculo.
+  - `src/app/dashboard/resultado/page.tsx` — Adicionados Error Boundaries locais com mensagens de fallback explícitas, memoização de cálculos pesados via `useMemo` colocados no início do ciclo de renderização.
+- **Alterações implementadas**:
+  1. Atualizado o `LocalErrorBoundary` para capturar exceções de renderização de forma isolada exibindo o texto de fallback `"Dados em processamento ou indisponíveis."`
+  2. Implementação da sanitização de dados rigorosa no motor (`isfEngine.ts`) prevenindo que dados corrompidos ou malformados quebrem o cálculo do ISF.
+  3. Otimização de renderização pesada e redução de lags através do envoltório de cálculos em ganchos `useMemo` declarados no topo do componente para cumprir as diretrizes dos Hooks do React.
+  4. Revisão geral e sanitização robusta do HTML renderizado por meio de `dangerouslySetInnerHTML` utilizando filtros do `DOMPurify`.
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), e execução com sucesso de todos os testes unitários (`npm test` — 492/492 ✓).
+- **Deploy em produção**: **NÃO EFETUADO**
+
+---
+
+- **Data**: 08/06/2026
+- **Bloco**: PROMPT DE ESTABILIZAÇÃO E PERFORMANCE 01 — RESILIÊNCIA DE RUNTIME
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/components/isf/RadarChartV2.tsx` — Adicionada sanitização de dados robusta e otimização com `React.memo`.
+  - `src/app/dashboard/resultado/page.tsx` — Implementação de `LocalErrorBoundary` local para os componentes de Radar v2 e Explicabilidade. Adicionado import padrão de `React`.
+- **Alterações implementadas**:
+  1. Criação do componente de tratamento de erros `LocalErrorBoundary` no escopo da página de resultados do dashboard, isolando falhas de renderização pontuais.
+  2. Implementação de `React.memo` no componente `RadarChartV2` para otimizar re-renderizações e evitar desperdício de processamento durante mudanças de estado da página.
+  3. Sanitização robusta em `RadarChartV2.tsx` que garante fallback seguro de `0` se os dados de eixos fundiários recebidos do banco forem nulos ou incompletos.
+  4. Resolução de erro de importação de escopo global UMD de React na compilação do TypeScript.
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), e execução com sucesso de todos os testes unitários (`npm test` — 492/492 ✓).
+- **Deploy em produção**: **NÃO EFETUADO**
+
+---
+
+- **Data**: 08/06/2026
+- **Bloco**: PROMPT DE EXECUÇÃO 05 — PAINEL DE EXPLICABILIDADE E FINALIZAÇÃO DE SPRINT (MIGRAÇÃO ISF V2 - FULL STACK)
+- **Arquivos criados**:
+  - `src/components/isf/ISFExplainer.tsx` *(novo)* — Componente de detalhamento e explicabilidade técnica dos 5 eixos fundiários.
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/app/api/analyze/route.ts` — Inclusão de `isf_explainer` e `isf_achados` (mapeamento de eixos e recomendações) no payload persistido no Supabase.
+  - `src/app/dashboard/resultado/page.tsx` — Integração de explicabilidade robusta consumindo `isf_achados` com fallback resiliente e limpeza de código.
+- **Alterações implementadas**:
+  1. Criação do componente responsive `ISFExplainer.tsx` com renderização baseada na classificação de 5 eixos metodológicos reais.
+  2. Implementação de agrupamento dinâmico de achados, exibição de criticidade baseada na escala oficial e recomendação técnica por item.
+  3. Atualização no pipeline de IA (`route.ts`) para calcular os eixos individuais de cada achado via `classificarEixo` e salvá-los fisicamente no banco.
+  4. Limpeza de variáveis obsoletas (`scoreComparisonData`) e importações na página de resultados para conformidade com TypeScript e ESLint.
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), e execução com sucesso de todos os testes unitários (`npm test` — 492/492 ✓).
+- **Deploy em produção**: **NÃO EFETUADO**
+
+---
+
+- **Data**: 08/06/2026
+- **Bloco**: PROMPT DE EXECUÇÃO 04 — IMPLEMENTAÇÃO DO RADAR V2 (VISUALIZAÇÃO FORENSE)
+- **Arquivos criados**:
+  - `src/components/isf/RadarChartV2.tsx` *(novo)* — Componente visual do radar forense integrado com Recharts e framer-motion.
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/app/dashboard/resultado/page.tsx` — Integração do RadarChartV2 com dados de eixos ISF e limpeza de código legado.
+  - `src/types/analise.ts` — Adicionados campos `isf_score`, `isf_version`, `isf_faixa`, `isf_eixos`, `isf_explainer` e `isf_achados` na tipagem global `Analysis`.
+- **Alterações implementadas**:
+  1. Criação do componente responsive `RadarChartV2.tsx` utilizando Recharts e framer-motion para renderizar o risco dos 5 eixos fundiários (REG, DOM, LIT, POS, FRA).
+  2. Implementação de cores dinâmicas da escala ISF oficial de acordo com o maior risco e tooltip personalizado com definições de cada eixo.
+  3. Mapeamento dos eixos fundiários em percentual em relação ao teto: `(valor / teto) * 100`.
+  4. Substituição do radar legado e limpeza de código morto, removendo variáveis e helpers obsoletos do arquivo `page.tsx`.
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), e execução com sucesso de todos os testes unitários (`npm test` — 492/492 ✓).
+- **Deploy em produção**: **NÃO EFETUADO**
+
+---
+
+- **Data**: 08/06/2026
+- **Bloco**: SPRINT P0-A — MOTOR DE CÁLCULO ISF V2 (isfEngine)
+- **Arquivos criados**:
+  - `src/lib/isf/isfEngine.ts` *(novo)* — Motor de cálculo do ISF v2 com suporte a Trava de Segurança CTO (Veto de Risco).
+  - `src/lib/isf/__tests__/isfEngine.test.ts` *(novo)* — Suíte de testes unitários para o motor isfEngine.
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/app/api/analyze/route.ts` — Integração do motor `isfEngine` no pipeline de pós-processamento de laudos de IA.
+- **Alterações implementadas**:
+  1. Implementação da ponderação matricial (REG 25%, DOM 25%, LIT 20%, POS 15%, FRA 15%) e do teto de 80 pontos por eixo.
+  2. Implementação da Trava de Segurança CTO: limita o score final a 30 pontos caso haja qualquer achado crítico ou com flag de veto (`isVetoRisco`).
+  3. Classificação em faixas de risco (Crítico, Alto Risco, Atenção, Seguro, Muito Seguro).
+  4. Integração no endpoint `/api/analyze`: invocação de `calcularISFv2` no pós-processamento, enriquecimento do JSON de findings com `isf_v2` e persistência física nas colunas `isf_score`, `isf_faixa`, `isf_eixos` e `isf_version: 2`.
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), e execução com sucesso de todos os testes unitários (`npm test` — 492/492 ✓).
+- **Deploy em produção**: **NÃO EFETUADO**
+
+---
+
+- **Data**: 08/06/2026
+- **Bloco**: SPRINT P0-A — INFRAESTRUTURA DE BANCO DE DADOS (MOTOR ISF V2)
+- **Arquivos criados**:
+  - `supabase/migrations/20260608_add_isf_v2_fields.sql` *(novo)* — Migration SQL para os campos do motor ISF v2.
+- **Arquivos alterados**:
+  - `AGENTS.md`
+- **Alterações implementadas**:
+  1. Adicionados campos `isf_score` (INTEGER, check 0-100), `isf_version` (INTEGER, default 1), `isf_faixa` (TEXT, check enums), `isf_eixos` (JSONB, default {}), `isf_explainer` (JSONB, default {}), e `isf_achados` (JSONB, default []) na tabela `public.analyses`.
+  2. Criados índices B-Tree para otimização de filtros no dashboard (`idx_analyses_isf_score`, `idx_analyses_isf_faixa`, `idx_analyses_isf_version`).
+  3. Aplicada e validada a migração no banco de dados Supabase de produção.
+- **Validações**: Execução com sucesso da migração no banco e verificação do schema das colunas (✓).
+- **Deploy em produção**: **EFETUADO** (banco de dados atualizado diretamente).
+
 ---
 
 - **Data**: 08/06/2026

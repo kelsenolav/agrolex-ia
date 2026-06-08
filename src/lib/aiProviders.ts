@@ -491,7 +491,15 @@ export async function generateWithFallback(
   const allowFallback = options.allowFallback !== false;
   const attempts: FallbackResult['attempts'] = [];
   
-  const providersToTry: AiProvider[] = ['gemini', 'claude', 'openai', 'groq'];
+  const providersToTry: AiProvider[] = [];
+  if (getEnvVar('GEMINI_API_KEY', '')) providersToTry.push('gemini');
+  if (getEnvVar('ANTHROPIC_API_KEY', '')) providersToTry.push('claude');
+  if (getEnvVar('OPENAI_API_KEY', '')) providersToTry.push('openai');
+  if (getEnvVar('GROQ_API_KEY', '')) providersToTry.push('groq');
+
+  if (providersToTry.length === 0) {
+    providersToTry.push('gemini');
+  }
   
   let lastErrorMessage = '';
   let lastFallbackReason: string | null = null;

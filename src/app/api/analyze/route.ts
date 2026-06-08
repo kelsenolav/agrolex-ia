@@ -7,7 +7,8 @@ import { extractProblemsFromReport, extractMissingDocumentsFromReport, extractRe
 import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocument, type CaseFileRecommendedModule } from '@/lib/caseFile';
 import { buildRecommendedModules } from '@/lib/recommendations';
 import { generateWithFallback, type FallbackResult, type AiProvider } from '@/lib/aiProviders';
-import { calcularISF, calcularComparacao } from '@/lib/isf/isfV2';
+import { calcularComparacao } from '@/lib/isf/isfV2';
+import { calcularISFv2, classificarEixo } from '@/lib/isf/isfEngine';
 import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
 import { calcularScoreAgroLex } from '@/types/analise';
 import {
@@ -482,7 +483,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ 
         error: `Você possui ${availablePages} páginas disponíveis. Este documento possui ${totalPages} páginas. São necessárias mais ${totalPages - availablePages} páginas para processar este arquivo.`,
         blockInfo: { available: availablePages, required: totalPages, shortage: totalPages - availablePages }
-      }, { status: 402 });
+      }, { status: 403 });
     }
 
     // Consumir páginas antes de iniciar a IA e marcar processing
@@ -493,7 +494,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ 
           error: 'Falha ao debitar páginas do saldo (saldo insuficiente ou concorrente).',
           blockInfo: { available: availablePages, required: totalPages, shortage: totalPages - availablePages }
-        }, { status: 402 });
+        }, { status: 403 });
       }
     }
     // ----------------------------------------------------
@@ -598,7 +599,7 @@ export async function POST(req: Request) {
         const { trackTrialEvent } = await import('@/lib/trial/trialControl');
         await trackTrialEvent(user.id, 'trial_started', { analysisId }, user.email || '');
       } catch (e) {
-        console.error('Erro ao trackear trial_started:', e);
+        console.warn('Erro de fail-safe (ignorado): falha ao trackear trial_started:', e);
       }
     }
 
@@ -921,8 +922,10 @@ export async function POST(req: Request) {
 
           let isfPayload: Record<string, unknown> = {};
           let isfError: string | null = null;
+          let isfResult: any = null;
+          let comparison: any = null;
           try {
-            const isfResult = calcularISF(parsedProblemas as any);
+            isfResult = calcularISFv2(parsedProblemas as any);
             const legacyScoreData = calcularScoreAgroLex(
               {
                 problemas: parsedProblemas,
@@ -932,7 +935,7 @@ export async function POST(req: Request) {
               } as any,
               riskLevel
             );
-            const comparison = calcularComparacao(legacyScoreData.score, isfResult.isf_score);
+            comparison = calcularComparacao(legacyScoreData.score, isfResult.isf_score);
             isfPayload = gerarPayloadISFCompleto(isfResult, comparison);
           } catch (isfCalcError: any) {
             isfError = ((isfCalcError && (isfCalcError.message || isfCalcError.toString())) || 'Erro desconhecido no ISF v2')
@@ -947,6 +950,7 @@ export async function POST(req: Request) {
             case_file: enrichedCaseFile,
             ...(caseFileExtractError ? { case_file_extract_error: caseFileExtractError } : {}),
             ...isfPayload,
+            ...(isfResult ? { isf_v2: isfResult } : {}),
             ...(isfError ? { isf_v2_error: isfError } : {}),
             structured_extract_source: 'local_parser',
             structured_extract_at: new Date().toISOString(),
@@ -959,7 +963,23 @@ export async function POST(req: Request) {
 
           await supabaseAdmin
             .from('analyses')
-            .update({ findings: patchedFindings })
+            .update({
+              findings: patchedFindings,
+              ...(isfResult ? {
+                isf_score: isfResult.isf_score,
+                isf_faixa: isfResult.risk_level,
+                isf_eixos: isfResult.eixos,
+                isf_explainer: comparison || null,
+                isf_achados: parsedProblemas.map((p: any) => ({
+                  titulo: p.titulo || 'Achado sem título',
+                  criticidade: p.criticidade || 'médio',
+                  recomendacao: p.recomendacao || '',
+                  eixo: classificarEixo(p),
+                  descricao: p.descricao || '',
+                })),
+                isf_version: 2
+              } : {})
+            })
             .eq('id', analysisId);
 
           if (planType === 'trial') {
@@ -968,7 +988,7 @@ export async function POST(req: Request) {
               await markTrialUsed(user.id, analysisId, user.email || '');
               await trackTrialEvent(user.id, 'trial_completed', { analysisId }, user.email || '');
             } catch (e) {
-              console.error('Erro ao trackear trial_completed:', e);
+              console.warn('Erro de fail-safe (ignorado): falha ao finalizar telemetria do trial:', e);
             }
           }
         } catch (postprocessError: any) {
