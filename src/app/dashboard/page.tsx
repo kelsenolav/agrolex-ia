@@ -586,7 +586,25 @@ export default function DashboardPage() {
 
   const pendingPagesSum = analises
     .filter(a => a.status === 'payment_pending' || a.status === 'pending')
-    .reduce((sum, a) => sum + ((a.findings as any)?.required_pages || 0), 0);
+    .reduce((sum, a) => {
+      let pages = (a.findings as any)?.required_pages;
+      if (typeof pages !== 'number') {
+        const docs = (a.findings as any)?.case_file?.documents || [];
+        if (docs.length > 0) {
+          pages = 0;
+          for (const doc of docs) {
+            if (doc.size) {
+              pages += Math.max(1, Math.floor(doc.size / (400 * 1024)));
+            } else {
+              pages += 1;
+            }
+          }
+        } else {
+          pages = 0;
+        }
+      }
+      return sum + pages;
+    }, 0);
   const dynamicBalance = credits - pendingPagesSum;
 
   return (
