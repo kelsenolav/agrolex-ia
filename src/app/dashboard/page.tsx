@@ -24,10 +24,6 @@ import type { ISFLevel } from '@/lib/isf/isfTaxonomy';
 import { getCommercialAccess, type TrialProfile } from '@/lib/commercial/trial';
 import { getPlanPermissions } from '@/lib/commercial/plans';
 
-export const dynamic = 'force-dynamic';
-export const fetchCache = 'force-no-store';
-export const revalidate = 0;
-
 const planLimits: Record<string, number> = {
   trial: 10,
   starter: 150,

@@ -10,10 +10,6 @@ import { createInitialCaseFile, type CaseFileDocument } from "@/lib/caseFile";
 import { getCommercialAccess, canStartTrialAnalysis, getTrialBlockReason, type TrialProfile } from '@/lib/commercial/trial';
 import { montarLeadPayload, validarNome, validarEmail, validarWhatsApp, validarCidade, validarEstado, type LeadPayload } from '@/lib/commercial/lead';
 
-export const dynamic = 'force-dynamic';
-export const fetchCache = 'force-no-store';
-export const revalidate = 0;
-
 // ─── Constantes de validação documental ────────────────────────────────────
 const MAX_FILE_SIZE_MB = 20;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
