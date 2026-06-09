@@ -437,12 +437,19 @@ export default function DashboardPage() {
         return;
       }
 
-      const { error } = await supabase
-        .from('analyses')
-        .delete()
-        .eq('id', id);
+      const res = await fetch('/api/analyses/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ analysisId: id })
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Erro ao excluir no servidor');
+      }
 
       // 1. Remove da tela APÓS a confirmação de sucesso
       setAnalises(prev => prev.filter(a => a.id !== id));
@@ -452,7 +459,7 @@ export default function DashboardPage() {
       // 2. Atualiza o saldo/credits imediatamente e recalcula as páginas negativas
       await refreshDashboardData();
     } catch (err: any) {
-      console.error('Erro de permissão ou falha de RLS ao deletar análise no Supabase:', err);
+      console.error('Erro de exclusão de análise:', err);
       showToast("Erro ao excluir auditoria: " + (err.message || err), 'error');
     }
   };
