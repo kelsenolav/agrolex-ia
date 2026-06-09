@@ -425,7 +425,7 @@ export default function DashboardPage() {
     }
   };
 
-  const handleDeleteAnalysis = async (analysisId: string) => {
+  const handleDeleteAnalysis = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta auditoria pendente?")) return;
     
     try {
@@ -439,12 +439,12 @@ export default function DashboardPage() {
       const { error } = await supabase
         .from('analyses')
         .delete()
-        .eq('id', analysisId);
+        .eq('id', id);
 
       if (error) throw error;
 
       // 1. Remove da tela na hora
-      setAnalises(prev => prev.filter(a => a.id !== analysisId));
+      setAnalises(prev => prev.filter(a => a.id !== id));
 
       showToast("Auditoria pendente excluída com sucesso.", 'success');
 
