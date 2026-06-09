@@ -122,83 +122,91 @@ export default function DashboardPage() {
     }
   };
 
-  useEffect(() => {
-    const checkUserAndFetchData = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-        return;
-      }
-      
-      const name = session.user.user_metadata?.full_name;
-      if (name) setUserName(name.split(' ')[0]);
-
-      // Buscar Assinatura & Créditos Reais
-      let currentSub;
-      try {
-        const res = await fetch('/api/subscription', {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        });
-        if (res.ok) {
-          currentSub = await res.json();
-          setCredits(currentSub.credits_available);
-          if (currentSub && currentSub.plan_type) {
-            setPlanType(currentSub.plan_type);
-          }
-        } else {
-          console.error('Erro ao buscar assinatura:', await res.text());
-        }
-      } catch (err) {
-        console.error('Erro ao buscar assinatura:', err);
-      }
-
-      // SPREAD TRIAL → PLANO PAGO: Bloquear nova análise se o teste gratuito/créditos acabaram
-      if (currentSub) {
-        if (currentSub.plan_type === 'trial') {
-          // Se o plano for trial e ele já usou (ou se tem 0 créditos), consideramos o trial terminado
-          const { data: analysesCount } = await supabase
-            .from('analyses')
-            .select('id', { count: 'exact' })
-            .eq('user_id', session.user.id);
-          const hasUsedTrial = (analysesCount?.length || 0) >= 1;
-          if (hasUsedTrial || currentSub.credits_available === 0) {
-            setTrialUsed(true);
-          }
-        } else if (currentSub.credits_available === 0) {
-          // Se for outro plano com 0 créditos, exibe aviso ou bloqueia
-          setTrialUsed(true); // Reutiliza o estado de bloqueio/aviso de upgrade
-        }
-      }
-
-      // Buscar Análises reais do Banco de Dados
-      const { data } = await supabase
-        .from('analyses')
-        .select(`
-          id,
-          status,
-          risk_level,
-          findings,
-          properties (id, name, city, state, risk_score),
-          documents (document_type)
-        `)
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-
-      if (data) {
-        setAnalises(data as unknown as Analysis[]);
-
-        // SPRINT 5 — Calcular telemetria ISF v2 com análises completas
-        const concluidas = data.filter((a: any) => a.status === 'completed');
-        if (concluidas.length > 0) {
-          setIsfData(isfTelemetry(concluidas));
-        }
-      }
-      setLoading(false);
-    };
+  const refreshDashboardData = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      router.push('/login');
+      return;
+    }
     
-    checkUserAndFetchData();
+    const name = session.user.user_metadata?.full_name;
+    if (name) setUserName(name.split(' ')[0]);
+
+    // Buscar Assinatura & Créditos Reais
+    let currentSub;
+    try {
+      const res = await fetch('/api/subscription', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+      if (res.ok) {
+        currentSub = await res.json();
+        setCredits(currentSub.credits_available);
+        if (currentSub && currentSub.plan_type) {
+          setPlanType(currentSub.plan_type);
+        }
+      } else {
+        console.error('Erro ao buscar assinatura:', await res.text());
+      }
+    } catch (err) {
+      console.error('Erro ao buscar assinatura:', err);
+    }
+
+    // SPREAD TRIAL → PLANO PAGO: Bloquear nova análise se o teste gratuito/créditos acabaram
+    if (currentSub) {
+      if (currentSub.plan_type === 'trial') {
+        // Se o plano for trial e ele já usou (ou se tem 0 créditos), consideramos o trial terminado
+        const { data: analysesCount } = await supabase
+          .from('analyses')
+          .select('id', { count: 'exact' })
+          .eq('user_id', session.user.id);
+        const hasUsedTrial = (analysesCount?.length || 0) >= 1;
+        if (hasUsedTrial || currentSub.credits_available === 0) {
+          setTrialUsed(true);
+        } else {
+          setTrialUsed(false);
+        }
+      } else if (currentSub.credits_available === 0) {
+        // Se for outro plano com 0 créditos, exibe aviso ou bloqueia
+        setTrialUsed(true); // Reutiliza o estado de bloqueio/aviso de upgrade
+      } else {
+        setTrialUsed(false);
+      }
+    }
+
+    // Buscar Análises reais do Banco de Dados
+    const { data } = await supabase
+      .from('analyses')
+      .select(`
+        id,
+        status,
+        risk_level,
+        findings,
+        properties (id, name, city, state, risk_score),
+        documents (document_type)
+      `)
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: false });
+
+    if (data) {
+      setAnalises(data as unknown as Analysis[]);
+
+      // SPRINT 5 — Calcular telemetria ISF v2 com análises completas
+      const concluidas = data.filter((a: any) => a.status === 'completed');
+      if (concluidas.length > 0) {
+        setIsfData(isfTelemetry(concluidas));
+      } else {
+        setIsfData(null);
+      }
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      refreshDashboardData();
+    });
   }, [router]);
 
   // Polling para atualizações em background
@@ -435,8 +443,11 @@ export default function DashboardPage() {
 
       if (error) throw error;
 
+      // Atualiza o estado local imediatamente para feedback instantâneo
+      setAnalises(prev => prev.filter(a => a.id !== analysisId));
+
       showToast("Auditoria pendente excluída com sucesso.", 'success');
-      await refreshAnalises();
+      await refreshDashboardData();
     } catch (err: any) {
       console.error('Erro ao deletar análise:', err);
       showToast("Erro ao excluir auditoria: " + (err.message || err), 'error');
