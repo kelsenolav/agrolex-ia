@@ -320,10 +320,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Cabeçalho de autorização ausente' }, { status: 401 });
     }
 
-    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false },
-      global: { headers: { Authorization: authHeader } }
-    });
+    const { createSupabaseServerClient } = await import('@/lib/supabaseServer');
+    const supabaseUser = await createSupabaseServerClient();
 
     const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
     if (authError || !user) {

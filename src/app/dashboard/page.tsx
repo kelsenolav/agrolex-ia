@@ -431,8 +431,9 @@ export default function DashboardPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
+        console.error("Erro de sessão: Sessão nula em handleDeleteAnalysis.");
         showToast("Sua sessão expirou, faça login novamente.", 'error');
-        setTimeout(() => router.push('/login'), 2000);
+        router.push('/login');
         return;
       }
 
@@ -443,17 +444,13 @@ export default function DashboardPage() {
 
       if (error) throw error;
 
-      // 1. Remove da tela na hora
+      // 1. Remove da tela APÓS a confirmação de sucesso
       setAnalises(prev => prev.filter(a => a.id !== id));
 
       showToast("Auditoria pendente excluída com sucesso.", 'success');
 
-      // 2. Atualiza o saldo em segundo plano sem travar a interface
-      setTimeout(() => {
-        refreshDashboardData().catch(err => {
-          console.error('Erro ao atualizar saldo em segundo plano:', err);
-        });
-      }, 300);
+      // 2. Atualiza o saldo/credits imediatamente e recalcula as páginas negativas
+      await refreshDashboardData();
     } catch (err: any) {
       console.error('Erro de permissão ou falha de RLS ao deletar análise no Supabase:', err);
       showToast("Erro ao excluir auditoria: " + (err.message || err), 'error');
