@@ -584,6 +584,10 @@ export default function DashboardPage() {
             <span className="text-xl font-bold text-white">AgroLex</span>
           </Link>
           <div className="flex gap-4 items-center">
+            <span className="text-sm bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 font-bold flex items-center gap-1.5 text-brand-gold">
+              <span className="w-2 h-2 rounded-full bg-brand-gold animate-pulse" />
+              {credits} pág(s) restantes
+            </span>
             <span className="text-sm font-medium">Olá, {userName}</span>
             <button onClick={handleLogout} className="text-sm hover:text-brand-gold transition-colors font-medium">Sair</button>
           </div>

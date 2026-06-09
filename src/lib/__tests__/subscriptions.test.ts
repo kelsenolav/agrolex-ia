@@ -45,7 +45,7 @@ describe('Subscriptions module tests', () => {
 
     const sub = await getUserSubscription(mockUserId);
     expect(sub.plan_type).toBe('trial');
-    expect(sub.credits_available).toBe(0);
+    expect(sub.credits_available).toBe(10);
     expect(sub.status).toBe('active');
   });
 

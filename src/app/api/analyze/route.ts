@@ -469,7 +469,11 @@ export async function POST(req: Request) {
       (doc as any)._prefetchedBuffer = buffer;
 
       if (doc.file_path.toLowerCase().endsWith('.pdf') || doc.document_type?.toLowerCase().includes('matrícula') || doc.document_type === 'Certidão Inteiro Teor' || doc.document_type === 'Matrícula') {
-        const pages = await countPdfPagesFromBuffer(buffer);
+        let pages = await countPdfPagesFromBuffer(buffer);
+        // Fallback tolerante para PDFs escaneados (imagens) sem marcação de páginas no binário de texto
+        if (pages <= 1 && buffer.length > 2 * 1024 * 1024) {
+          pages = Math.max(1, Math.floor(buffer.length / (400 * 1024))); // Estimativa de 400KB por página
+        }
         totalPages += pages;
       } else {
         totalPages += 1;
@@ -481,7 +485,7 @@ export async function POST(req: Request) {
 
     if (totalPages > availablePages) {
       return NextResponse.json({ 
-        error: `Você possui ${availablePages} páginas disponíveis. Este documento possui ${totalPages} páginas. São necessárias mais ${totalPages - availablePages} páginas para processar este arquivo.`,
+        error: `O número de páginas do documento excede o seu saldo disponível (${availablePages} páginas restantes).`,
         blockInfo: { available: availablePages, required: totalPages, shortage: totalPages - availablePages }
       }, { status: 403 });
     }

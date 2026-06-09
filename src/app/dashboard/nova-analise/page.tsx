@@ -104,6 +104,7 @@ export default function NovaAnalisePage() {
   const [leadSaving, setLeadSaving] = useState(false);
   const [pageReady, setPageReady] = useState(false);
   const [pagesBlockInfo, setPagesBlockInfo] = useState<{ available: number, required: number, shortage: number } | null>(null);
+  const [credits, setCredits] = useState(0);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -118,6 +119,21 @@ export default function NovaAnalisePage() {
       if (!session) {
         router.push('/login');
         return;
+      }
+
+      // Buscar Assinatura & Créditos Reais
+      try {
+        const res = await fetch('/api/subscription', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+        if (res.ok) {
+          const currentSub = await res.json();
+          setCredits(currentSub.credits_available);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar assinatura:', err);
       }
 
       // Função auxiliar para telemetria
@@ -624,6 +640,12 @@ export default function NovaAnalisePage() {
             <ShieldCheck size={28} />
             <span className="text-xl font-bold text-white">AgroLex</span>
           </Link>
+          <div className="flex gap-4 items-center">
+            <span className="text-sm bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 font-bold flex items-center gap-1.5 text-brand-gold">
+              <span className="w-2 h-2 rounded-full bg-brand-gold animate-pulse" />
+              {credits} pág(s) restantes
+            </span>
+          </div>
         </div>
       </nav>
 
@@ -671,12 +693,15 @@ export default function NovaAnalisePage() {
               <Layers size={40} className="text-red-600" />
             </div>
             <h1 className="text-2xl font-extrabold text-gray-800 mb-3">Saldo Insuficiente</h1>
-            <div className="bg-gray-50 rounded-xl p-6 max-w-md mx-auto mb-8 border border-gray-200">
-              <p className="text-gray-700 text-lg mb-2">Você possui <strong>{pagesBlockInfo.available} páginas</strong> disponíveis.</p>
-              <p className="text-gray-700 text-lg mb-2">Este documento possui <strong>{pagesBlockInfo.required} páginas</strong>.</p>
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <p className="text-red-600 font-bold text-lg">
-                  São necessárias mais {pagesBlockInfo.shortage} páginas para processar este arquivo.
+            <p className="text-red-600 text-base font-bold mb-6 max-w-md mx-auto">
+              O número de páginas do documento excede o seu saldo disponível ({pagesBlockInfo.available} páginas restantes).
+            </p>
+            <div className="bg-gray-50 rounded-xl p-6 max-w-md mx-auto mb-8 border border-gray-200 text-sm">
+              <p className="text-gray-700 mb-1">Páginas no Documento: <strong>{pagesBlockInfo.required}</strong></p>
+              <p className="text-gray-700 mb-1">Páginas de Saldo: <strong>{pagesBlockInfo.available}</strong></p>
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <p className="text-red-600 font-bold">
+                  Diferença necessária: {pagesBlockInfo.shortage} pág(s)
                 </p>
               </div>
             </div>

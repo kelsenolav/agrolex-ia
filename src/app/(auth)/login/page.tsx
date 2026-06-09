@@ -41,7 +41,11 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setError('E-mail ou senha incorretos.');
+      if (error.message && error.message.toLowerCase().includes('confirm')) {
+        setError('Por favor, confirme seu e-mail antes de fazer login ou aguarde a ativação de sua conta.');
+      } else {
+        setError('E-mail ou senha incorretos.');
+      }
       setLoading(false);
     } else {
       const response = await fetch('/api/auth/session', {
