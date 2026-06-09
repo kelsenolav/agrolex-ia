@@ -121,6 +121,7 @@ export default function NovaAnalisePage() {
         return;
       }
 
+      let fetchedCredits = 0;
       // Buscar Assinatura & Créditos Reais
       try {
         const res = await fetch('/api/subscription', {
@@ -130,7 +131,8 @@ export default function NovaAnalisePage() {
         });
         if (res.ok) {
           const currentSub = await res.json();
-          setCredits(currentSub.credits_available);
+          fetchedCredits = currentSub.credits_available;
+          setCredits(fetchedCredits);
         }
       } catch (err) {
         console.error('Erro ao buscar assinatura:', err);
@@ -188,10 +190,10 @@ export default function NovaAnalisePage() {
         console.error('Erro ao verificar trial status:', err);
       }
 
-      // Obj 1: Bloqueio de segunda análise trial
-      if (trialUsedFromLeads || (tp.plan_type === 'trial' && tp.trial_used === true)) {
+      // Obj 1: Bloqueio (apenas se não houver saldo disponível)
+      if (fetchedCredits <= 0) {
         setTrialBlocked(true);
-        setTrialBlockReasonState('Sua análise gratuita já foi utilizada. Para continuar utilizando o AgroLex e acessar análises completas, desbloqueie o acesso profissional.');
+        setTrialBlockReasonState('Você não possui saldo de páginas. Para continuar utilizando o AgroLex, adquira créditos ou assine um plano.');
         setPageReady(true);
         
         // Telemetria: trial_blocked e upgrade_cta_view
@@ -207,40 +209,91 @@ export default function NovaAnalisePage() {
       // Verificar se já existe lead para este usuário
       const { data: existingLead } = await supabase
         .from('leads')
-        .select('id, nome, email, telefone, cidade, estado')
+        .select('lead_id, nome, email, telefone, cidade, estado')
         .eq('user_id', session.user.id)
         .maybeSingle();
 
       if (existingLead) {
-        // Lead já existe, verificar completude
+        // Lead já existe, verificar apenas dados críticos (nome, email) para liberação imediata
         const missing: string[] = [];
         if (!existingLead.nome || existingLead.nome.trim().length < 2) missing.push('nome');
         if (!existingLead.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(existingLead.email)) missing.push('email');
-        if (!existingLead.telefone || existingLead.telefone.replace(/\D/g, '').length < 10) missing.push('telefone');
-        if (!existingLead.cidade || existingLead.cidade.trim().length < 2) missing.push('cidade');
-        if (!existingLead.estado || existingLead.estado.trim().length !== 2) missing.push('estado');
+
+        // Se faltar apenas telefone, cidade ou estado, e o metadados do auth possuir esses dados, faremos um sync passivo
+        const authMeta = session.user.user_metadata || {};
+        const cidadeMeta = authMeta.cidade || '';
+        const estadoMeta = authMeta.estado || '';
+        const whatsappMeta = authMeta.whatsapp || '';
+
+        const needsSync = (!existingLead.cidade && cidadeMeta) || (!existingLead.estado && estadoMeta) || (!existingLead.telefone && whatsappMeta);
+
+        if (needsSync) {
+          // Atualiza em background de forma passiva para não travar a UI
+          fetch('/api/leads', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({
+              user_id: session.user.id,
+              nome: existingLead.nome,
+              email: existingLead.email,
+              telefone: existingLead.telefone || whatsappMeta || null,
+              cidade: existingLead.cidade || cidadeMeta || null,
+              estado: existingLead.estado || estadoMeta || null,
+              origem: 'nova-analise-sync',
+            })
+          }).catch(() => {});
+        }
 
         if (missing.length > 0) {
-          // Preencher com dados existentes e abrir modal
+          // Apenas abre o modal se nome ou email forem completamente inválidos
           setLeadForm({
             nome: existingLead.nome || userNameMeta,
             email: existingLead.email || userEmail,
-            telefone: existingLead.telefone || '',
-            cidade: existingLead.cidade || '',
-            estado: existingLead.estado || '',
+            telefone: existingLead.telefone || whatsappMeta || '',
+            cidade: existingLead.cidade || cidadeMeta || '',
+            estado: existingLead.estado || estadoMeta || '',
           });
           setLeadModalOpen(true);
         }
       } else {
-        // Sem lead, abrir modal com preenchimento automático de nome/email
-        setLeadForm({
-          nome: userNameMeta,
-          email: userEmail,
-          telefone: '',
-          cidade: '',
-          estado: '',
-        });
-        setLeadModalOpen(true);
+        // Sem lead cadastrado: vamos tentar criar passivamente se o usuário tiver dados completos no metadados do Auth
+        const authMeta = session.user.user_metadata || {};
+        const cidadeMeta = authMeta.cidade || '';
+        const estadoMeta = authMeta.estado || '';
+        const whatsappMeta = authMeta.whatsapp || '';
+
+        if (userNameMeta && userEmail && cidadeMeta && estadoMeta) {
+          // Cadastro unificado foi usado. Cria o lead em background sem abrir o modal
+          fetch('/api/leads', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({
+              user_id: session.user.id,
+              nome: userNameMeta,
+              email: userEmail,
+              telefone: whatsappMeta || null,
+              cidade: cidadeMeta,
+              estado: estadoMeta,
+              origem: 'nova-analise-auto',
+            })
+          }).catch(() => {});
+        } else {
+          // Dados cadastrais realmente incompletos, abre o modal
+          setLeadForm({
+            nome: userNameMeta,
+            email: userEmail,
+            telefone: whatsappMeta,
+            cidade: cidadeMeta,
+            estado: estadoMeta,
+          });
+          setLeadModalOpen(true);
+        }
       }
 
       setPageReady(true);
@@ -501,12 +554,7 @@ export default function NovaAnalisePage() {
       const area = formData.get('area') as string;
       const declaredAreaHa = parseDeclaredAreaHa(area);
 
-      // 0. Garantir que o perfil do usuário existe
-      await supabase.from('profiles').upsert({ 
-        id: userId, 
-        email: session.user.email,
-        name: session.user.user_metadata?.full_name || 'Usuário'
-      }, { onConflict: 'id' });
+      // 0. O perfil do usuário já existe via trigger handle_new_user no Supabase. Não precisamos fazer upsert.
 
       // 1. Salvar Propriedade
       const { data: property, error: propError } = await supabase
@@ -662,14 +710,14 @@ export default function NovaAnalisePage() {
           <ArrowLeft size={20} /> Voltar ao painel
         </Link>
 
-        {/* ═══ OBJ 1: TELA DE BLOQUEIO TRIAL ═══ */}
+        {/* ═══ OBJ 1: TELA DE BLOQUEIO DE SALDO ═══ */}
         {trialBlocked ? (
           <div className="bg-white p-10 rounded-2xl shadow-xl border-t-4 border-amber-500 text-center">
             <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <ShieldAlert size={40} className="text-amber-600" />
             </div>
-            <h1 className="text-2xl font-extrabold text-gray-800 mb-3">Seu limite de páginas gratuitas já foi atingido</h1>
-            <p className="text-gray-600 mb-8 max-w-md mx-auto">Para continuar utilizando o AgroLex e processar mais páginas de matrícula, assine um de nossos planos.</p>
+            <h1 className="text-2xl font-extrabold text-gray-800 mb-3">Saldo Insuficiente</h1>
+            <p className="text-gray-600 mb-8 max-w-md mx-auto">Para continuar utilizando o AgroLex e processar matrículas, adquira créditos ou assine um plano.</p>
             <Link
               href="/dashboard/planos"
               onClick={async () => {
@@ -957,8 +1005,15 @@ export default function NovaAnalisePage() {
                         </div>
                       )}
                       
+                      {/* Exibição de preço adaptada para Trial */}
                       <div className={`text-xl font-black mt-auto ${!compatibility.enabled ? "text-gray-300" : isMaster ? "text-white" : "text-gray-800"}`}>
-                        R$ {mod.price.toFixed(2).replace('.', ',')}
+                        {trialProfile?.plan_type === 'trial' && !trialProfile?.trial_used ? (
+                          <span className="text-brand-green font-bold text-sm bg-green-100 px-2.5 py-1 rounded-md border border-green-200">
+                            Grátis no Teste
+                          </span>
+                        ) : (
+                          <>R$ {mod.price.toFixed(2).replace('.', ',')}</>
+                        )}
                       </div>
                     </div>
                   );
@@ -969,10 +1024,23 @@ export default function NovaAnalisePage() {
 
             <div className="pt-6">
               <div className="mb-6 border border-gray-200 rounded-xl p-5 bg-gray-50 text-center">
-                <p className="text-gray-700 font-bold text-lg">Valor estimado da auditoria: R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
-                <p className="text-sm text-gray-500 mt-2">
-                  Após a confirmação, a análise será criada como pendente. Realize o pagamento para liberar o processamento.
-                </p>
+                {trialProfile?.plan_type === 'trial' && !trialProfile?.trial_used ? (
+                  <>
+                    <p className="text-brand-green font-black text-xl flex items-center justify-center gap-2">
+                      🎁 Primeira Auditoria 100% Gratuita
+                    </p>
+                    <p className="text-sm text-gray-600 mt-2 font-medium">
+                      O AgroLex processará o documento enviado sem custo algum. Nenhuma cobrança ou cartão de crédito será solicitado.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-gray-700 font-bold text-lg">Valor estimado da auditoria: R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Após a confirmação, a análise será criada como pendente. Realize o pagamento para liberar o processamento.
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="flex flex-col md:flex-row gap-4 mt-6">
@@ -981,7 +1049,13 @@ export default function NovaAnalisePage() {
                   type="submit" 
                   className="flex-1 font-extrabold py-5 rounded-xl shadow-lg transition-all flex justify-center items-center gap-3 text-lg bg-brand-green text-white hover:brightness-110 disabled:opacity-50"
                 >
-                  {loading ? 'Processando Documentos...' : 'Enviar Documentos para Auditoria'}
+                  {loading ? 'Processando Documentos...' : (
+                    trialProfile?.plan_type === 'trial' && !trialProfile?.trial_used ? (
+                      'Iniciar Minha Auditoria Gratuita'
+                    ) : (
+                      'Enviar Documentos para Auditoria'
+                    )
+                  )}
                 </button>
               </div>
             </div>

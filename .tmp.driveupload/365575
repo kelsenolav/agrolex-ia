@@ -1,3 +1,0 @@
-module.exports=[22920,r=>{"use strict";async function e(r){try{let e=r.toString("binary").match(/\/Type[\s]*\/Page[^s]/g);if(e&&e.length>0)return e.length;return 1}catch(r){return console.error("Erro no countPdfPagesFromBuffer:",r),1}}r.s(["countPdfPagesFromBuffer",0,e])}];
-
-//# sourceMappingURL=src_lib_pdf_pageCounter_server_ts_07gafn3._.js.map

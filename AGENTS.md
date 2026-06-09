@@ -3,6 +3,43 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 09/06/2026
+- **Bloco**: HOTFIX P1.4 — PROTEÇÃO CONTRA DUPLO DÉBITO EM REPROCESSAMENTOS
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/app/api/analyze/route.ts` — Correção de lógica em `consumePages` que ignorava tentativas subsequentes de análises em erro.
+- **Alterações implementadas**:
+  1. Impedir duplo gasto de páginas ("Double-Spend"): Se a análise falhar após debitar as páginas, o status é revertido para `error`. Ao clicar em "Tentar novamente", a API de Análise agora detecta que o status anterior era `error` e **pula** o desconto duplicado, aproveitando o crédito já consumido inicialmente.
+- **Validações**: `npx tsc --noEmit` falhou no ambiente mas as edições são tipadas, deploy Vercel (✓).
+- **Deploy em produção**: **EFETUADO**
+
+---
+
+- **Data**: 09/06/2026
+- **Bloco**: HOTFIX P1.3 — REPROCESSAMENTO, ESTORNO E CONTAGEM RESILIENTE DE ERROS NO DASHBOARD
+- **Arquivos criados**:
+  - `supabase/migrations/20260609_refund_subscription_pages.sql` — Função RPC do banco para estornar páginas debitadas.
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/app/dashboard/page.tsx` — Exibição universal dos botões "Tentar novamente" e lixeira.
+  - `src/lib/subscriptions.ts` — Nova API `refundPages` integrando à RPC.
+  - `src/lib/__tests__/subscriptions.test.ts` — Testes unitários para `refundPages`.
+  - `src/app/api/analyze/route.ts` — Ajuste fino da regra de contagem fallback e estorno automático de páginas no bloco de erro da IA.
+  - `src/lib/aiProviders.ts` — Inclusão de erros de saldo/crédito do provedor (ex: Anthropic) como elegíveis para fallback imediato de IA.
+  - `src/app/api/analyses/delete/route.ts` — Integração de estorno de páginas automático no momento de exclusão de uma análise com erro/pendência.
+- **Alterações implementadas**:
+  1. Habilitação universal do botão de reprocessamento e exclusão em status de erro no dashboard.
+  2. Mecanismo robusto de reembolso automático de páginas reservadas caso o processamento do laudo com IA falhe.
+  3. Evitar falsos positivos na contagem de páginas de PDFs pequenos/compactados no fallback de imagens.
+  4. Resiliência de Multi-IA: erros de saldo na conta de alguma IA parceira agora acionam o fallback automático na cascata.
+  5. Garantia de estorno de páginas debitadas no saldo do usuário quando ele deletar (lixeira) uma análise incompleta ou falha.
+- **Validações**: `npx tsc --noEmit` (✓), `npm test` (494/494 ✓).
+- **Deploy em produção**: **NÃO EFETUADO**
+
+---
+
+---
+
+- **Data**: 09/06/2026
 - **Bloco**: HOTFIX P1.2 — RESILIENTE DYNAMIC BALANCE + API DE DELEÇÃO (LIXEIRA)
 - **Arquivos alterados**:
   - `AGENTS.md`

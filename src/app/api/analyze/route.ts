@@ -326,9 +326,19 @@ export async function POST(req: Request) {
     const { createSupabaseServerClient } = await import('@/lib/supabaseServer');
     const supabaseUser = await createSupabaseServerClient();
 
-    const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+    let { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+    
+    // Fallback resiliente: se a sessão via cookie falhar, validar o token JWT enviado no Header
     if (authError || !user) {
-      return NextResponse.json({ error: 'Sessão inválida ou expirada' }, { status: 401 });
+      const token = authHeader.replace('Bearer ', '').trim();
+      const supabaseAdminTemp = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const { data: { user: headerUser }, error: headerError } = await supabaseAdminTemp.auth.getUser(token);
+      if (headerError || !headerUser) {
+        return NextResponse.json({ error: 'Sessão inválida ou expirada' }, { status: 401 });
+      }
+      user = headerUser;
     }
 
     const body = await req.json();
@@ -381,18 +391,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Esta análise já está em processamento.' }, { status: 409 });
     }
 
-    const retryReason = getRecoverableRetryReason(findings);
-    const isRetryExhausted = findings.retry_exhausted === true;
-    const isRecoverableRetry =
-      currentStatus === 'error' &&
-      (
-        findings.retry_available === true ||
-        Boolean(retryReason) ||
-        (forceRetry === true && isRetryExhausted)
-      );
-
-    const validStatuses = ['ready_for_processing', 'payment_pending', 'pending'];
-    if (!validStatuses.includes(currentStatus) && !isRecoverableRetry) {
+    const validStatuses = ['ready_for_processing', 'payment_pending', 'pending', 'error'];
+    if (!validStatuses.includes(currentStatus)) {
       return NextResponse.json({ error: 'Status atual inválido para iniciar processamento' }, { status: 400 });
     }
 
@@ -472,8 +472,8 @@ export async function POST(req: Request) {
       if (doc.file_path.toLowerCase().endsWith('.pdf') || doc.document_type?.toLowerCase().includes('matrícula') || doc.document_type === 'Certidão Inteiro Teor' || doc.document_type === 'Matrícula') {
         let pages = await countPdfPagesFromBuffer(buffer);
         // Fallback tolerante para PDFs escaneados (imagens) sem marcação de páginas no binário de texto
-        if (pages <= 1 && buffer.length > 2 * 1024 * 1024) {
-          pages = Math.max(1, Math.floor(buffer.length / (400 * 1024))); // Estimativa de 400KB por página
+        if (pages <= 1 && buffer.length > 3.5 * 1024 * 1024) {
+          pages = Math.max(1, Math.floor(buffer.length / (1.5 * 1024 * 1024))); // Estimativa conservadora de 1.5MB por página
         }
         totalPages += pages;
       } else {
@@ -501,17 +501,8 @@ export async function POST(req: Request) {
       }, { status: 403 });
     }
 
-    // Consumir páginas antes de iniciar a IA e marcar processing
-    if (planType !== 'internal_test') {
-      const { consumePages } = await import('@/lib/subscriptions');
-      const consumed = await consumePages(user.id, totalPages);
-      if (!consumed) {
-        return NextResponse.json({ 
-          error: 'Falha ao debitar páginas do saldo (saldo insuficiente ou concorrente).',
-          blockInfo: { available: availablePages, required: totalPages, shortage: totalPages - availablePages }
-        }, { status: 403 });
-      }
-    }
+    // REMOVIDO P0: Consumir páginas prematuramente.
+    // A dedução ocorrerá exclusivamente após o sucesso (status: 'completed').
     // ----------------------------------------------------
 
     const caseFileDocuments: CaseFileDocument[] = documents.map((doc: any) => ({
@@ -566,9 +557,7 @@ export async function POST(req: Request) {
     }
 
     const processingStartedAt = new Date().toISOString();
-    const retryStartState = isRecoverableRetry
-      ? buildRetryState(findingsWithCaseFile, retryReason || 'ai_timeout', processingStartedAt)
-      : null;
+    const retryStartState = null;
 
     // FASE 5 — Marcar etapa atual como "processing" se houver stage
     if (currentStageId) {
@@ -856,6 +845,20 @@ export async function POST(req: Request) {
           },
         };
 
+        // Dedução de páginas (nova regra: consumido APENAS após sucesso)
+        if (planType !== 'internal_test' && !resultJson.pages_consumed) {
+           const { consumePages } = await import('@/lib/subscriptions');
+           const consumed = await consumePages(user.id, totalPages);
+           if (consumed) {
+              resultJson.pages_consumed = true;
+           } else {
+              const err = new Error('Não foi possível concluir a análise porque o saldo de páginas ficou insuficiente no fechamento. Compre mais páginas e tente novamente.');
+              (err as any).technicalErrorType = 'insufficient_balance';
+              (err as any).findingsCurrentStep = 'Saldo insuficiente no fechamento.';
+              throw err;
+           }
+        }
+
         await supabaseAdmin
           .from('analyses')
           .update({
@@ -1044,6 +1047,9 @@ export async function POST(req: Request) {
         if (forcedTechnicalErrorType === 'ai_incomplete_response') {
           technicalErrorType = 'ai_incomplete_response';
           findingsCurrentStep = innerError?.findingsCurrentStep || 'A IA retornou um parecer incompleto.';
+        } else if (forcedTechnicalErrorType === 'insufficient_balance') {
+          technicalErrorType = 'insufficient_balance';
+          findingsCurrentStep = innerError?.findingsCurrentStep || 'Saldo insuficiente no fechamento.';
         } else if (isAiQuotaExceeded) {
           technicalErrorType = 'ai_quota_exceeded';
           findingsCurrentStep = 'Limite temporário da IA atingido.';
@@ -1110,6 +1116,8 @@ export async function POST(req: Request) {
             findings: failedFindings
           })
           .eq('id', analysisId);
+
+        // Estorno removido (P0): Páginas não são mais debitadas antes do 'completed'.
 
         console.error("[Background] Erro na IA:", userMessage, technicalErrorType);
       }

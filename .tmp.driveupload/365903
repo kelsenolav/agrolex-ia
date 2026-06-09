@@ -1,8 +1,0 @@
-var R=require("../../../../chunks/[turbopack]_runtime.js")("server/app/api/webhook/mercadopago/route.js")
-R.c("server/chunks/[root-of-the-server]__0~mnv2u._.js")
-R.c("server/chunks/node_modules_next_dist_12gp6q5._.js")
-R.c("server/chunks/node_modules_@supabase_supabase-js_dist_index_mjs_0hp37pu._.js")
-R.c("server/chunks/[root-of-the-server]__0_~_1-l._.js")
-R.c("server/chunks/_next-internal_server_app_api_webhook_mercadopago_route_actions_0o3s~9j.js")
-R.m(27466)
-module.exports=R.m(27466).exports

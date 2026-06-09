@@ -153,23 +153,10 @@ export default function DashboardPage() {
       console.error('Erro ao buscar assinatura:', err);
     }
 
-    // SPREAD TRIAL → PLANO PAGO: Bloquear nova análise se o teste gratuito/créditos acabaram
+    // SPREAD TRIAL → PLANO PAGO: Bloquear nova análise apenas se os créditos (páginas) acabaram
     if (currentSub) {
-      if (currentSub.plan_type === 'trial') {
-        // Se o plano for trial e ele já usou (ou se tem 0 créditos), consideramos o trial terminado
-        const { data: analysesCount } = await supabase
-          .from('analyses')
-          .select('id', { count: 'exact' })
-          .eq('user_id', session.user.id);
-        const hasUsedTrial = (analysesCount?.length || 0) >= 1;
-        if (hasUsedTrial || currentSub.credits_available === 0) {
-          setTrialUsed(true);
-        } else {
-          setTrialUsed(false);
-        }
-      } else if (currentSub.credits_available === 0) {
-        // Se for outro plano com 0 créditos, exibe aviso ou bloqueia
-        setTrialUsed(true); // Reutiliza o estado de bloqueio/aviso de upgrade
+      if (currentSub.credits_available <= 0) {
+        setTrialUsed(true);
       } else {
         setTrialUsed(false);
       }
@@ -594,7 +581,7 @@ export default function DashboardPage() {
           pages = 0;
           for (const doc of docs) {
             if (doc.size) {
-              pages += Math.max(1, Math.floor(doc.size / (400 * 1024)));
+              pages += Math.max(1, Math.floor(doc.size / (1024 * 1024)));
             } else {
               pages += 1;
             }
@@ -654,35 +641,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Banner Trial Utilizado */}
-        {trialUsed && dynamicBalance >= 0 && (
-          <div className="mb-8 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-amber-500 rounded-r-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h3 className="font-extrabold text-amber-900 text-lg">Saldo Excedido / Limite Atingido</h3>
-              <p className="text-amber-800 text-sm font-medium">Você utilizou o limite de páginas do seu plano. Para continuar, compre créditos avulsos ou faça um upgrade.</p>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <Link
-                href="/dashboard/planos"
-                className="px-4 py-2 bg-brand-green text-white font-bold rounded-lg hover:brightness-110 transition-all text-xs shadow-md"
-              >
-                Assinar Starter
-              </Link>
-              <Link
-                href="/dashboard/planos"
-                className="px-4 py-2 bg-brand-gold text-brand-green font-bold rounded-lg hover:brightness-110 transition-all text-xs shadow-md"
-              >
-                Assinar Pro
-              </Link>
-              <Link
-                href="/dashboard/planos"
-                className="px-4 py-2 bg-gray-900 text-white font-bold rounded-lg hover:brightness-110 transition-all text-xs shadow-md"
-              >
-                Assinar Premium
-              </Link>
-            </div>
-          </div>
-        )}
+
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
@@ -701,10 +660,10 @@ export default function DashboardPage() {
                 )}
               </div>
             </Link>
-            {dynamicBalance <= 0 || trialUsed ? (
+            {dynamicBalance <= 0 ? (
               <button
                 onClick={() => {
-                  showToast("Você utilizou o limite de páginas do seu plano. Adquira créditos ou faça upgrade.", "error");
+                  showToast("Você não possui saldo de páginas. Adquira créditos ou assine um plano.", "error");
                   router.push('/dashboard/planos');
                 }}
                 className="flex items-center gap-2 bg-gray-300 text-gray-600 px-5 py-3 rounded-lg font-bold cursor-not-allowed shadow"
@@ -1188,13 +1147,22 @@ export default function DashboardPage() {
                             Abrir Parecer <ArrowUpRight size={14} />
                           </Link>
                         ) : statusType === 'ready_for_processing' ? (
-                          <button
-                            disabled={loadingAnalysisId !== null}
-                            onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: 'Processando auditoria...' })}
-                            className="bg-brand-green text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
-                          >
-                            {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar Parecer'}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              disabled={loadingAnalysisId !== null}
+                              onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: 'Processando auditoria...' })}
+                              className="bg-brand-green text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
+                            >
+                              {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar Parecer'}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAnalysis(analise.id)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                              title="Excluir Auditoria Pendente"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         ) : statusType === 'error' ? (
                           analise.findings?.retry_exhausted === true ? (
                             <div className="flex flex-col gap-2 max-w-[300px]">
@@ -1254,16 +1222,23 @@ export default function DashboardPage() {
                                 * Cada etapa gera uma nova análise complementar vinculada a esta. Preço total estimado: <strong className="text-gray-700">R$ 749,60</strong>.
                               </span>
                             </div>
-                          ) : canRetryAnalysis ? (
-                            <button
-                              disabled={loadingAnalysisId !== null}
-                              onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: getRetryMessage(analise) })}
-                              className="bg-red-600 text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
-                            >
-                              {loadingAnalysisId === analise.id ? 'Reprocessando...' : 'Tentar novamente'}
-                            </button>
                           ) : (
-                            <span className="text-red-600 text-xs font-semibold">Falha / Reprocessamento necessário</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                disabled={loadingAnalysisId !== null}
+                                onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: getRetryMessage(analise) })}
+                                className="bg-red-600 text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
+                              >
+                                {loadingAnalysisId === analise.id ? 'Reprocessando...' : 'Tentar novamente'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteAnalysis(analise.id)}
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                                title="Excluir Análise"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           )
                         ) : statusType === 'pending' ? (
                           <div className="flex items-center gap-2">
