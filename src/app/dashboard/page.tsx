@@ -443,13 +443,19 @@ export default function DashboardPage() {
 
       if (error) throw error;
 
-      // Atualiza o estado local imediatamente para feedback instantâneo
+      // 1. Remove da tela na hora
       setAnalises(prev => prev.filter(a => a.id !== analysisId));
 
       showToast("Auditoria pendente excluída com sucesso.", 'success');
-      await refreshDashboardData();
+
+      // 2. Atualiza o saldo em segundo plano sem travar a interface
+      setTimeout(() => {
+        refreshDashboardData().catch(err => {
+          console.error('Erro ao atualizar saldo em segundo plano:', err);
+        });
+      }, 300);
     } catch (err: any) {
-      console.error('Erro ao deletar análise:', err);
+      console.error('Erro de permissão ou falha de RLS ao deletar análise no Supabase:', err);
       showToast("Erro ao excluir auditoria: " + (err.message || err), 'error');
     }
   };
