@@ -2,6 +2,21 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 09/06/2026
+- **Bloco**: HOTFIX P1.2 — RESILIENTE DYNAMIC BALANCE + API DE DELEÇÃO (LIXEIRA)
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/app/dashboard/page.tsx` — Adicionado fallback de estimativa baseado no tamanho físico dos PDFs se `required_pages` estiver ausente.
+  - `.vercelignore` — Adicionados diretórios temporários `.tmp.driveupload` e `.tmp.drivedownload` para evitar erros de limite de arquivos e caminhos órfãos no deploy.
+- **Alterações implementadas**:
+  1. Correção do cálculo visual do saldo de páginas: se o volume da matrícula pendente antiga não possui o campo `required_pages` gravado no JSON, o frontend estima 1 página por 400KB de tamanho de arquivo, computando corretamente o saldo e o déficit dinâmico.
+  2. Correção de erro de limite de arquivos e uploads residuais no deploy da Vercel através do ajuste fino no `.vercelignore`.
+  3. Deploy em produção bem-sucedido via Vercel CLI com compilação Turbopack ativa.
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), deploy em produção ativo e funcional.
+- **Deploy em produção**: **EFETUADO** (Vercel Production ativa em https://agrolex-ia-qx32.vercel.app).
+
+---
+
 - **Data**: 08/06/2026
 - **Bloco**: PROMPT DE ESTABILIZAÇÃO E PERFORMANCE P0 — RESILIÊNCIA DE DATA E RUNTIME
 - **Arquivos alterados**:

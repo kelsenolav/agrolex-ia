@@ -412,6 +412,17 @@ Atualizar o histórico resumido ao final de cada tarefa.
 
 Entregar informações de arquivos alterados, resultados e pendências.
 
+- **Data**: 09/06/2026
+- **Tarefa**: Hotfix P1.2 — Resolução da Lixeira e Saldo de Páginas Dinâmico em Produção
+- **Arquivos alterados**: `src/app/dashboard/page.tsx`, `.vercelignore`, `PROJECT_CONTEXT_AGROLEX.md`, `AGENTS.md`
+- **Comportamento implementado**:
+  - Implementado cálculo com fallback resiliente para saldo dinâmico quando a matrícula pendente não possui `required_pages` gravado (estimando 1 página a cada 400KB do tamanho de arquivo).
+  - Incluídos os diretórios temporários `.tmp.driveupload` e `.tmp.drivedownload` no `.vercelignore`, resolvendo a restrição de limite de arquivos e arquivos órfãos da Vercel.
+  - Efetuado deploy final bem-sucedido em produção via Vercel CLI (Turbopack).
+- **Status build/lint/test**: Compilação TypeScript e ESLint aprovados com 100% de sucesso.
+- **Deploy**: Efetuado e validado em produção.
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard
+
 - **Data**: 31/05/2026
 - **Tarefa**: Extração local de texto dos documentos e enriquecimento dos prompts
 - **Arquivos alterados**: `src/app/dashboard/page.tsx`, `package.json`, `PROJECT_CONTEXT_AGROLEX.md`
