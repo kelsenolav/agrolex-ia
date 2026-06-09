@@ -107,7 +107,7 @@ export async function getUserSubscription(userId: string): Promise<Subscription>
     user_id: userId,
     plan_type: 'trial',
     status: 'active',
-    credits_available: 0,
+    credits_available: 10,
     started_at: nowStr,
     expires_at: null,
     created_at: nowStr,
