@@ -1,0 +1,3 @@
+[auth]
+# Minimal valid configuration
+enable_signup = true

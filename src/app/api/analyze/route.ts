@@ -484,6 +484,16 @@ export async function POST(req: Request) {
     const availablePages = userSubData.credits_available || 0;
 
     if (totalPages > availablePages) {
+      const updatedFindings = {
+        ...findings,
+        required_pages: totalPages,
+        shortage_pages: totalPages - availablePages
+      };
+      await supabaseAdmin.from('analyses').update({
+        status: 'payment_pending',
+        findings: updatedFindings
+      }).eq('id', analysisId);
+
       return NextResponse.json({ 
         error: `O número de páginas do documento excede o seu saldo disponível (${availablePages} páginas restantes).`,
         blockInfo: { available: availablePages, required: totalPages, shortage: totalPages - availablePages }

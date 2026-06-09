@@ -580,6 +580,11 @@ export default function DashboardPage() {
   const fim = inicio + ITEMS_PER_PAGE;
   const analisesPaginadas = analisesFiltradas.slice(inicio, fim);
 
+  const pendingPagesSum = analises
+    .filter(a => a.status === 'payment_pending' || a.status === 'pending')
+    .reduce((sum, a) => sum + ((a.findings as any)?.required_pages || 0), 0);
+  const dynamicBalance = credits - pendingPagesSum;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navbar */}
@@ -590,9 +595,9 @@ export default function DashboardPage() {
             <span className="text-xl font-bold text-white">AgroLex</span>
           </Link>
           <div className="flex gap-4 items-center">
-            <span className="text-sm bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 font-bold flex items-center gap-1.5 text-brand-gold">
-              <span className="w-2 h-2 rounded-full bg-brand-gold animate-pulse" />
-              {credits} pág(s) restantes
+            <span className={`text-sm bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 font-bold flex items-center gap-1.5 ${dynamicBalance < 0 ? 'text-red-400' : 'text-brand-gold'}`}>
+              <span className={`w-2 h-2 rounded-full animate-pulse ${dynamicBalance < 0 ? 'bg-red-500' : 'bg-brand-gold'}`} />
+              {dynamicBalance} pág(s) restantes
             </span>
             <span className="text-sm font-medium">Olá, {userName}</span>
             <button onClick={handleLogout} className="text-sm hover:text-brand-gold transition-colors font-medium">Sair</button>
@@ -601,8 +606,34 @@ export default function DashboardPage() {
       </nav>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Banner de Déficit de Páginas */}
+        {dynamicBalance < 0 && (
+          <div className="mb-8 bg-gradient-to-r from-red-500/10 via-red-500/5 to-transparent border-l-4 border-red-500 rounded-r-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h3 className="font-extrabold text-red-950 text-lg">Déficit de Páginas Detectado</h3>
+              <p className="text-red-900 text-sm font-medium">
+                Faltam {Math.abs(dynamicBalance)} páginas para liberar o processamento dos seus laudos/documentos pendentes. Adquira créditos ou faça upgrade.
+              </p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Link
+                href="/dashboard/planos"
+                className="px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:brightness-110 transition-all text-xs shadow-md"
+              >
+                Comprar Páginas
+              </Link>
+              <Link
+                href="/dashboard/planos"
+                className="px-4 py-2 bg-brand-gold text-brand-green font-bold rounded-lg hover:brightness-110 transition-all text-xs shadow-md"
+              >
+                Fazer Upgrade
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* Banner Trial Utilizado */}
-        {trialUsed && (
+        {trialUsed && dynamicBalance >= 0 && (
           <div className="mb-8 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-amber-500 rounded-r-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h3 className="font-extrabold text-amber-900 text-lg">Saldo Excedido / Limite Atingido</h3>
@@ -637,16 +668,18 @@ export default function DashboardPage() {
             <p className="text-gray-600 mt-1">Acompanhe a segurança jurídica do seu portfólio de imóveis rurais.</p>
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/dashboard/planos" className="flex items-center gap-2 bg-white text-brand-dark border-2 border-brand-gold px-5 py-3 rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm">
-              <Plus size={20} className="text-brand-gold" />
+            <Link href="/dashboard/planos" className={`flex items-center gap-2 bg-white text-brand-dark border-2 px-5 py-3 rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm ${dynamicBalance < 0 ? 'border-red-500' : 'border-brand-gold'}`}>
+              <Plus size={20} className={dynamicBalance < 0 ? 'text-red-500' : 'text-brand-gold'} />
               <div className="flex flex-col items-start leading-tight">
-                <span>{credits > 0 ? `${credits} páginas` : 'Planos'}</span>
-                {credits > 0 && (
-                  <span className="text-[9px] font-normal text-gray-500">Saldo de páginas disponível</span>
+                <span>{dynamicBalance > 0 ? `${dynamicBalance} páginas` : dynamicBalance < 0 ? `${dynamicBalance} páginas (Déficit)` : 'Planos'}</span>
+                {dynamicBalance !== 0 && (
+                  <span className={`text-[9px] font-normal ${dynamicBalance < 0 ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
+                    {dynamicBalance < 0 ? 'Regularize seu saldo' : 'Saldo de páginas disponível'}
+                  </span>
                 )}
               </div>
             </Link>
-            {credits <= 0 || trialUsed ? (
+            {dynamicBalance <= 0 || trialUsed ? (
               <button
                 onClick={() => {
                   showToast("Você utilizou o limite de páginas do seu plano. Adquira créditos ou faça upgrade.", "error");
@@ -703,17 +736,17 @@ export default function DashboardPage() {
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Saldo de Páginas</span>
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Layers size={18} className="text-blue-600" />
+              <div className={`p-2 ${dynamicBalance < 0 ? 'bg-red-100' : 'bg-blue-100'} rounded-lg`}>
+                <Layers size={18} className={dynamicBalance < 0 ? 'text-red-600' : 'text-blue-600'} />
               </div>
             </div>
-            <p className="text-2xl font-black text-gray-800 font-sans">
-              {credits} pág(s) restando
+            <p className={`text-2xl font-black font-sans ${dynamicBalance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+              {dynamicBalance} pág(s) {dynamicBalance < 0 ? 'de déficit' : 'restando'}
             </p>
             <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mt-1">
               <div 
-                className="bg-brand-green h-full rounded-full transition-all duration-500" 
-                style={{ width: `${Math.min(100, (credits / (planLimits[planType] || 10)) * 100)}%` }}
+                className={`${dynamicBalance < 0 ? 'bg-red-500 animate-pulse' : 'bg-brand-green'} h-full rounded-full transition-all duration-500`} 
+                style={{ width: `${Math.min(100, (Math.max(0, dynamicBalance) / (planLimits[planType] || 10)) * 100)}%` }}
               />
             </div>
             <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">

@@ -593,8 +593,16 @@ export default function NovaAnalisePage() {
 
       if (analyzeRes.status === 403) {
         const analyzeData = await analyzeRes.json();
-        // Reverte a análise para payment_pending já que bloqueou
-        await supabase.from('analyses').update({ status: 'payment_pending' }).eq('id', analysis.id);
+        // Reverte a análise para payment_pending já que bloqueou e atualiza findings com o total de páginas e déficit
+        const updatedFindings = {
+          ...findingsJson,
+          required_pages: analyzeData.blockInfo?.required || 0,
+          shortage_pages: analyzeData.blockInfo?.shortage || 0
+        };
+        await supabase.from('analyses').update({ 
+          status: 'payment_pending',
+          findings: updatedFindings
+        }).eq('id', analysis.id);
         
         if (analyzeData.blockInfo) {
           setPagesBlockInfo(analyzeData.blockInfo);
