@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock, ArrowUpRight, Search, Filter, BarChart3, Layers, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ShieldCheck, Plus, FileText, MapPin, AlertTriangle, CheckCircle, Clock, ArrowUpRight, Search, Filter, BarChart3, Layers, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Analysis, AnalysisFindings } from '@/types/analise';
 import { normalizeStatus, calcularScoreAgroLex } from '@/types/analise';
@@ -414,6 +414,32 @@ export default function DashboardPage() {
       await refreshAnalises();
     } finally {
       setLoadingAnalysisId(null);
+    }
+  };
+
+  const handleDeleteAnalysis = async (analysisId: string) => {
+    if (!confirm("Tem certeza que deseja excluir esta auditoria pendente?")) return;
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        showToast("Sua sessão expirou, faça login novamente.", 'error');
+        setTimeout(() => router.push('/login'), 2000);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('analyses')
+        .delete()
+        .eq('id', analysisId);
+
+      if (error) throw error;
+
+      showToast("Auditoria pendente excluída com sucesso.", 'success');
+      await refreshAnalises();
+    } catch (err: any) {
+      console.error('Erro ao deletar análise:', err);
+      showToast("Erro ao excluir auditoria: " + (err.message || err), 'error');
     }
   };
 
@@ -1164,12 +1190,21 @@ export default function DashboardPage() {
                             <span className="text-red-600 text-xs font-semibold">Falha / Reprocessamento necessário</span>
                           )
                         ) : statusType === 'pending' ? (
-                          <button
-                            onClick={() => handlePayNow(analise.id)}
-                            className="bg-brand-gold text-brand-green px-4 py-2 rounded text-xs font-bold hover:brightness-110 transition-all shadow"
-                          >
-                            Processar Pendência →
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handlePayNow(analise.id)}
+                              className="bg-brand-gold text-brand-green px-4 py-2 rounded text-xs font-bold hover:brightness-110 transition-all shadow"
+                            >
+                              Processar Pendência →
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAnalysis(analise.id)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                              title="Excluir Auditoria Pendente"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-gray-400 text-sm font-medium">-</span>
                         )}
