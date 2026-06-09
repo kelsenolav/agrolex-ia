@@ -22,6 +22,9 @@ import {
   type ProcessingStages,
 } from '@/lib/processingStages';
 
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 export const maxDuration = 300;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
