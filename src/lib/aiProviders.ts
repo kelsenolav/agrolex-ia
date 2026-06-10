@@ -71,6 +71,14 @@ const FALLBACK_ELIGIBLE_PATTERNS = [
   'ai_quota_exceeded',
   'ai_timeout',
   'ai_unavailable',
+  // Erros de billing/crédito — Anthropic retorna "credit balance is too low"
+  'credit balance',
+  'insufficient credit',
+  'billing',
+  'upgrade or purchase credits',
+  'purchase credits',
+  'balance is too low',
+  'low balance',
 ];
 
 const NON_FALLBACK_PATTERNS = [
@@ -116,6 +124,9 @@ export function classifyFallbackReason(errorMessage: string): string {
   }
   if (lower.includes('503') || lower.includes('service unavailable') || lower.includes('high demand')) {
     return 'ai_unavailable';
+  }
+  if (lower.includes('credit balance') || lower.includes('insufficient credit') || lower.includes('billing') || lower.includes('purchase credits') || lower.includes('balance is too low') || lower.includes('low balance')) {
+    return 'ai_billing_error';
   }
   return 'ai_fallback_unknown';
 }
