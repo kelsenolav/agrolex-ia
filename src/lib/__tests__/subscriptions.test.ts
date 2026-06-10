@@ -17,6 +17,7 @@ jest.mock('@supabase/supabase-js', () => {
     eq: jest.fn().mockReturnThis(),
     update: jest.fn().mockReturnThis(),
     insert: jest.fn().mockReturnThis(),
+    upsert: jest.fn().mockReturnThis(),
     single: jest.fn(),
     maybeSingle: jest.fn(),
     rpc: jest.fn(),
@@ -40,13 +41,27 @@ describe('Subscriptions module tests', () => {
     mockSupabase = (createClient as any)();
   });
 
-  it('retorna fallback Trial se nenhuma assinatura for encontrada no banco', async () => {
+  it('cria subscription trial automaticamente se nenhuma assinatura for encontrada no banco', async () => {
+    // Primeiro maybeSingle retorna null (sem subscription existente)
     mockSupabase.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
+
+    // upsert + select + single retorna a nova subscription criada
+    const mockNewTrial = {
+      id: 'new-trial-id',
+      user_id: mockUserId,
+      plan_type: 'trial',
+      status: 'active',
+      credits_available: 10,
+      started_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+    };
+    mockSupabase.single.mockResolvedValueOnce({ data: mockNewTrial, error: null });
 
     const sub = await getUserSubscription(mockUserId);
     expect(sub.plan_type).toBe('trial');
     expect(sub.credits_available).toBe(10);
     expect(sub.status).toBe('active');
+    expect(mockSupabase.upsert).toHaveBeenCalled();
   });
 
   it('retorna assinatura existente no banco', async () => {

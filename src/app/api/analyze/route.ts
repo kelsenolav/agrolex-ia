@@ -331,7 +331,7 @@ export async function POST(req: Request) {
     // Fallback resiliente: se a sessão via cookie falhar, validar o token JWT enviado no Header
     if (authError || !user) {
       const token = authHeader.replace('Bearer ', '').trim();
-      const supabaseAdminTemp = createClient(supabaseUrl, supabaseServiceKey, {
+      const supabaseAdminTemp = createClient(supabaseUrl, supabaseAnonKey, {
         auth: { autoRefreshToken: false, persistSession: false },
       });
       const { data: { user: headerUser }, error: headerError } = await supabaseAdminTemp.auth.getUser(token);
@@ -348,11 +348,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'analysisId não informado' }, { status: 400 });
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { persistSession: false }
+    const token = authHeader.replace('Bearer ', '').trim();
+    const supabaseAdmin = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
     });
 
     // Consultar a análise
+    console.log('[Analyze API] Consultando análise no banco. ID:', analysisId);
     const { data: analysis, error: fetchError } = await supabaseAdmin
       .from('analyses')
       .select('id, user_id, status, property_id, findings')
@@ -360,6 +367,7 @@ export async function POST(req: Request) {
       .single();
 
     if (fetchError || !analysis) {
+      console.warn('[Analyze API] Análise não encontrada. Erro:', fetchError?.message || 'Sem dados');
       return NextResponse.json({ error: 'Análise não encontrada' }, { status: 404 });
     }
 
@@ -370,7 +378,7 @@ export async function POST(req: Request) {
 
     // Consultar Assinatura Centralizada (inclui lógica de internal_test)
     const { getUserSubscription } = await import('@/lib/subscriptions');
-    const userSubData = await getUserSubscription(user.id);
+    const userSubData = await getUserSubscription(user.id, supabaseAdmin);
     const planType = userSubData.plan_type;
 
     // CAMADA 2: Bloqueio Backend contra bypass de trial
@@ -848,7 +856,7 @@ export async function POST(req: Request) {
         // Dedução de páginas (nova regra: consumido APENAS após sucesso)
         if (planType !== 'internal_test' && !resultJson.pages_consumed) {
            const { consumePages } = await import('@/lib/subscriptions');
-           const consumed = await consumePages(user.id, totalPages);
+           const consumed = await consumePages(user.id, totalPages, supabaseAdmin);
            if (consumed) {
               resultJson.pages_consumed = true;
            } else {

@@ -37,7 +37,8 @@ export default function DashboardPage() {
   const [userName, setUserName] = useState("Profissional");
   const [analises, setAnalises] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
-  const [credits, setCredits] = useState(0);
+  const [credits, setCredits] = useState<number | null>(null);
+  const [subError, setSubError] = useState(false);
   const [planType, setPlanType] = useState<string>('trial');
   const [loadingAnalysisId, setLoadingAnalysisId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -123,8 +124,11 @@ export default function DashboardPage() {
   };
 
   const refreshDashboardData = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    console.log('[Dashboard] Iniciando refreshDashboardData...');
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    console.log('[Dashboard] Sessão obtida:', session ? 'Sim' : 'Não', 'Erro:', sessionError);
     if (!session) {
+      console.log('[Dashboard] Sem sessão válida, redirecionando para /login');
       router.push('/login');
       return;
     }
@@ -135,22 +139,38 @@ export default function DashboardPage() {
     // Buscar Assinatura & Créditos Reais
     let currentSub;
     try {
+      console.log('[Dashboard] Buscando assinatura via API...');
       const res = await fetch('/api/subscription', {
         headers: {
           'Authorization': `Bearer ${session.access_token}`
         }
       });
+      console.log('[Dashboard] Resposta assinatura status:', res.status);
       if (res.ok) {
         currentSub = await res.json();
         setCredits(currentSub.credits_available);
+        setSubError(false);
         if (currentSub && currentSub.plan_type) {
           setPlanType(currentSub.plan_type);
         }
       } else {
-        console.error('Erro ao buscar assinatura:', await res.text());
+        const errorText = await res.text();
+        console.warn('[Dashboard] Falha ao buscar assinatura:', res.status, errorText);
+        setSubError(true);
+        
+        // Só redireciona se for 401 (Não autorizado) E de fato a sessão local estiver ausente/inválida
+        if (res.status === 401) {
+          const { data: { session: verifySession } } = await supabase.auth.getSession();
+          if (!verifySession) {
+            console.log('[Dashboard] Validação de sessão confirmou ausência de usuário. Redirecionando para /login');
+            router.push('/login');
+            return;
+          }
+        }
       }
     } catch (err) {
-      console.error('Erro ao buscar assinatura:', err);
+      console.error('[Dashboard] Erro ao buscar assinatura:', err);
+      setSubError(true);
     }
 
     // SPREAD TRIAL → PLANO PAGO: Bloquear nova análise apenas se os créditos (páginas) acabaram
@@ -592,7 +612,7 @@ export default function DashboardPage() {
       }
       return sum + pages;
     }, 0);
-  const dynamicBalance = credits - pendingPagesSum;
+  const dynamicBalance = credits !== null ? credits - pendingPagesSum : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -604,10 +624,20 @@ export default function DashboardPage() {
             <span className="text-xl font-bold text-white">AgroLex</span>
           </Link>
           <div className="flex gap-4 items-center">
-            <span className={`text-sm bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 font-bold flex items-center gap-1.5 ${dynamicBalance < 0 ? 'text-red-400' : 'text-brand-gold'}`}>
-              <span className={`w-2 h-2 rounded-full animate-pulse ${dynamicBalance < 0 ? 'bg-red-500' : 'bg-brand-gold'}`} />
-              {dynamicBalance} pág(s) restantes
-            </span>
+            {dynamicBalance !== null ? (
+              <span className={`text-sm bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 font-bold flex items-center gap-1.5 ${dynamicBalance < 0 ? 'text-red-400' : 'text-brand-gold'}`}>
+                <span className={`w-2 h-2 rounded-full animate-pulse ${dynamicBalance < 0 ? 'bg-red-500' : 'bg-brand-gold'}`} />
+                {dynamicBalance} pág(s) restantes
+              </span>
+            ) : subError ? (
+              <span className="text-sm bg-white/10 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-300 font-bold">
+                Erro ao carregar saldo
+              </span>
+            ) : (
+              <span className="text-sm bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 text-gray-300 font-bold animate-pulse">
+                Carregando saldo...
+              </span>
+            )}
             <span className="text-sm font-medium">Olá, {userName}</span>
             <button onClick={handleLogout} className="text-sm hover:text-brand-gold transition-colors font-medium">Sair</button>
           </div>
@@ -616,7 +646,7 @@ export default function DashboardPage() {
 
       <main className="container mx-auto px-4 py-8">
         {/* Banner de Déficit de Páginas */}
-        {dynamicBalance < 0 && (
+        {dynamicBalance !== null && dynamicBalance < 0 && (
           <div className="mb-8 bg-gradient-to-r from-red-500/10 via-red-500/5 to-transparent border-l-4 border-red-500 rounded-r-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h3 className="font-extrabold text-red-950 text-lg">Déficit de Páginas Detectado</h3>
@@ -649,18 +679,26 @@ export default function DashboardPage() {
             <p className="text-gray-600 mt-1">Acompanhe a segurança jurídica do seu portfólio de imóveis rurais.</p>
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/dashboard/planos" className={`flex items-center gap-2 bg-white text-brand-dark border-2 px-5 py-3 rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm ${dynamicBalance < 0 ? 'border-red-500' : 'border-brand-gold'}`}>
-              <Plus size={20} className={dynamicBalance < 0 ? 'text-red-500' : 'text-brand-gold'} />
+            <Link href="/dashboard/planos" className={`flex items-center gap-2 bg-white text-brand-dark border-2 px-5 py-3 rounded-lg font-bold hover:bg-amber-50 transition-all shadow-sm ${dynamicBalance !== null && dynamicBalance < 0 ? 'border-red-500' : 'border-brand-gold'}`}>
+              <Plus size={20} className={dynamicBalance !== null && dynamicBalance < 0 ? 'text-red-500' : 'text-brand-gold'} />
               <div className="flex flex-col items-start leading-tight">
-                <span>{dynamicBalance > 0 ? `${dynamicBalance} páginas` : dynamicBalance < 0 ? `${dynamicBalance} páginas (Déficit)` : 'Planos'}</span>
-                {dynamicBalance !== 0 && (
+                <span>
+                  {dynamicBalance === null
+                    ? subError ? 'Erro no Saldo' : 'Carregando saldo...'
+                    : dynamicBalance > 0
+                      ? `${dynamicBalance} páginas`
+                      : dynamicBalance < 0
+                        ? `${dynamicBalance} páginas (Déficit)`
+                        : 'Planos'}
+                </span>
+                {dynamicBalance !== null && dynamicBalance !== 0 && (
                   <span className={`text-[9px] font-normal ${dynamicBalance < 0 ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
                     {dynamicBalance < 0 ? 'Regularize seu saldo' : 'Saldo de páginas disponível'}
                   </span>
                 )}
               </div>
             </Link>
-            {dynamicBalance <= 0 ? (
+            {dynamicBalance !== null && dynamicBalance <= 0 ? (
               <button
                 onClick={() => {
                   showToast("Você não possui saldo de páginas. Adquira créditos ou assine um plano.", "error");
@@ -717,17 +755,23 @@ export default function DashboardPage() {
           <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Saldo de Páginas</span>
-              <div className={`p-2 ${dynamicBalance < 0 ? 'bg-red-100' : 'bg-blue-100'} rounded-lg`}>
-                <Layers size={18} className={dynamicBalance < 0 ? 'text-red-600' : 'text-blue-600'} />
+              <div className={`p-2 ${dynamicBalance !== null && dynamicBalance < 0 ? 'bg-red-100' : 'bg-blue-100'} rounded-lg`}>
+                <Layers size={18} className={dynamicBalance !== null && dynamicBalance < 0 ? 'text-red-600' : 'text-blue-600'} />
               </div>
             </div>
-            <p className={`text-2xl font-black font-sans ${dynamicBalance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-              {dynamicBalance} pág(s) {dynamicBalance < 0 ? 'de déficit' : 'restando'}
-            </p>
+            {dynamicBalance === null ? (
+              <p className="text-xl font-bold text-gray-500">
+                {subError ? 'Não foi possível carregar' : 'Carregando...'}
+              </p>
+            ) : (
+              <p className={`text-2xl font-black font-sans ${dynamicBalance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                {dynamicBalance} pág(s) {dynamicBalance < 0 ? 'de déficit' : 'restando'}
+              </p>
+            )}
             <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mt-1">
               <div 
-                className={`${dynamicBalance < 0 ? 'bg-red-500 animate-pulse' : 'bg-brand-green'} h-full rounded-full transition-all duration-500`} 
-                style={{ width: `${Math.min(100, (Math.max(0, dynamicBalance) / (planLimits[planType] || 10)) * 100)}%` }}
+                className={`${dynamicBalance !== null && dynamicBalance < 0 ? 'bg-red-500 animate-pulse' : 'bg-brand-green'} h-full rounded-full transition-all duration-500`} 
+                style={{ width: `${Math.min(100, (Math.max(0, dynamicBalance ?? 0) / (planLimits[planType] || 10)) * 100)}%` }}
               />
             </div>
             <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">

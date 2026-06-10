@@ -93,8 +93,8 @@ export async function POST(req: Request) {
         .eq('email', email.trim().toLowerCase());
 
       if (error) {
-        console.error('[marketing/leads] update_activity error:', error.message);
-        return NextResponse.json({ error: 'Erro ao atualizar atividade.' }, { status: 500 });
+        console.warn('[marketing/leads] update_activity warning (non-blocking):', error.message);
+        return NextResponse.json({ ok: false, warning: 'Erro ao atualizar atividade (ignorado).' }, { status: 200 });
       }
 
       return NextResponse.json({ ok: true });

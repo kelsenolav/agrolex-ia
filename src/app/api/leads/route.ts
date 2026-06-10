@@ -4,31 +4,69 @@ import { createClient } from '@supabase/supabase-js';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    
-    // Auth Check
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
-    }
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (!url || !serviceKey) {
+    if (!url || !serviceKey || !anonKey) {
       return NextResponse.json({ error: 'Configuração do servidor ausente.' }, { status: 500 });
     }
 
+    // ─── Autenticação: cookie server client primeiro, fallback Bearer com anon key ───
+    let user: any = null;
+
+    // 1. Tentar obter o usuário usando o cliente de servidor com base em cookies
+    try {
+      const { createSupabaseServerClient } = await import('@/lib/supabaseServer');
+      const supabaseUser = await createSupabaseServerClient();
+      const { data: { user: cookieUser } } = await supabaseUser.auth.getUser();
+      if (cookieUser) {
+        user = cookieUser;
+      }
+    } catch (cookieErr) {
+      // Ignorar e tentar fallback via header
+    }
+
+    // 2. Fallback resiliente: validar via cabeçalho Authorization se o cookie falhar
+    if (!user) {
+      const authHeader = req.headers.get('authorization');
+      if (!authHeader) {
+        return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
+      }
+
+      const token = authHeader.replace('Bearer ', '').trim();
+      if (!token) {
+        return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
+      }
+
+      // IMPORTANTE: Usar chave anônima pública para validar JWT de usuário comum
+      const supabaseUserClient = createClient(url, anonKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      });
+
+      const { data: { user: headerUser }, error: userError } = await supabaseUserClient.auth.getUser();
+      if (userError || !headerUser) {
+        console.warn('[Leads API] Falha ao recuperar usuário via JWT:', userError?.message);
+        return NextResponse.json({ error: 'Sessão inválida ou incompatível.' }, { status: 403 });
+      }
+      user = headerUser;
+    }
+
+    // ─── Validação: user_id no body deve corresponder ao usuário autenticado ───
+    if (user.id !== body.user_id) {
+      return NextResponse.json({ error: 'Sessão inválida ou incompatível.' }, { status: 403 });
+    }
+
+    // ─── Upsert no banco usando service_role (apenas para gravação) ───
     const supabaseAdmin = createClient(url, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-
-    // Validar quem está chamando (opcional, mas recomendado para segurança)
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-    
-    if (userError || !user || user.id !== body.user_id) {
-       return NextResponse.json({ error: 'Sessão inválida ou incompatível.' }, { status: 403 });
-    }
 
     // Apenas campos seguros
     const payload = {

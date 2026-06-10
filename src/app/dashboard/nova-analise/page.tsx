@@ -340,25 +340,13 @@ export default function NovaAnalisePage() {
       });
 
       if (!res.ok) {
-        let errData: any = {};
-        try {
-          errData = await res.json();
-        } catch (e) {
-          errData = { error: 'O servidor não retornou um JSON válido.' };
-        }
-        console.error('Erro ao salvar lead:', JSON.stringify({
-          status: res.status,
-          statusText: res.statusText,
-          errData
-        }, null, 2));
-        showToast('Não foi possível salvar seus dados agora. Tente novamente ou revise os campos.', 'error');
+        // Não bloqueante: loga o warning e fecha o modal silenciosamente
+        console.warn('[Lead] Falha não crítica ao salvar lead, prosseguindo:', res.status, res.statusText);
+        setLeadModalOpen(false);
         setLeadSaving(false);
         return;
       }
 
-      showToast('Dados salvos com sucesso! Prossiga com sua auditoria.', 'success');
-      setLeadModalOpen(false);
-      
       // Sincronizar o profiles para salvar que o lead_id está preenchido ou atualizar localmente
       await supabase
         .from('profiles')
@@ -366,9 +354,9 @@ export default function NovaAnalisePage() {
         .eq('id', session.user.id);
 
     } catch (err) {
-      console.error('Erro ao salvar lead:', err);
-      showToast('Erro ao salvar seus dados.', 'error');
+      console.warn('[Lead] Erro não crítico ao salvar lead, prosseguindo:', err);
     } finally {
+      setLeadModalOpen(false);
       setLeadSaving(false);
     }
   };
