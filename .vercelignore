@@ -9,3 +9,8 @@ _BACKUP_PRE_ROLLBACK_AGROLEX/
 .venv/
 .next/
 node_modules/
+.vscode/
+scripts/
+poppler/
+manifests/
+supabase/

@@ -856,14 +856,29 @@ export async function POST(req: Request) {
         // Dedução de páginas (nova regra: consumido APENAS após sucesso)
         if (planType !== 'internal_test' && !resultJson.pages_consumed) {
            const { consumePages } = await import('@/lib/subscriptions');
-           const consumed = await consumePages(user.id, totalPages, supabaseAdmin);
-           if (consumed) {
-              resultJson.pages_consumed = true;
-           } else {
-              const err = new Error('Não foi possível concluir a análise porque o saldo de páginas ficou insuficiente no fechamento. Compre mais páginas e tente novamente.');
-              (err as any).technicalErrorType = 'insufficient_balance';
-              (err as any).findingsCurrentStep = 'Saldo insuficiente no fechamento.';
-              throw err;
+           try {
+              const consumed = await consumePages(user.id, totalPages, supabaseAdmin);
+              if (consumed) {
+                 resultJson.pages_consumed = true;
+              } else {
+                 const err = new Error('Não foi possível concluir a análise porque o saldo de páginas ficou insuficiente no fechamento. Compre mais páginas e tente novamente.');
+                 (err as any).technicalErrorType = 'insufficient_balance';
+                 (err as any).findingsCurrentStep = 'Saldo insuficiente no fechamento.';
+                 throw err;
+              }
+           } catch (pageErr: any) {
+              // Se o erro já tem technicalErrorType (ex: insufficient_balance), propagar diretamente
+              if (pageErr.technicalErrorType) {
+                 throw pageErr;
+              }
+              // Erro de infraestrutura/RPC (Supabase indisponível, function not found, rede, etc.)
+              // NÃO é falha de IA — é falha do sistema de assinaturas.
+              console.error('[Background] Erro de infraestrutura no consumePages:', pageErr?.message || pageErr);
+              const infraErr = new Error('Erro no sistema de assinaturas ao debitar páginas. Tente novamente em instantes.');
+              (infraErr as any).technicalErrorType = 'subscription_infrastructure_error';
+              (infraErr as any).findingsCurrentStep = 'Falha no sistema de assinaturas ao debitar páginas.';
+              (infraErr as any).cause = pageErr;
+              throw infraErr;
            }
         }
 
@@ -1058,6 +1073,10 @@ export async function POST(req: Request) {
         } else if (forcedTechnicalErrorType === 'insufficient_balance') {
           technicalErrorType = 'insufficient_balance';
           findingsCurrentStep = innerError?.findingsCurrentStep || 'Saldo insuficiente no fechamento.';
+        } else if (forcedTechnicalErrorType === 'subscription_infrastructure_error') {
+          technicalErrorType = 'subscription_infrastructure_error';
+          userMessage = 'Erro no sistema de assinaturas. O débito de páginas não pôde ser confirmado. Tente novamente em instantes.';
+          findingsCurrentStep = innerError?.findingsCurrentStep || 'Falha no sistema de assinaturas ao debitar páginas.';
         } else if (isAiQuotaExceeded) {
           technicalErrorType = 'ai_quota_exceeded';
           findingsCurrentStep = 'Limite temporário da IA atingido.';
