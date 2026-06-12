@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         }
       });
 
-      const { data: { user: headerUser }, error: userError } = await supabaseUserClient.auth.getUser();
+      const { data: { user: headerUser }, error: userError } = await supabaseUserClient.auth.getUser(token);
       if (userError || !headerUser) {
         console.warn('[Leads API] Falha ao recuperar usuário via JWT:', userError?.message);
         return NextResponse.json({ error: 'Sessão inválida ou incompatível.' }, { status: 403 });

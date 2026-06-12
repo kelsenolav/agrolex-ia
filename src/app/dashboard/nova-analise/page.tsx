@@ -340,10 +340,15 @@ export default function NovaAnalisePage() {
       });
 
       if (!res.ok) {
-        // Não bloqueante: loga o warning e fecha o modal silenciosamente
-        console.warn('[Lead] Falha não crítica ao salvar lead, prosseguindo:', res.status, res.statusText);
-        setLeadModalOpen(false);
+        const errorBody = await res.json().catch(() => ({}));
+        const serverMsg = errorBody?.error || '';
+        console.warn('[Lead] Falha ao salvar lead:', res.status, serverMsg);
+        showToast(
+          serverMsg || 'Não foi possível salvar seus dados. Verifique sua conexão e tente novamente.',
+          'error'
+        );
         setLeadSaving(false);
+        // NÃO fecha o modal — o lead não foi salvo, o usuário precisa tentar novamente
         return;
       }
 
@@ -353,11 +358,15 @@ export default function NovaAnalisePage() {
         .update({ lead_id: session.user.id })
         .eq('id', session.user.id);
 
-    } catch (err) {
-      console.warn('[Lead] Erro não crítico ao salvar lead, prosseguindo:', err);
-    } finally {
+      // Sucesso: fecha o modal e libera o fluxo
       setLeadModalOpen(false);
       setLeadSaving(false);
+
+    } catch (err) {
+      console.warn('[Lead] Erro não crítico ao salvar lead, prosseguindo:', err);
+      showToast('Erro de conexão ao salvar. Tente novamente.', 'error');
+      setLeadSaving(false);
+      // NÃO fecha o modal — o lead não foi salvo
     }
   };
   
