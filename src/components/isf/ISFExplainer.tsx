@@ -89,22 +89,29 @@ const DIMENSOES_V2_2_CONFIG: Record<string, { label: string; Icon: React.Compone
 };
 
 // ─── Classificador de eixo client-side (para fallbacks) ─────────────────
+// ATENÇÃO: Deve manter paridade com classificarEixo() em isfEngine.ts (server-side).
+// Qualquer keyword adicionada aqui deve ser adicionada lá também (e vice-versa).
 function classificarEixoCliente(p: any): string {
-  const texto = `${p.titulo || ''} ${p.descricao || ''} ${p.baseDocumental || ''}`.toLowerCase();
+  const texto = `${p.titulo || ''} ${p.descricao || ''} ${p.baseDocumental || ''}`
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[ç]/g, 'c');
   
-  if (/registro|registral|matrícula|matricula|cartório|cartorio|certidão|certidao|penhora|bloqueio|averbação|averbacao|ônus|onus|hipoteca|alienação|alienacao/i.test(texto)) {
+  // Keywords alinhadas com KEYWORDS_POR_EIXO em isfEngine.ts
+  if (/registro|registral|matricula|cartorio|certidao|penhora|bloqueio|averbacao|onus|hipoteca|alienacao fiduciaria|cpr|ri|tabelionato|intimacao|citacao/i.test(texto)) {
     return 'REG';
   }
-  if (/cadeia|dominial|título|titulo|escritura|transmissão|transmissao|aquisição|usucapião|usucapiao|domínio|dominio|proprietário|proprietario/i.test(texto)) {
+  if (/cadeia dominial|cadeia|dominial|titulo|escritura|transmissao|aquisicao|usucapiao|dominio|proprietario|heranca|inventario|partilha|sucessao|conjuge|meacao|compropriedade|condominio/i.test(texto)) {
     return 'DOM';
   }
-  if (/litígio|litigio|processo|judicial|ação|acao|tribunal|justiça|justica|demanda|reintegração|reintegracao|embargo|liminar|tutela|recurso/i.test(texto)) {
+  if (/litigio|processo|judicial|acao|tribunal|justica|demanda|reintegracao|manutencao|interdito|proibitorio|possessoria|embargo|liminar|tutela|antecipacao|recurso|apelacao|agravo|sentenca|execucao|cumprimento de sentenca/i.test(texto)) {
     return 'LIT';
   }
-  if (/possessório|possessorio|posse|detenção|detencao|ocupação|ocupacao|invasão|invasao|esbulho|turbação|turbacao/i.test(texto)) {
+  if (/possessorio|posse|detencao|ocupacao|invasao|esbulho|turbacao|area ocupada|ocupante|posseiro|morador|funcao social|imissao|improdutivo/i.test(texto)) {
     return 'POS';
   }
-  if (/fraude|falsificação|falsificacao|falsidade|adulteração|adulteracao|falso|falsa|simulação|simulacao|grilagem|grilo|estelionato/i.test(texto)) {
+  if (/fraude|falsificacao|falsidade|adulteracao|documento falso|assinatura falsa|grilagem|grilo|falso|falsa|simulacao|conluio|estelionato|crime|criminal|falsidade ideologica|falsidade material|cpf falso|cnpj falso|apocrifo|rasura|emenda|alteracao suspeita/i.test(texto)) {
     return 'FRA';
   }
   return 'REG';
@@ -136,14 +143,22 @@ export default function ISFExplainer({ isfAchados, problemasFallback, isfV2_2, i
   const hasV2_2Data = isV2_2 && isfV2_2 && Array.isArray(isfV2_2.dimensoes) && isfV2_2.dimensoes.length > 0;
 
   // ── Normalização de achados para os 5 eixos legados ─────────────────
-  // ⚠️ Usar findings.problemas (problemasFallback) como fonte primária para
-  //    garantir consistência com o painel "Achados Críticos" da página de
-  //    resultado. O isf_achados (coluna) pode divergir após backfills ou
-  //    reprocessamentos parciais. O fallback para isfAchados existe para
-  //    análises antigas onde findings.problemas pode estar vazio.
+  // Fonte primária: isf_achados (classificado server-side por classificarEixo)
+  //   O eixo já vem pré-calculado do backend — consistente com a classificação
+  //   usada no motor ISF e na coluna do banco.
+  // Fallback: problemasFallback (findings.problemas) com classificarEixoCliente
+  //   para análises antigas onde isf_achados pode estar vazio ou ausente.
   let achadosNormalizados: ISFAchado[] = [];
 
-  if (Array.isArray(problemasFallback) && problemasFallback.length > 0) {
+  if (Array.isArray(isfAchados) && isfAchados.length > 0) {
+    achadosNormalizados = isfAchados.map(a => ({
+      titulo: a.titulo || 'Achado Sem Título',
+      criticidade: a.criticidade || 'médio',
+      recomendacao: a.recomendacao || '',
+      eixo: a.eixo || classificarEixoCliente(a),
+      descricao: a.descricao || ''
+    }));
+  } else if (Array.isArray(problemasFallback) && problemasFallback.length > 0) {
     achadosNormalizados = problemasFallback.map(p => ({
       titulo: p.titulo || p.descricao || 'Achado Sem Título',
       criticidade: p.criticidade || 'médio',
@@ -151,8 +166,6 @@ export default function ISFExplainer({ isfAchados, problemasFallback, isfV2_2, i
       eixo: classificarEixoCliente(p),
       descricao: p.descricao || ''
     }));
-  } else if (Array.isArray(isfAchados) && isfAchados.length > 0) {
-    achadosNormalizados = isfAchados;
   }
 
   const eixosChaves = ['REG', 'DOM', 'LIT', 'POS', 'FRA'] as const;

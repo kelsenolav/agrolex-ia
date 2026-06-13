@@ -11,7 +11,6 @@ import { calcularComparacao } from '@/lib/isf/isfV2';
 import { calcularISFv2, classificarEixo, type ISFContext } from '@/lib/isf/isfEngine';
 import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2 } from '@/lib/isf/isfEngineV2_2';
 import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
-import { calcularScoreAgroLex } from '@/types/analise';
 import {
   initializeProcessingStages,
   getCurrentStage,
@@ -830,6 +829,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Esta análise já está em processamento.' }, { status: 409 });
     }
 
+    // Validação de reprocessamento: se retry_exhausted, só permite com forceRetry explícito
+    const isRetryExhausted = findings.retry_exhausted === true;
+    if (currentStatus === 'error' && isRetryExhausted && !forceRetry) {
+      return NextResponse.json({ error: 'Esta análise exauriu as tentativas de reprocessamento. Use forceRetry para tentar novamente.' }, { status: 400 });
+    }
+
     const validStatuses = ['ready_for_processing', 'payment_pending', 'pending', 'error'];
     if (!validStatuses.includes(currentStatus)) {
       return NextResponse.json({ error: 'Status atual inválido para iniciar processamento' }, { status: 400 });
@@ -996,7 +1001,9 @@ export async function POST(req: Request) {
     }
 
     const processingStartedAt = new Date().toISOString();
-    const retryStartState = null;
+    const retryStartState = forceRetry && findings.retry_exhausted
+      ? { available: false, exhausted: false, retry_count: 0, last_reset_at: new Date().toISOString(), forced: true }
+      : null;
 
     // FASE 5 — Marcar etapa atual como "processing" se houver stage
     if (currentStageId) {
@@ -1685,14 +1692,15 @@ export async function POST(req: Request) {
 
           // Mapear faixa v2.2 para valor aceito pela CHECK constraint
           const mapFaixaV2_2ToColumn = (faixa: string): string => {
-            const mapping: Record<string, string> = {
-              invalido: 'critico',
-              critico: 'critico',
-              alto_risco: 'alto_risco',
-              atencao: 'atencao',
-              regular: 'atencao',
-              seguro: 'seguro',
-            };
+          const mapping: Record<string, string> = {
+            invalido: 'critico',
+            critico: 'critico',
+            alto_risco: 'alto_risco',
+            atencao: 'atencao',
+            regular: 'atencao',
+            seguro: 'seguro',
+            muito_seguro: 'seguro',
+          };
             return mapping[faixa] || 'atencao';
           };
 
@@ -1704,7 +1712,7 @@ export async function POST(req: Request) {
               ...(effectiveISFResult ? {
                 isf_score: effectiveISFResult.isf_score,
                 // Para v2.2: mapear faixa para valor compatível com CHECK constraint; o label real está em findings.isf_v2_2.faixa_label
-                isf_faixa: isfResultV2_2 ? mapFaixaV2_2ToColumn(isfResultV2_2.faixa) : effectiveISFResult.risk_level,
+                isf_faixa: mapFaixaV2_2ToColumn(isfResultV2_2 ? isfResultV2_2.faixa : effectiveISFResult.risk_level),
                 // Manter eixos no formato v2.1 (Record) para compatibilidade com RadarChartV2
                 isf_eixos: isfResultV2_1 ? isfResultV2_1.eixos : effectiveISFResult.eixos,
                 isf_explainer: comparison || null,
