@@ -12,7 +12,8 @@
  *   - Não remove score atual (findings.isf_v2 convive com findings.resumo, etc.)
  *   - Não altera estrutura existente
  */
-import type { ISFResult, ScoreComparison } from './isfV2';
+import type { ISFResult } from './isfEngine';
+import type { ScoreComparison } from './isfV2';
 
 /**
  * Prepara o payload para persistir o ISF v2 dentro do JSONB findings.

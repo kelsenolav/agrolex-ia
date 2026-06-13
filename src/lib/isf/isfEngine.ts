@@ -1,10 +1,10 @@
 /**
  * ISF v2 — Motor de Cálculo do Índice de Segurança Fundiária (isfEngine)
  *
- * Versão: 2.0
+ * Versão: 2.1
  * Escopo: Determinístico, server-side
- * Entrada: Achados já produzidos pela análise (findings.problemas)
- * Saída: ISF score + scores por eixo + nível de risco + fatores + flag de veto aplicado
+ * Entrada: Achados já produzidos pela análise (findings.problemas) + contexto estrutural
+ * Saída: ISF score + scores por eixo + nível de risco + fatores + flags de trava aplicadas
  *
  * Pesos dos Eixos:
  *   Registral   = 25%
@@ -17,9 +17,19 @@
  *   ISF = 100 - Σ(Eixo_i × Peso_i)
  *   Onde Eixo_i = min(Σ impacto dos achados no eixo, TETO_EIXO)
  *
- * Trava de Segurança CTO (Veto de Risco):
- *   Se houver qualquer achado com criticidade "crítica" ou marcado como isVetoRisco,
- *   o isf_score final deve ser limitado ao máximo de 30 pontos.
+ * Travas de Segurança (aplicadas em cascata, a mais restritiva prevalece):
+ *
+ *   1. Trava CTO (Veto de Risco) — score ≤ 30:
+ *      Se houver qualquer achado com criticidade "crítica" ou marcado como isVetoRisco,
+ *      o isf_score final é limitado ao máximo de 30 pontos.
+ *
+ *   2. Trava de Complementação/Fragilidade Estrutural — score ≤ 79:
+ *      Se a análise indicar necessidade de complementação (complementaryModulesCount > 0),
+ *      fragilidade registral, cadeia dominial incompleta, ou já estiver em profundidade > 1,
+ *      o score NÃO pode alcançar "Muito Seguro" nem "Seguro" — teto em 79 ("Atenção" no máximo).
+ *
+ *   3. Penalização por documentação insuficiente:
+ *      Cada documento faltante reduz o score em 3 pontos, cumulativo com as travas acima.
  */
 
 // ─── CONSTANTES CONFIGURÁVEIS ───────────────────────────────────────────
@@ -98,10 +108,26 @@ export interface ISFFactor {
   descricao: string;
 }
 
+export interface ISFContext {
+  /** Quantidade de módulos complementares recomendados/necessários (complementaryModules) */
+  complementaryModulesCount: number;
+  /** Quantidade de documentos listados como faltantes na análise */
+  documentosFaltantesCount: number;
+  /** Cadeia dominial está incompleta ou frágil (ex: menos de 20 anos de histórico) */
+  cadeiaDominialIncompleta: boolean;
+  /** Há fragilidade registral explícita (ex: matrícula sem atos, registro insuficiente) */
+  fragilidadeRegistral: boolean;
+  /** Profundidade da análise (1 = primeira, > 1 = já precisou de complementação) */
+  analysisDepth: number;
+  /** Indica se o status da análise sugere complementação pendente */
+  statusIndicaComplementacao: boolean;
+}
+
 export interface ISFResult {
-  isf_version: '2.0';
+  isf_version: '2.1';
   isf_score: number;
   is_veto_applied: boolean;
+  complementacao_trava_applied: boolean;
   registral_score: number;
   dominial_score: number;
   litigio_score: number;
@@ -291,9 +317,23 @@ export function classificarRisco(score: number): FaixaRisco {
   return 'critico';
 }
 
-export function calcularISF(problemas: ProblemaEntrada[]): ISFResult {
+const DEFAULT_ISF_CONTEXT: ISFContext = {
+  complementaryModulesCount: 0,
+  documentosFaltantesCount: 0,
+  cadeiaDominialIncompleta: false,
+  fragilidadeRegistral: false,
+  analysisDepth: 1,
+  statusIndicaComplementacao: false,
+};
+
+export function calcularISF(
+  problemas: ProblemaEntrada[],
+  context: ISFContext = DEFAULT_ISF_CONTEXT
+): ISFResult {
   const problemasArray = (Array.isArray(problemas) ? problemas : [])
     .map(p => sanitizarProblema(p));
+
+  const ctx = context || DEFAULT_ISF_CONTEXT;
 
   // 1. Calcular score de cada eixo
   const eixosCalc: Record<Eixo, { valor: number; achados: number }> = {
@@ -320,7 +360,13 @@ export function calcularISF(problemas: ProblemaEntrada[]): ISFResult {
   totalDeduzido = Math.round(totalDeduzido * 100) / 100;
   let isfScore = Math.max(0, Math.min(100, Math.round(100 - totalDeduzido)));
 
-  // 4. Aplicar Trava de Segurança CTO (Veto de Risco)
+  // 4. Penalização por documentos faltantes (antes das travas)
+  const docsFaltantesPenalizacao = ctx.documentosFaltantesCount * 3;
+  isfScore = Math.max(0, isfScore - docsFaltantesPenalizacao);
+
+  // 5. Travas em cascata (da mais restritiva para a menos restritiva)
+
+  // 5a. Trava de Segurança CTO (Veto de Risco) — score ≤ 30
   let isVetoApplied = false;
   const temVeto = problemasArray.some(p => {
     const criticidade = String(p.criticidade || '').toLowerCase().trim();
@@ -331,17 +377,29 @@ export function calcularISF(problemas: ProblemaEntrada[]): ISFResult {
            criticidade === 'crítico';
   });
 
-  if (temVeto) {
-    if (isfScore > 30) {
-      isfScore = 30;
-      isVetoApplied = true;
-    }
+  if (temVeto && isfScore > 30) {
+    isfScore = 30;
+    isVetoApplied = true;
   }
 
-  // 5. Determinar faixa de risco
+  // 5b. Trava de Complementação/Fragilidade Estrutural — score ≤ 79
+  let complementacaoTravaApplied = false;
+  const necessitaComplementacao =
+    ctx.complementaryModulesCount > 0 ||
+    ctx.cadeiaDominialIncompleta ||
+    ctx.fragilidadeRegistral ||
+    ctx.analysisDepth > 1 ||
+    ctx.statusIndicaComplementacao;
+
+  if (necessitaComplementacao && isfScore > 79) {
+    isfScore = 79;
+    complementacaoTravaApplied = true;
+  }
+
+  // 6. Determinar faixa de risco
   const riskLevel = classificarRisco(isfScore);
 
-  // 6. Montar fatores de redução
+  // 7. Montar fatores de redução
   const factors: ISFFactor[] = [];
   for (const problema of problemasArray) {
     const eixo = classificarEixo(problema);
@@ -357,9 +415,10 @@ export function calcularISF(problemas: ProblemaEntrada[]): ISFResult {
   factors.sort((a, b) => b.impacto - a.impacto);
 
   return {
-    isf_version: '2.0',
+    isf_version: '2.1',
     isf_score: isfScore,
     is_veto_applied: isVetoApplied,
+    complementacao_trava_applied: complementacaoTravaApplied,
     registral_score: eixos.REG.valor,
     dominial_score: eixos.DOM.valor,
     litigio_score: eixos.LIT.valor,

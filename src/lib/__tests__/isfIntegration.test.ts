@@ -14,12 +14,11 @@
 
 import {
   calcularISF,
-  calcularComparacao,
   classificarRisco,
   type ISFResult,
-  type ScoreComparison,
   type ProblemaEntrada,
-} from '@/lib/isf/isfV2';
+} from '@/lib/isf/isfEngine';
+import { calcularComparacao, type ScoreComparison } from '@/lib/isf/isfV2';
 import {
   prepararPayloadISF,
   prepararScoreComparison,
@@ -38,7 +37,7 @@ function criarProblema(
 }
 
 function verificarEstruturaISF(result: ISFResult): void {
-  expect(result).toHaveProperty('isf_version', '2.0');
+  expect(result).toHaveProperty('isf_version', '2.1');
   expect(result).toHaveProperty('isf_score');
   expect(result).toHaveProperty('registral_score');
   expect(result).toHaveProperty('dominial_score');
@@ -85,7 +84,7 @@ function verificarEstruturaISF(result: ISFResult): void {
 function verificarPayloadISV2(payload: Record<string, unknown>): void {
   expect(payload.isf_v2).toBeDefined();
   const isfV2 = payload.isf_v2 as Record<string, unknown>;
-  expect(isfV2.isf_version).toBe('2.0');
+  expect(isfV2.isf_version).toBe('2.1');
   expect(typeof isfV2.isf_score).toBe('number');
   expect(typeof isfV2.registral_score).toBe('number');
   expect(typeof isfV2.dominial_score).toBe('number');

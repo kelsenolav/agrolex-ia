@@ -8,7 +8,8 @@ import { updateCaseFileWithBasicFacts, withEnsuredCaseFile, type CaseFileDocumen
 import { buildRecommendedModules } from '@/lib/recommendations';
 import { generateWithFallback, type FallbackResult, type AiProvider } from '@/lib/aiProviders';
 import { calcularComparacao } from '@/lib/isf/isfV2';
-import { calcularISFv2, classificarEixo } from '@/lib/isf/isfEngine';
+import { calcularISFv2, classificarEixo, type ISFContext } from '@/lib/isf/isfEngine';
+import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2 } from '@/lib/isf/isfEngineV2_2';
 import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
 import { calcularScoreAgroLex } from '@/types/analise';
 import {
@@ -636,6 +637,117 @@ const parseGpxCoordinates = (gpxText: string): [number, number][] => {
   }
   return coordsList;
 };
+
+/**
+ * PASSO 25.8 — Detecta cadeia dominial incompleta com base no parecer e achados.
+ *
+ * Sinais de cadeia dominial frágil:
+ * - Palavras-chave indicando histórico insuficiente (ex: "vintenária", "20 anos", "cadeia incompleta")
+ * - Presença de achados no eixo DOM com criticidade alta ou média
+ * - Referências a "sucessão", "herança", "inventário" como lacunas
+ */
+function detectarCadeiaDominialIncompleta(
+  resumo: string,
+  problemas: any[]
+): boolean {
+  const text = (resumo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const fragilidadeKeywords = [
+    'cadeia dominial incompleta',
+    'cadeia incompleta',
+    'historico insuficiente',
+    'menos de 20 anos',
+    'vintenaria',
+    'vintenaria nao comprovada',
+    'nao foi possivel rastrear',
+    'cadeia dominial fragil',
+    'cadeia dominial insuficiente',
+    'dominio nao comprovado',
+    'dominio fragil',
+    'transmissoes insuficientes',
+    'falta de continuidade',
+    'descontinuidade registral',
+    'ausencia de registro anterior',
+    'cadeia nao verificada',
+  ];
+
+  if (fragilidadeKeywords.some(kw => text.includes(kw))) {
+    return true;
+  }
+
+  // Verificar achados no eixo DOM com criticidade alta/crítica
+  const problemasDOM = (problemas || []).filter((p: any) => {
+    const criticidade = (p.criticidade || '').toLowerCase();
+    const descricao = (p.descricao || '').toLowerCase();
+    const titulo = (p.titulo || '').toLowerCase();
+    const combined = `${criticidade} ${descricao} ${titulo}`;
+    return (
+      (criticidade.includes('alto') || criticidade.includes('critico') || criticidade.includes('crítico')) &&
+      (combined.includes('dominial') || combined.includes('cadeia') || combined.includes('sucessao') || combined.includes('heranca'))
+    );
+  });
+
+  return problemasDOM.length > 0;
+}
+
+/**
+ * PASSO 25.8 — Detecta fragilidade registral com base no parecer e achados.
+ *
+ * Sinais de fragilidade registral:
+ * - Palavras-chave indicando matrícula precária (ex: "registro insuficiente", "matrícula sem atos",
+ *   "ausência de registro", "fragilidade registral", "documentação precária")
+ * - Achados no eixo REG com criticidade alta/crítica
+ * - Referências a necessidade de complementação registral
+ */
+function detectarFragilidadeRegistral(
+  resumo: string,
+  problemas: any[]
+): boolean {
+  const text = (resumo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const fragilidadeKeywords = [
+    'fragilidade registral',
+    'registro insuficiente',
+    'matricula sem atos',
+    'ausencia de registro',
+    'documentacao precaria',
+    'registro precario',
+    'matricula precaria',
+    'documentacao insuficiente',
+    'certidao vencida',
+    'certidao incompleta',
+    'falta averbacao',
+    'averbacao pendente',
+    'registro desatualizado',
+    'matricula desatualizada',
+    'divergencia registral',
+    'registro fragil',
+    'necessario complementar com',
+    'recomenda-se complementar',
+    'complementacao registral',
+    'registro complementar',
+  ];
+
+  if (fragilidadeKeywords.some(kw => text.includes(kw))) {
+    return true;
+  }
+
+  // Verificar achados no eixo REG com criticidade alta/crítica
+  const problemasREG = (problemas || []).filter((p: any) => {
+    const criticidade = (p.criticidade || '').toLowerCase();
+    const descricao = (p.descricao || '').toLowerCase();
+    const titulo = (p.titulo || '').toLowerCase();
+    const combined = `${criticidade} ${descricao} ${titulo}`;
+    return (
+      (criticidade.includes('alto') || criticidade.includes('critico') || criticidade.includes('crítico')) &&
+      (combined.includes('registro') || combined.includes('registral') || combined.includes('matricula') ||
+       combined.includes('averbacao') || combined.includes('cartorio') || combined.includes('onus') ||
+       combined.includes('penhora') || combined.includes('bloqueio'))
+    );
+  });
+
+  return problemasREG.length > 0;
+}
 
 export async function POST(req: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -1481,26 +1593,65 @@ export async function POST(req: Request) {
               .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
           }
 
+          // ── ISF v2.2 (primário) + v2.1 (compatibilidade) ──
           let isfPayload: Record<string, unknown> = {};
           let isfError: string | null = null;
-          let isfResult: any = null;
+          let isfResultV2_2: any = null;    // resultado do motor v2.2 (primário)
+          let isfResultV2_1: any = null;    // resultado do motor v2.1 (compatibilidade)
           let comparison: any = null;
+          const ISF_VERSION_STRING = '2.2';  // versão canônica como string
+
           try {
-            isfResult = calcularISFv2(parsedProblemas as any);
-            const legacyScoreData = calcularScoreAgroLex(
-              {
-                problemas: parsedProblemas,
-                documentosFaltantes: parsedDocumentosFaltantes,
-                recomendacoes: parsedRecomendacoes,
-                resumo: markdownResponse,
-              } as any,
-              riskLevel
-            );
-            comparison = calcularComparacao(legacyScoreData.score, isfResult.isf_score);
-            isfPayload = gerarPayloadISFCompleto(isfResult, comparison);
+            // ── v2.2 (6 dimensões, sem Muito Seguro, com Inválido/Regular) ──
+            const pontuacoesV2_2 = inferirPontuacoesDeAchados(parsedProblemas);
+            isfResultV2_2 = calcularISFV2_2(pontuacoesV2_2);
+            const payloadV2_2 = prepararPayloadV2_2(isfResultV2_2);
+
+            // ── v2.1 (compatibilidade — mantido para análises antigas e comparação) ──
+            const complementaryCount =
+              (Array.isArray(recommendedModules) ? recommendedModules.length : 0) +
+              (Array.isArray(findings.complementary_modules) ? findings.complementary_modules.length : 0);
+
+            const isfContext: ISFContext = {
+              complementaryModulesCount: complementaryCount,
+              documentosFaltantesCount: Array.isArray(parsedDocumentosFaltantes) ? parsedDocumentosFaltantes.length : 0,
+              cadeiaDominialIncompleta: detectarCadeiaDominialIncompleta(markdownResponse, parsedProblemas),
+              fragilidadeRegistral: detectarFragilidadeRegistral(markdownResponse, parsedProblemas),
+              analysisDepth: typeof findings.analysis_depth === 'number' ? findings.analysis_depth : 1,
+              statusIndicaComplementacao: analysis.status === 'pending' || analysis.status === 'error' || complementaryCount > 0,
+            };
+
+            isfResultV2_1 = calcularISFv2(parsedProblemas as any, isfContext);
+            comparison = calcularComparacao(isfResultV2_1.isf_score, isfResultV2_2.isf_score);
+
+            // Persistir ambos: v2.2 como primário, v2.1 como compatibilidade
+            isfPayload = {
+              ...payloadV2_2,
+              ...gerarPayloadISFCompleto(isfResultV2_1, comparison),
+            };
           } catch (isfCalcError: any) {
-            isfError = ((isfCalcError && (isfCalcError.message || isfCalcError.toString())) || 'Erro desconhecido no ISF v2')
+            isfError = ((isfCalcError && (isfCalcError.message || isfCalcError.toString())) || 'Erro desconhecido no ISF v2.2')
               .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
+            // Fallback: tentar v2.1 isoladamente se v2.2 falhar
+            try {
+              const complementaryCount =
+                (Array.isArray(recommendedModules) ? recommendedModules.length : 0) +
+                (Array.isArray(findings.complementary_modules) ? findings.complementary_modules.length : 0);
+              const isfContext: ISFContext = {
+                complementaryModulesCount: complementaryCount,
+                documentosFaltantesCount: Array.isArray(parsedDocumentosFaltantes) ? parsedDocumentosFaltantes.length : 0,
+                cadeiaDominialIncompleta: detectarCadeiaDominialIncompleta(markdownResponse, parsedProblemas),
+                fragilidadeRegistral: detectarFragilidadeRegistral(markdownResponse, parsedProblemas),
+                analysisDepth: typeof findings.analysis_depth === 'number' ? findings.analysis_depth : 1,
+                statusIndicaComplementacao: analysis.status === 'pending' || analysis.status === 'error' || complementaryCount > 0,
+              };
+              isfResultV2_1 = calcularISFv2(parsedProblemas as any, isfContext);
+              comparison = calcularComparacao(0, isfResultV2_1.isf_score);
+              isfPayload = gerarPayloadISFCompleto(isfResultV2_1, comparison);
+              isfError = null; // v2.1 funcionou como fallback
+            } catch (_) {
+              // v2.1 também falhou — manter isfError do v2.2
+            }
           }
 
           const patchedFindings = {
@@ -1513,7 +1664,8 @@ export async function POST(req: Request) {
             case_file: enrichedCaseFile,
             ...(caseFileExtractError ? { case_file_extract_error: caseFileExtractError } : {}),
             ...isfPayload,
-            ...(isfResult ? { isf_v2: isfResult } : {}),
+            ...(isfResultV2_2 ? { isf_v2_2: isfResultV2_2 } : {}),
+            ...(isfResultV2_1 ? { isf_v2: isfResultV2_1 } : {}),
             ...(isfError ? { isf_v2_error: isfError } : {}),
             structured_extract_source: 'local_parser',
             structured_extract_at: new Date().toISOString(),
@@ -1524,23 +1676,46 @@ export async function POST(req: Request) {
             }
           };
 
+          // Persistir colunas top-level compatíveis com schema existente
+          // isf_version: INTEGER (22 = v2.2, 1/2 = v2.1)
+          // isf_faixa: CHECK constraint só aceita ('muito_seguro', 'seguro', 'atencao', 'alto_risco', 'critico')
+          //   → mapear v2.2 faixa para valores compatíveis
+          // isf_eixos: manter formato v2.1 (Record) para RadarChartV2
+          const ISF_VERSION_INT = 22;  // v2.2 como inteiro compatível com a coluna INTEGER
+
+          // Mapear faixa v2.2 para valor aceito pela CHECK constraint
+          const mapFaixaV2_2ToColumn = (faixa: string): string => {
+            const mapping: Record<string, string> = {
+              invalido: 'critico',
+              critico: 'critico',
+              alto_risco: 'alto_risco',
+              atencao: 'atencao',
+              regular: 'atencao',
+              seguro: 'seguro',
+            };
+            return mapping[faixa] || 'atencao';
+          };
+
+          const effectiveISFResult = isfResultV2_2 || isfResultV2_1;
           await supabaseAdmin
             .from('analyses')
             .update({
               findings: patchedFindings,
-              ...(isfResult ? {
-                isf_score: isfResult.isf_score,
-                isf_faixa: isfResult.risk_level,
-                isf_eixos: isfResult.eixos,
+              ...(effectiveISFResult ? {
+                isf_score: effectiveISFResult.isf_score,
+                // Para v2.2: mapear faixa para valor compatível com CHECK constraint; o label real está em findings.isf_v2_2.faixa_label
+                isf_faixa: isfResultV2_2 ? mapFaixaV2_2ToColumn(isfResultV2_2.faixa) : effectiveISFResult.risk_level,
+                // Manter eixos no formato v2.1 (Record) para compatibilidade com RadarChartV2
+                isf_eixos: isfResultV2_1 ? isfResultV2_1.eixos : effectiveISFResult.eixos,
                 isf_explainer: comparison || null,
-                isf_achados: parsedProblemas.map((p: any) => ({
+                isf_achados: isfResultV2_2 ? isfResultV2_2.alertas : parsedProblemas.map((p: any) => ({
                   titulo: p.titulo || 'Achado sem título',
                   criticidade: p.criticidade || 'médio',
                   recomendacao: p.recomendacao || '',
                   eixo: classificarEixo(p),
                   descricao: p.descricao || '',
                 })),
-                isf_version: 2
+                isf_version: ISF_VERSION_INT
               } : {})
             })
             .eq('id', analysisId);

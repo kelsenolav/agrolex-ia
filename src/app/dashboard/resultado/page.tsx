@@ -359,17 +359,31 @@ function ResultadoContent() {
   // P1B — Score: ISF v2 como fonte única de verdade para classificação
   // O score numérico do ISF v2 (quando disponível) é usado tanto como número
   // quanto para derivar faixa, label, cor e ação sugerida.
+  // PASSO 25.9 — Detectar versão do motor ISF para taxonomia correta
+  // isf_version 22 (número) → v2.2 (6 dimensões, sem Muito Seguro, com Inválido/Regular)
+  // isf_version 1 ou 2 (número) → v2.1 legado
+  // isf_version '2.2' (string) → também reconhecido como v2.2 (para compatibilidade futura)
+  const rawIsfVersion = analise?.isf_version ?? null;
+  const isfVersion = rawIsfVersion === 22 || String(rawIsfVersion) === '2.2' ? '2.2' : rawIsfVersion;
+  const isfV2_2FindingsForScore = (findings as unknown as Record<string, unknown>)?.isf_v2_2 as Record<string, unknown> | undefined ?? null;
   const isfV2FindingsForScore = (findings as unknown as Record<string, unknown>)?.isf_v2 as Record<string, unknown> | undefined ?? null;
-  const isfV2ScoreForScore = (isfV2FindingsForScore as any)?.isf_score ?? null;
+
+  // Prioridade: v2.2 > v2.1 > null
+  const effectiveISFSource = isfV2_2FindingsForScore || isfV2FindingsForScore;
+  const isfV2ScoreForScore = (effectiveISFSource as any)?.isf_score ?? null;
+
   const scoreData = useMemo(() => {
-    // Passa o score ISF v2 como overriddenScore — se existir, toda a classificação
-    // (faixa, label, cor, acaoSugerida) é derivada dele. Se não, usa fallback legado.
+    // Passa o score ISF como overriddenScore — se existir, toda a classificação
+    // (faixa, label, cor, acaoSugerida) é derivada dele.
+    // Se isfVersion for '2.2', usa taxonomia v2.2 (sem Muito Seguro, com Inválido/Regular).
+    // Caso contrário, usa taxonomia v2.1 legada.
     return calcularScoreAgroLex(
       findings ?? undefined,
       analise?.risk_level,
       isfV2ScoreForScore,
+      isfVersion,
     );
-  }, [findings, analise?.risk_level, isfV2ScoreForScore]);
+  }, [findings, analise?.risk_level, isfV2ScoreForScore, isfVersion]);
 
   // Contagem de achados por criticidade
   const problemas = safeProblemas as ReportProblem[];
@@ -877,7 +891,7 @@ function ResultadoContent() {
 
         {/* SCORE + RISCO */}
         <div className="mt-8 flex items-center gap-8">
-          <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} overriddenScore={isfV2ScoreForScore} size="md" />
+          <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} overriddenScore={isfV2ScoreForScore} isfVersion={isfVersion} size="md" />
           <div className={`${styles.bg} px-6 py-4 rounded-xl border ${styles.border} min-w-[140px] text-center`}>
             <p className={`text-[10px] font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
             <div className={`flex items-center gap-2 ${styles.text} justify-center`}>
@@ -1047,7 +1061,7 @@ function ResultadoContent() {
             <section className="print:break-inside-avoid">
               {/* SCORE — centralizado na tela, oculto no print */}
               <div className="flex justify-center mb-8 print:hidden">
-                <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} overriddenScore={isfV2ScoreForScore} size="lg" />
+                <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} overriddenScore={isfV2ScoreForScore} isfVersion={isfVersion} size="lg" />
               </div>
 
               {/* RESUMO EXECUTIVO — largura total na tela; no print mantém baseline */}

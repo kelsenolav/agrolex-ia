@@ -86,7 +86,7 @@ export interface Analysis {
   created_at?: string;
   user_id?: string;
   isf_score?: number;
-  isf_version?: number;
+  isf_version?: number | string;
   isf_faixa?: string;
   isf_eixos?: any;
   isf_explainer?: any;
@@ -127,16 +127,24 @@ export function normalizeStatus(rawStatus: string): NormalizedStatus {
  * Score AgroLex — Índice de Segurança Fundiária
  *
  * Fonte única de verdade para classificação de risco derivada do score numérico.
- * Utiliza a taxonomia oficial ISF (isfTaxonomy.ts).
+ * Suporta duas versões de taxonomia:
  *
- * Regras de negócio:
+ * v2.1 (legado — usado para análises com isf_version 1 ou 2):
  *   0-39   → CRÍTICO
  *   40-59  → ALTO RISCO
  *   60-79  → ATENÇÃO
  *   80-89  → SEGURO
  *   90-100 → MUITO SEGURO
+ *
+ * v2.2 (metodologia 6 dimensões — isf_version '2.2'):
+ *   0-24   → INVÁLIDO
+ *   25-39  → CRÍTICO
+ *   40-54  → ALTO RISCO
+ *   55-69  → ATENÇÃO
+ *   70-84  → REGULAR
+ *   85-100 → SEGURO
  */
-export type ScoreFaixa = 'critico' | 'alto_risco' | 'atencao' | 'seguro' | 'muito_seguro';
+export type ScoreFaixa = 'critico' | 'alto_risco' | 'atencao' | 'seguro' | 'muito_seguro' | 'invalido' | 'regular';
 
 export interface ScoreAgroLexData {
   score: number;
@@ -147,10 +155,13 @@ export interface ScoreAgroLexData {
   acaoSugerida: string;
 }
 
-function buildScoreAgroLexData(score: number): ScoreAgroLexData {
+/**
+ * Classificação v2.1 (legado — motor isfEngine.ts).
+ * Mantém Muito Seguro.
+ */
+function buildScoreAgroLexDataV2_1(score: number): ScoreAgroLexData {
   const clampedScore = Math.max(0, Math.min(100, Math.round(score)));
 
-  // Classificação oficial — thresholds derivados da taxonomia central isfTaxonomy.ts
   if (clampedScore <= 39) {
     return {
       score: clampedScore,
@@ -202,26 +213,106 @@ function buildScoreAgroLexData(score: number): ScoreAgroLexData {
 }
 
 /**
+ * Classificação v2.2 (metodologia 6 dimensões — isfEngineV2_2.ts).
+ * SEM 'Muito Seguro'. Com 'Inválido' e 'Regular'.
+ */
+export function buildScoreAgroLexDataV2_2(score: number): ScoreAgroLexData {
+  const clampedScore = Math.max(0, Math.min(100, Math.round(score)));
+
+  if (clampedScore <= 24) {
+    return {
+      score: clampedScore,
+      faixa: 'invalido',
+      label: 'Inválido',
+      cor: '#A32D2D',
+      bgCor: 'bg-red-700',
+      acaoSugerida: 'Título presumivelmente nulo. Não negociar.',
+    };
+  }
+  if (clampedScore <= 39) {
+    return {
+      score: clampedScore,
+      faixa: 'critico',
+      label: 'Crítico',
+      cor: '#DC2626',
+      bgCor: 'bg-red-500',
+      acaoSugerida: 'Título gravemente comprometido. Análise judicial completa necessária.',
+    };
+  }
+  if (clampedScore <= 54) {
+    return {
+      score: clampedScore,
+      faixa: 'alto_risco',
+      label: 'Alto Risco',
+      cor: '#BA7517',
+      bgCor: 'bg-orange-500',
+      acaoSugerida: 'Título contestável. Regularização urgente recomendada.',
+    };
+  }
+  if (clampedScore <= 69) {
+    return {
+      score: clampedScore,
+      faixa: 'atencao',
+      label: 'Atenção',
+      cor: '#EF9F27',
+      bgCor: 'bg-amber-500',
+      acaoSugerida: 'Vulnerabilidades identificadas. Exige regularização prévia.',
+    };
+  }
+  if (clampedScore <= 84) {
+    return {
+      score: clampedScore,
+      faixa: 'regular',
+      label: 'Regular',
+      cor: '#639922',
+      bgCor: 'bg-emerald-600',
+      acaoSugerida: 'Título razoável. Due diligence complementar recomendada.',
+    };
+  }
+  return {
+    score: clampedScore,
+    faixa: 'seguro',
+    label: 'Seguro',
+    cor: '#1D9E75',
+    bgCor: 'bg-emerald-500',
+    acaoSugerida: 'Título sólido. Apto para garantia e investimento.',
+  };
+}
+
+/** Alias para compatibilidade: buildScoreAgroLexData chama v2.1 */
+function buildScoreAgroLexData(score: number): ScoreAgroLexData {
+  return buildScoreAgroLexDataV2_1(score);
+}
+
+/**
  * Calcula o Score AgroLex a partir dos findings e risk_level.
  *
+ * @param isfVersion - Versão do motor ISF usada na persistência ('2.1', '2.2', 1, 2, etc.).
+ *   Se '2.2', usa a taxonomia v2.2 (6 dimensões, sem Muito Seguro, com Inválido/Regular).
+ *   Caso contrário, usa a taxonomia legada v2.1.
  * @param overriddenScore - Se fornecido, usa este valor como score e deriva a classificação dele.
- *   Isso garante que a UI use o score do ISF v2 como fonte única de verdade.
+ *   Isso garante que a UI use o score do ISF como fonte única de verdade.
  */
 export function calcularScoreAgroLex(
   findings?: AnalysisFindings | null,
   riskLevel?: string | null,
   overriddenScore?: number | null,
+  isfVersion?: number | string | null,
 ): ScoreAgroLexData {
   // Se temos um score override (ex: ISF v2 calculado no backend), usa direto
   if (overriddenScore !== null && overriddenScore !== undefined && Number.isFinite(overriddenScore)) {
-    return buildScoreAgroLexData(overriddenScore);
+    const version = String(isfVersion ?? '');
+    if (version === '2.2' || version.startsWith('2.2')) {
+      return buildScoreAgroLexDataV2_2(overriddenScore);
+    }
+    return buildScoreAgroLexDataV2_1(overriddenScore);
   }
 
   // Fallback: cálculo legado baseado nos findings
   let score = 70; // base neutra
 
   if (!findings) {
-    return buildScoreAgroLexData(score);
+    return buildScoreAgroLexDataV2_1(score);
   }
 
   const problemas = findings.problemas || [];
@@ -268,7 +359,7 @@ export function calcularScoreAgroLex(
   // Clamp 0-100
   score = Math.max(0, Math.min(100, score));
 
-  return buildScoreAgroLexData(score);
+  return buildScoreAgroLexDataV2_1(score);
 }
 
 /**
