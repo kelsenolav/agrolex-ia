@@ -51,7 +51,7 @@ describe('isfEngine.ts', () => {
       const result = calcularISF(problemas);
       expect(result.isf_score).toBe(30);
       expect(result.is_veto_applied).toBe(true);
-      expect(result.risk_level).toBe('alto_risco');
+      expect(result.risk_level).toBe('critico');
     });
 
     it('deve limitar o score ao máximo de 30 se houver achado com isVetoRisco true', () => {
@@ -110,11 +110,16 @@ describe('isfEngine.ts', () => {
 
   describe('Classificação de Risco', () => {
     it('deve classificar corretamente as faixas de risco', () => {
+      expect(classificarRisco(95)).toBe('muito_seguro');
       expect(classificarRisco(90)).toBe('muito_seguro');
+      expect(classificarRisco(85)).toBe('seguro');
       expect(classificarRisco(80)).toBe('seguro');
+      expect(classificarRisco(70)).toBe('atencao');
       expect(classificarRisco(60)).toBe('atencao');
+      expect(classificarRisco(50)).toBe('alto_risco');
       expect(classificarRisco(40)).toBe('alto_risco');
-      expect(classificarRisco(20)).toBe('critico');
+      expect(classificarRisco(30)).toBe('critico');
+      expect(classificarRisco(0)).toBe('critico');
     });
   });
 });

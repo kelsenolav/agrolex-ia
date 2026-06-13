@@ -6,16 +6,43 @@
  * Regra: Nenhuma tela pode possuir cores/labels/faixas hardcoded
  *
  * Taxonomia Oficial:
- *   critico:      0–25   | vermelho    | Severidade 5
- *   alto_risco:  26–50   | laranja     | Severidade 4
- *   atencao:     51–75   | amarelo     | Severidade 3
- *   seguro:      76–90   | verde       | Severidade 2
- *   muito_seguro: 91–100 | verde forte | Severidade 1
+ *   critico:       0–39  | vermelho    | Severidade 5
+ *   alto_risco:   40–59  | laranja     | Severidade 4
+ *   atencao:      60–79  | amarelo     | Severidade 3
+ *   seguro:       80–89  | verde       | Severidade 2
+ *   muito_seguro: 90–100 | verde forte | Severidade 1
  */
 
 // ─── KEY TYPE ────────────────────────────────────────────────────────────
 
 export type ISFLevel = 'critico' | 'alto_risco' | 'atencao' | 'seguro' | 'muito_seguro';
+
+export type RiskLevel =
+  | 'CRITICO'
+  | 'ALTO_RISCO'
+  | 'ATENCAO'
+  | 'SEGURO'
+  | 'MUITO_SEGURO';
+
+/**
+ * Função central de classificação de risco fundiário.
+ * Fonte única de verdade para derivar nível de risco a partir do score numérico.
+ *
+ * Regras de negócio:
+ *   0-39   → CRITICO
+ *   40-59  → ALTO_RISCO
+ *   60-79  → ATENCAO
+ *   80-89  → SEGURO
+ *   90-100 → MUITO_SEGURO
+ */
+export function classifyFundiaryRisk(score: number): RiskLevel {
+  if (!Number.isFinite(score)) return 'CRITICO';
+  if (score <= 39) return 'CRITICO';
+  if (score <= 59) return 'ALTO_RISCO';
+  if (score <= 79) return 'ATENCAO';
+  if (score <= 89) return 'SEGURO';
+  return 'MUITO_SEGURO';
+}
 
 // ─── TAXONOMY ENTRY ──────────────────────────────────────────────────────
 
@@ -37,17 +64,17 @@ export const ISF_TAXONOMY: Record<ISFLevel, ISFTaxonomyEntry> = {
     label: 'Crítico',
     severity: 5,
     min: 0,
-    max: 25,
+    max: 39,
     hex: '#DC2626',
     uiClass: 'bg-red-50 text-red-700 border-red-200',
     pdfClass: 'isf-critico',
-    description: 'Risco crítico — ação imediata necessária',
+    description: 'Risco crítico — requer auditoria complementar urgente',
   },
   alto_risco: {
     label: 'Alto risco',
     severity: 4,
-    min: 26,
-    max: 50,
+    min: 40,
+    max: 59,
     hex: '#F97316',
     uiClass: 'bg-orange-50 text-orange-700 border-orange-200',
     pdfClass: 'isf-alto-risco',
@@ -56,8 +83,8 @@ export const ISF_TAXONOMY: Record<ISFLevel, ISFTaxonomyEntry> = {
   atencao: {
     label: 'Atenção',
     severity: 3,
-    min: 51,
-    max: 75,
+    min: 60,
+    max: 79,
     hex: '#F59E0B',
     uiClass: 'bg-yellow-50 text-yellow-700 border-yellow-200',
     pdfClass: 'isf-atencao',
@@ -66,8 +93,8 @@ export const ISF_TAXONOMY: Record<ISFLevel, ISFTaxonomyEntry> = {
   seguro: {
     label: 'Seguro',
     severity: 2,
-    min: 76,
-    max: 90,
+    min: 80,
+    max: 89,
     hex: '#059669',
     uiClass: 'bg-green-50 text-green-700 border-green-200',
     pdfClass: 'isf-seguro',
@@ -76,7 +103,7 @@ export const ISF_TAXONOMY: Record<ISFLevel, ISFTaxonomyEntry> = {
   muito_seguro: {
     label: 'Muito seguro',
     severity: 1,
-    min: 91,
+    min: 90,
     max: 100,
     hex: '#10B981',
     uiClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -108,19 +135,36 @@ export const ISF_FALLBACK: ISFTaxonomyEntry = {
 export function normalizeISFLevel(level: string | null | undefined): ISFLevel | null {
   if (!level) return null;
 
-  const lvl = level
+  const raw = level.trim();
+
+  // Mapeamento direto (case-sensitive, acentos)
+  const exactMap: Record<string, ISFLevel> = {
+    'Crítico': 'critico',
+    'Critico': 'critico',
+    'Alto Risco': 'alto_risco',
+    'Alto risco': 'alto_risco',
+    'Atenção': 'atencao',
+    'Atencao': 'atencao',
+    'Seguro': 'seguro',
+    'Muito Seguro': 'muito_seguro',
+    'Muito seguro': 'muito_seguro',
+  };
+  if (exactMap[raw]) return exactMap[raw];
+
+  // Normalizado (NFD, lowercase, sem underscore)
+  const lvl = raw
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/[\s_]+/g, '_')
     .trim();
 
-  // Mapeamento direto
   const map: Record<string, ISFLevel> = {
     critico: 'critico',
-    'alto_risco': 'alto_risco',
+    alto_risco: 'alto_risco',
     atencao: 'atencao',
     seguro: 'seguro',
-    'muito_seguro': 'muito_seguro',
+    muito_seguro: 'muito_seguro',
   };
 
   if (map[lvl]) return map[lvl];
@@ -129,7 +173,7 @@ export function normalizeISFLevel(level: string | null | undefined): ISFLevel | 
   if (lvl === 'alto') return 'alto_risco';
   if (lvl === 'medio' || lvl === 'médio') return 'atencao';
   if (lvl === 'baixo') return 'seguro';
-  if (lvl === 'muito baixo' || lvl === 'muito_seguro') return 'muito_seguro';
+  if (lvl === 'muito_baixo') return 'muito_seguro';
 
   return null;
 }

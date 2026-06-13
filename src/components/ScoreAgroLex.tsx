@@ -8,10 +8,12 @@ interface ScoreAgroLexProps {
   riskLevel?: string | null;
   size?: 'sm' | 'md' | 'lg';
   showTitle?: boolean;
+  /** Score ISF v2 numérico. Se fornecido, toda a classificação é derivada dele como fonte única de verdade. */
+  overriddenScore?: number | null;
 }
 
-export default function ScoreAgroLex({ findings, riskLevel, size = 'md', showTitle = true }: ScoreAgroLexProps) {
-  const data: ScoreAgroLexData = calcularScoreAgroLex(findings, riskLevel);
+export default function ScoreAgroLex({ findings, riskLevel, overriddenScore, size = 'md', showTitle = true }: ScoreAgroLexProps) {
+  const data: ScoreAgroLexData = calcularScoreAgroLex(findings, riskLevel, overriddenScore);
 
   const sizeMap = {
     sm: { gauge: 80, font: 'text-xl', sub: 'text-[10px]', label: 'text-xs' },

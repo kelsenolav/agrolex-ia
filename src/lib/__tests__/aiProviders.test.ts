@@ -79,7 +79,7 @@ jest.mock('@google/generative-ai', () => ({
 function setupGeminiMock(responseText: string): jest.Mock {
   mockStore.geminiGenerateContent.mockResolvedValueOnce({
     response: {
-      text: () => Promise.resolve(responseText),
+      text: () => responseText,
     },
   });
   return mockStore.geminiGenerateContent;

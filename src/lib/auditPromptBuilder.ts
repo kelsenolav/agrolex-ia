@@ -81,54 +81,101 @@ Como foi apresentada apenas uma matrícula, a análise deve se limitar aos eleme
 
   if (isChainOfTitleOnly) {
     return `Você é um Perito Forense Fundiário Sênior especializado em cadeia dominial registral.
-Leia exclusivamente os documentos anexados e produza uma resposta objetiva, sintética e auditável.
+Leia exclusivamente os documentos anexados e produza uma análise objetiva no formato JSON estruturado definido abaixo.
 
-MODO RÁPIDO: CADEIA DOMINIAL REGISTRAL
-Responda obrigatoriamente em português do Brasil. Não escreva em inglês. Traduza qualquer expressão estrangeira para o português jurídico adequado. Se o documento contiver termos em inglês, explique-os em português.
-Não misture idiomas. Todo o parecer, títulos, achados, recomendações e conclusão devem estar em português.
-Responda de forma objetiva e sintética, mas completa. Priorize conclusão útil dentro do escopo da cadeia dominial. Não escreva parecer extenso. O tamanho-alvo é de aproximadamente 900 a 1.500 palavras.
-Não gere parecer com menos de 600 palavras, salvo se os documentos apresentados forem realmente insuficientes; nesse caso, explique objetivamente a insuficiência documental.
-Se não conseguir concluir todos os detalhes, escreva: A cadeia dominial exige análise complementar aprofundada, mas os principais eventos identificáveis são...
+INSTRUÇÃO CRÍTICA DE FORMATO
+Sua resposta DEVE ser EXCLUSIVAMENTE um objeto JSON válido, sem markdown, sem crases (\`\`\`), sem comentários e sem qualquer texto fora do JSON. Um sistema automatizado fará JSON.parse() da sua resposta inteira. Qualquer caractere fora do JSON causará rejeição.
+
+IDIOMA
+Todo o conteúdo deve estar em português do Brasil. Não use inglês. Traduza qualquer termo estrangeiro.
 
 ESCOPO EXCLUSIVO
 Analise somente: matrícula de origem; matrícula-mãe; atos de transmissão; sequência de proprietários; continuidade entre transmitente e adquirente; desmembramentos; unificações; cancelamentos relevantes; ônus ou gravames que afetem a cadeia; hiatos temporais; rupturas de titularidade; inconsistências de continuidade; documentos faltantes para confirmar a cadeia.
-Não faça análise geoespacial. Não aprofunde origem pública. Não aprofunde nulidades/fraudes. Não aprofunde processos judiciais. Não transcreva todos os atos. Não repita fatos em várias seções.${singleMatriculaNotice}
-
-LIMITES OBRIGATÓRIOS
-- Linha do tempo: entre 5 e 10 eventos registrais relevantes, se houver dados suficientes.
-- Entre 2 e 4 achados dominiais, se houver inconsistências.
-- Até 6 documentos faltantes.
-- Até 5 recomendações.
-- Conclusão de até 2 parágrafos.
-- Agrupe atos repetitivos por período.
-
-MÓDULOS COMPLEMENTARES RECOMENDADOS
-Se identificar temas fora do escopo, apenas cite em lista curta quando aplicável:
-- Origem Pública / Título Fundiário;
-- Auditoria Geoespacial;
-- Nulidades e Indícios de Fraude;
-- Auditoria Processual / Litígios.
-Não aprofunde esses temas.
+Não faça análise geoespacial. Não aprofunde origem pública. Não aprofunde nulidades/fraudes. Não aprofunde processos judiciais.${singleMatriculaNotice}
 
 LINGUAGEM JURÍDICA SEGURA
 Use termos como indício, risco, hipótese a confirmar e não é possível concluir apenas com os documentos apresentados. Não invente fatos nem presuma documentos não anexados.
 
-FORMATO OBRIGATÓRIO
-PARECER SINTÉTICO DE CADEIA DOMINIAL REGISTRAL
-1. IDENTIFICAÇÃO DA MATRÍCULA
-2. DOCUMENTOS ANALISADOS
-3. RESUMO DA CADEIA DOMINIAL
-4. LINHA DO TEMPO REGISTRAL ESSENCIAL
-5. ACHADOS DOMINIAIS
-6. DOCUMENTOS FALTANTES
-7. CLASSIFICAÇÃO DE RISCO
-8. RECOMENDAÇÕES OBJETIVAS
-9. CONCLUSÃO
+LIMITES
+- cadeia_dominial: entre 5 e 10 eventos, se houver dados; se não houver cadeia (ex: matrícula única sem atos de transmissão), informe array vazio [].
+- achados: entre 2 e 5 achados dominiais.
+- documentos_faltantes: até 6 itens.
+- recomendacoes: até 5 itens.
+- parecer_markdown: entre 400 e 1200 palavras, síntese narrativa completa da análise.
 
-INSTRUÇÃO SOBRE COORDENADAS
-Somente inclua, na última linha, o marcador COORDS: lat, lng se coordenadas exatas constarem dos documentos anexados. Não estime coordenadas e não invente localização.
+CONTRATO JSON — responda EXATAMENTE esta estrutura:
 
-AGORA, GERE O PARECER SINTÉTICO.`;
+{
+  "identificacao_matricula": {
+    "numero": "número da matrícula",
+    "cartorio": "nome do cartório e cidade/UF",
+    "imovel": "nome ou descrição do imóvel",
+    "area": "área declarada com unidade",
+    "localizacao": "localização registral (cidade/UF)"
+  },
+  "documentos_analisados": [
+    {
+      "nome": "nome do arquivo ou referência",
+      "tipo": "Matrícula | Certidão de Inteiro Teor | Escritura | etc.",
+      "paginas": 1,
+      "observacao": "detalhe adicional (ex: número do livro, folha, data)"
+    }
+  ],
+  "resumo_cadeia_dominial": "parágrafo resumindo a cadeia dominial encontrada, ou declaração de que não foi possível identificar cadeia completa com os documentos apresentados",
+  "cadeia_dominial": [
+    {
+      "ato": "R-1 | AV-2 | R-3 etc.",
+      "tipo": "Compra e Venda | Hipoteca | Penhora | Cancelamento | etc.",
+      "data": "DD/MM/AAAA ou Ano",
+      "partes": "transmitente → adquirente",
+      "descricao": "descrição resumida do ato",
+      "risco": "baixo | medio | alto | critico"
+    }
+  ],
+  "achados": [
+    {
+      "titulo": "título do achado (ex: Hipoteca cedular vigente)",
+      "descricao": "descrição detalhada do achado",
+      "base_documental": "referência ao registro (ex: R-3 da matrícula)",
+      "risco": "baixo | medio | alto | critico",
+      "providencia": "ação recomendada para mitigar o risco"
+    }
+  ],
+  "classificacao_risco": {
+    "nivel": "baixo | medio | alto | critico",
+    "justificativa": "justificativa objetiva da classificação geral do risco"
+  },
+  "recomendacoes": [
+    {
+      "prioridade": "baixa | media | alta | critica",
+      "descricao": "descrição da recomendação"
+    }
+  ],
+  "documentos_faltantes": [
+    {
+      "documento": "nome do documento necessário",
+      "motivo": "por que este documento é relevante"
+    }
+  ],
+  "parecer_markdown": "parecer técnico completo em formato narrativo, em português, descrevendo toda a análise. Use quebras de linha (\\n) para separar parágrafos. Este campo será exibido como o laudo principal. Deve ser uma síntese profissional e completa, incluindo identificação da matrícula, resumo da cadeia dominial, principais achados e recomendações."
+}
+
+CAMPOS OBRIGATÓRIOS: todos os 9 campos no nível raiz (identificacao_matricula, documentos_analisados, resumo_cadeia_dominial, cadeia_dominial, achados, classificacao_risco, recomendacoes, documentos_faltantes, parecer_markdown) DEVEM estar presentes. Arrays podem ser vazios [] se não houver dados, mas os campos devem existir.
+
+VALORES DE RISCO: use apenas "baixo", "medio", "alto" ou "critico" (minúsculas, sem acentos no JSON, mas os valores textuais descritivos podem usar acentos).
+
+EXEMPLO de achados (não copie, use dados reais dos documentos):
+"achados": [
+  {
+    "titulo": "Hipoteca cedular vigente",
+    "descricao": "O imóvel está gravado com hipoteca cedular registrada sob R-3, no valor de R$ 1.500.000,00, com vencimento em 10/12/2032, em favor do Banco Agropecuario S.A. Este ônus real afeta a disponibilidade do imóvel e deve ser quitado ou autorizado pelo credor antes de qualquer transmissão.",
+    "base_documental": "R-3 da matrícula analisada",
+    "risco": "alto",
+    "providencia": "Solicitar certidão atualizada de ônus reais, verificar saldo devedor e obter autorização do credor para baixa ou transferência do gravame."
+  }
+]
+
+AGORA, RESPONDA EXCLUSIVAMENTE COM O OBJETO JSON.`;
   }
 
   const missingDocumentsInstruction = `DOCUMENTOS FALTANTES

@@ -2,6 +2,234 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 12/06/2026
+- **Bloco**: PASSO 25.7U — Congelar Markdown como experimental e restaurar PDF binário como padrão
+- **Arquivos inspecionados (sem alteração)**:
+  - `src/lib/pdf/config.ts` — Default `'binary'` confirmado (linha 25)
+  - `src/app/api/analyze/route.ts` — Fluxo binário como padrão confirmado; `useMarkdownPipeline` só ativa com `PDF_EXTRACTION_MODE=markdown` ou `text`; `PDF_MARKDOWN_DEBUG` é apenas diagnóstico, sem efeito no pipeline
+  - `package.json` — Nenhum script ativa `PDF_EXTRACTION_MODE=markdown` por padrão
+- **Decisão**: Manter pipeline PDF → Markdown como **experimental congelado**. Não ativar em produção.
+- **Estado atual**:
+  - Fluxo padrão: **PDF binário** (inlineData base64 enviado direto para IA)
+  - Markdown só é ativado com flag explícita: `PDF_EXTRACTION_MODE=markdown`
+  - `PDF_MARKDOWN_DEBUG=1` não tem efeito se `PDF_EXTRACTION_MODE` não for `markdown`
+  - Código do pipeline Markdown (textExtractor, markdownNormalizer, config, types, testes) preservado — sem deleções
+  - Melhorias em `generateWithGemini` (PASSO 25.7T) e detecção de placeholders (PASSO 25.7R) preservadas
+- **Retomada futura**: Requer Quality Gate com provider/prompt dedicado para PDFs extraídos como texto, validação de completude de resposta, e aprovação explícita antes de ativar em produção.
+- **PASSO 25.7 encerrado como "experimental congelado"**.
+- **Validações**: `npx tsc --noEmit` (pendente — aguardando aprovação do usuário)
+- **Deploy em produção**: **NÃO APLICÁVEL** (apenas documentação e verificação)
+- **Próximo passo**: Nenhum nesta frente. Retomar após definição de Quality Gate.
+
+---
+
+- **Data**: 12/06/2026
+- **Bloco**: PASSO 25.7T — Correção de generateWithGemini para detectar resposta parcial/bloqueada
+- **Arquivos alterados**:
+  - `src/lib/aiProviders.ts` — Refatoração de `generateWithGemini()` para inspecionar `finishReason`, `promptFeedback.blockReason` e `safetyRatings`
+  - `AGENTS.md`
+- **Alterações implementadas**:
+  1. **Nova função `summarizeSafetyRatings()`**: extrai resumo seguro dos `safetyRatings` (categoria=probabilidade) sem expor conteúdo da resposta.
+  2. **Detecção de `promptFeedback.blockReason`**: se presente, lança erro `ai_blocked_by_safety` com `technicalErrorType` no objeto Error.
+  3. **Detecção de `finishReason`**:
+     - `SAFETY` → lança `ai_blocked_by_safety`
+     - `RECITATION` → lança `ai_blocked_by_recitation`
+     - `MAX_TOKENS` → lança `ai_incomplete_response`
+  4. **Fallback em `.text()`**: se `response.text()` lançar exceção (ex: resposta sem candidatos), captura e lança `ai_blocked_by_safety`.
+  5. **FinishReason não-STOP**: registra prefixo de diagnóstico `[Gemini finishReason=X]` no texto apenas em ambiente não-produção.
+  6. **Fallback elegível**: `ai_blocked_by_safety`, `ai_blocked_by_recitation`, `ai_incomplete_response` adicionados à lista `FALLBACK_ELIGIBLE_PATTERNS` — erros lançados pelo Gemini agora permitem fallback para Claude/OpenAI/Groq.
+- **Validações**: `npx tsc --noEmit` (✓)
+- **Deploy em produção**: **NÃO APLICÁVEL** (teste local/staging)
+- **Próximo passo**: Reiniciar servidor e reexecutar E2E para validar fallback automático quando Gemini retorna resposta parcial/bloqueada.
+
+---
+
+- **Data**: 12/06/2026
+- **Bloco**: PASSO 25.7R — Fortalecimento da detecção de placeholder + Diagnóstico em sucesso
+- **Arquivos alterados**:
+  - `src/app/api/analyze/route.ts` — 3 correções: detecção de placeholder `[texto]` no `validateFastChainOfTitleResponse`, detecção na validação inicial (linha 1177), persistência de `validation_path` e `raw_ai_response_preview` no caminho de sucesso (`resultJson`)
+  - `AGENTS.md`
+- **Alterações implementadas**:
+  1. **Correção 1 — `validateFastChainOfTitleResponse`**: Adicionada regex `/\[[^\]]{3,}\]/` para detectar placeholders no formato `[texto]` (template genérico não preenchido) ao final da função (após verificação de idioma estrangeiro). Se detectado, retorna erro descritivo com até 5 exemplos de placeholders encontrados.
+  2. **Correção 2 — Validação inicial (linha 1177)**: Adicionada variável `rawAiPreview` capturando a resposta bruta universalmente. Adicionada detecção de placeholder com colchetes para módulos não-cadeia_dominial (erro imediato com `ai_incomplete_response`). Placeholders em cadeia_dominial são tratados pelo `validateFastChainOfTitleResponse` (passo seguinte).
+  3. **Correção 3 — Persistência em sucesso**: Adicionados `validation_path` e `raw_ai_response_preview` no `resultJson` (caminho de sucesso), antes ausentes — só estavam no `failedFindings` (caminho de erro). Isso permite diagnóstico completo mesmo quando a análise é marcada como "completed".
+- **Diagnóstico da falha anterior**: O último E2E (PASSO 25.7N) teve status "completed" com `raw_ai_response_preview: null`, `validation_path: null` e a resposta da IA era um template Markdown com placeholders literais (`[Nome do Interessado]`, `[Descrição do Imóvel]`, `[Seu Nome]`). O validador antigo (string "PLACEHOLDER") não detectava colchetes, e os campos de diagnóstico não eram persistidos no caminho de sucesso.
+- **Validações**: `npx tsc --noEmit` (✓), `npx eslint src/` (✓ — 0 erros no código do projeto)
+- **Deploy em produção**: **NÃO APLICÁVEL** (teste local/staging)
+- **Próximo passo**: Reiniciar servidor com `$env:PDF_EXTRACTION_MODE="markdown"; $env:PDF_MARKDOWN_DEBUG="1"; npm run dev` e reexecutar `node scripts/test-api-analyze-markdown.mjs` para validar as correções.
+
+---
+
+- **Data**: 12/06/2026
+- **Bloco**: PASSO 25.7N — Correção do `pdf_extraction_mode` no caminho de erro + Reexecução E2E
+- **Arquivos alterados**:
+  - `src/app/api/analyze/route.ts` — Hoisted `pdfMode`/`pdfExtractionDiags` para scope do catch + adicionados `pdf_extraction_mode` e `pdf_extraction_diagnostics` no `failedFindings` do error handler
+  - `AGENTS.md`
+- **Alterações implementadas**:
+  1. **Correção de escopo**: Variáveis `pdfMode`, `useMarkdownPipeline` e `pdfExtractionDiags` movidas para fora do bloco `try` do `runBackground()`, para o escopo da função `POST`. Isso as torna acessíveis no `catch` do `runBackground()`.
+  2. **Persistência em erro**: Adicionados `pdf_extraction_mode: pdfMode` e `pdf_extraction_diagnostics: pdfExtractionDiags` no objeto `failedFindings` do error handler (linha ~1572). Antes, esses campos só eram persistidos no `resultJson` do caminho de sucesso.
+  3. **Resultado da reexecução E2E**:
+     - Etapas 1-6: Todas concluídas com sucesso (usuário, upload 12 KB, propriedade, documento, análise, HTTP 200)
+     - Etapa 7: Polling 7 iterações (37s), status final `error`
+     - Etapa 8: **16/30 checks passaram, 14 falharam** (antes: 6/22)
+     - `pdf_extraction_mode` = `'markdown'` ✅ (antes era `undefined` ❌)
+     - `pdf_extraction_diagnostics` presente ✅: `total_pdfs=1`, `markdown_success=1`, `binary_fallback=0`, `scanned_count=0`, `empty_count=0`, `extraction_total_ms=94ms`
+     - Pipeline Markdown **funcionando**: PDF de 12 KB extraído com sucesso como texto → enviado para IA como `text` part (não binário)
+     - Erro: `ai_incomplete_response` — "Resposta incompleta: parecer com 426 palavras, abaixo do mínimo esperado."
+  4. **Diagnóstico do erro residual**: O validador `validateFastChainOfTitleResponse` exige ≥600 palavras. A IA retornou 426 palavras. O pipeline markdown está correto — o problema é de qualidade/quantidade da resposta da IA, não de extração.
+- **Causa raiz do `pdf_extraction_mode=undefined`**: As variáveis `pdfMode` e `pdfExtractionDiags` eram declaradas dentro do `try` do `runBackground()`. Quando a IA falhava (lançando exceção), o `catch` construía `failedFindings` a partir de `updatedFindings` (que não continha esses campos). O hoisting + adição explícita resolve.
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓ — 0 erros no código do projeto)
+- **Deploy em produção**: **NÃO APLICÁVEL** (teste local/staging)
+- **Próximo passo**: Ajustar prompt `isChainOfTitleOnly` para garantir resposta com ≥600 palavras, ou reduzir limiar mínimo no `validateFastChainOfTitleResponse` para 400 palavras quando o pipeline markdown está ativo (texto extraído é mais conciso que leitura visual de PDF).
+
+---
+
+- **Data**: 12/06/2026
+- **Bloco**: PASSO 25.7M — Correção do `standardFontDataUrl` no runtime Next.js
+- **Arquivos alterados**:
+  - `src/lib/pdf/textExtractor.server.ts` — Corrigida formação da URL `file://` para compatibilidade Windows/Linux/Mac
+  - `AGENTS.md`
+- **Alterações implementadas**:
+  1. Substituída concatenação `file://${standardFontsDir}/` por `pathToFileURL(standardFontsDir).href + '/'` na função `importPdfjs()`.
+  2. Adicionado import de `pathToFileURL` de `node:url`.
+  3. A URL `file://` agora é gerada corretamente em todos os sistemas operacionais:
+     - **Windows**: `file:///C:/Users/kelse/.../standard_fonts/` (formato válido com 3 barras)
+     - **Linux/Mac**: `file:///home/user/.../standard_fonts/` (inalterado funcionalmente)
+  4. A URL anterior gerava `file://C:\Users\...` no Windows (inválida — sem barra após `file://` e com backslashes), o que fazia o pdfjs-dist ignorar a configuração e retornar strings vazias para PDFs com StandardFonts.
+- **Causa raiz do bug**: `resolve()` do Node.js retorna caminhos com backslashes no Windows. A concatenação `file://${path}` produzia URL malformada (`file://C:\...`), que o pdfjs-dist não reconhece. `pathToFileURL()` lida corretamente com a conversão (backslashes → forward slashes, prefixo `file:///`).
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), `npm test -- src/lib/pdf` (25/25 — 3 suítes, ✓)
+- **Deploy em produção**: **NÃO APLICÁVEL** (teste local/staging)
+- **Próximo passo**: Reiniciar o servidor com `$env:PDF_EXTRACTION_MODE="markdown"; npm run dev` e reexecutar `node scripts/test-api-analyze-markdown.mjs` para validar o pipeline markdown completo.
+
+---
+
+- **Data**: 12/06/2026
+- **Bloco**: PASSO 25.7K — Fortalecimento do PDF sintético E2E para cadeia dominial
+- **Arquivos alterados**:
+  - `scripts/test-api-analyze-markdown.mjs` — PDF sintético expandido de 3.2 KB/1 pág para 12 KB/3 págs
+  - `AGENTS.md`
+- **Arquivos inspecionados (sem alteração)**:
+  - `src/lib/auditPromptBuilder.ts` — Contrato JSON-first (linhas 82-178)
+  - `src/app/api/analyze/route.ts` — `pdf_extraction_mode`, `PDF_EXTRACTION_CONFIG`, `useMarkdownPipeline`
+  - `src/lib/pdf/config.ts` — `PDF_EXTRACTION_CONFIG` (mode via `PDF_EXTRACTION_MODE` env)
+- **Alterações implementadas**:
+  1. PDF sintético enriquecido com 3 páginas (StandardFonts, WinAnsiEncoding-safe):
+     - Pág 1: Identificação completa (cartório, matrícula, imóvel, confrontações, CCIR, CAR, ITR, SIGEF, divergências cadastrais, proprietário + cônjuge, registro anterior até T-8.901)
+     - Pág 2: 7 atos registrais (R-1 compra e venda, AV-2 reserva legal, R-3 hipoteca cedular rural, AV-4 penhora trabalhista, AV-5 georreferenciamento SIGEF, AV-6 indisponibilidade judicial parcial, AV-7 cancelamento parcial pendente)
+     - Pág 3: Certidão de ônus com 3 gravames vigentes + 3 restrições adicionais + ressalva
+  2. Correção de caracteres Unicode não suportados: `→` → `->`, `—` → `-`
+  3. PDF gerado: 12.058 bytes (antes 3.2 KB)
+- **Resultado da reexecução E2E**:
+  - Etapas 1-6: Todas concluídas com sucesso (usuário, upload 12 KB, propriedade, documento, análise, HTTP 200)
+  - Etapa 7: Polling 4 iterações (21s), status final `error`
+  - Etapa 8: 6/22 checks passaram, 16 falharam
+  - Erro: `ai_incomplete_response` — "Resposta incompleta: seção obrigatória ausente (cadeia dominial)."
+- **Diagnóstico**:
+  - `pdf_extraction_mode = undefined` → O servidor Next.js local **NÃO** está rodando com `PDF_EXTRACTION_MODE=markdown`. O PDF de 12 KB está sendo enviado como binário (inlineData), e a IA Gemini não está conseguindo extrair o JSON completo da leitura visual do PDF.
+  - O erro mudou de "achados ausente" (PASSO 25.7J) para "cadeia dominial ausente" (PASSO 25.7K) — progresso marginal.
+  - `pdf_extraction_diagnostics` também ausente, confirmando que o pipeline markdown não foi acionado.
+- **Causa raiz**: A variável de ambiente `PDF_EXTRACTION_MODE=markdown` precisa ser definida no shell antes de iniciar o servidor Next.js. O servidor atual está rodando no modo `binary` padrão.
+- **Validações**: `npx tsc --noEmit` (✓). Script E2E executado sem crashes.
+- **Deploy em produção**: **NÃO APLICÁVEL** (teste local/staging)
+- **Próximo passo**: Reiniciar o servidor com `$env:PDF_EXTRACTION_MODE="markdown"; npm run dev` e reexecutar o E2E para validar o pipeline markdown completo com o PDF enriquecido.
+
+---
+
+- **Data**: 12/06/2026
+- **Bloco**: PASSO 25.7J — Reexecução E2E Markdown com contrato JSON-first (validação do PASSO 25.7I)
+- **Arquivos alterados**:
+  - `AGENTS.md`
+- **Arquivos inspecionados (sem alteração)**:
+  - `src/lib/auditPromptBuilder.ts` — Prompt JSON-first confirmado (linhas 82-178)
+  - `src/app/api/analyze/route.ts` — `tryParseChainOfTitleJson`, `validateChainOfTitleJson` e fallback textual inspecionados
+- **Alterações implementadas**:
+  1. Execução do script E2E `node scripts/test-api-analyze-markdown.mjs` com módulo `cadeia_dominial`.
+  2. Etapas 1-5 (preparação) concluídas com sucesso: usuário, PDF sintético (3.2KB StandardFonts), upload, propriedade, documento, análise.
+  3. Etapa 6 — POST /api/analyze: HTTP 200, processamento iniciado em background.
+  4. Etapa 7 — Polling: 5 iterações (26s), status final `error`.
+  5. Etapa 8 — Validações: 6/22 passaram, 16 falharam.
+- **Diagnóstico da falha**:
+  - **Erro reportado**: `ai_incomplete_response` — "Resposta incompleta: seção obrigatória ausente (achados)."
+  - **Causa provável**: O PDF sintético (3.2KB, conteúdo textual mínimo — apenas "Matrícula 88.777") não forneceu conteúdo suficiente para a IA produzir achados no formato JSON esperado.
+  - **Fluxo JSON-first exercitado**: `tryParseChainOfTitleJson` foi acionado. O JSON retornado (ou sua ausência) não passou na validação `validateChainOfTitleJson`, caindo para fallback textual `validateFastChainOfTitleResponse`, que também falhou pela ausência da seção "achados".
+  - **Conclusão técnica**: O pipeline JSON-first + fallback textual está funcional (não quebrou). A falha é de qualidade de resposta da IA sobre PDF com conteúdo insuficiente — esperado para este cenário de teste com PDF sintético mínimo.
+- **Resultado do contrato JSON-first**: O mecanismo `tryParseChainOfTitleJson` → `validateChainOfTitleJson` → fallback `validateFastChainOfTitleResponse` → `ai_incomplete_response` operou conforme o desenho do PASSO 25.7I.
+- **Validações**: Script executado com sucesso (sem crashes). Relatório salvo em `.tmp_api_analyze_markdown_report.json`.
+- **Deploy em produção**: **NÃO APLICÁVEL** (teste local/staging)
+- **Próximo passo**: Para validar o fluxo JSON-first com sucesso completo, gerar PDF sintético com conteúdo textual mais rico (ex: transcrição simulada de matrícula com 3+ atos de registro) e reexecutar.
+
+---
+
+- **Data**: 12/06/2026
+- **Bloco**: PASSO 25.7I — Migração de cadeia_dominial para contrato JSON estruturado
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/lib/auditPromptBuilder.ts` — Prompt `isChainOfTitleOnly` migrado para JSON puro
+  - `src/app/api/analyze/route.ts` — 6 funções novas + JSON-first com fallback textual
+- **Alterações implementadas**: ver bloco acima
+- **Validações**: `npx tsc --noEmit` (✓), `npm test` (527/527 — 21 suítes, ✓), `npm run build` (32 rotas, ✓)
+- **Deploy em produção**: **NÃO APLICÁVEL** (correção local)
+- **Próximo passo**: ~~Reexecutar `node scripts/test-api-analyze-markdown.mjs`~~ → Concluído no PASSO 25.7J.
+
+---
+
+- **Data**: 11/06/2026
+- **Bloco**: PASSO 25.7A — Auditoria de segurança do script `test-api-analyze-markdown.mjs` e endpoint `/api/analyze`
+- **Arquivos alterados**:
+  - `AGENTS.md`
+- **Alterações implementadas**:
+  1. Auditoria completa do script `scripts/test-api-analyze-markdown.mjs` (650 linhas) e endpoint `src/app/api/analyze/route.ts` (1265 linhas).
+  2. Verificação dos 5 pontos de segurança:
+     - **Service Role**: `adminClient` (SR key) usado apenas para polling (SELECT). Escritas usam `authedClient` (JWT). Endpoint `/api/analyze` usa token JWT, não SR key para operações.
+     - **Segredos**: Nenhum segredo é impresso. Apenas SUPABASE_URL (pública), IDs internos, email fictício e status truncado.
+     - **Ambiente**: Alvo `localhost:3000` (local/staging). Cabeçalho documenta "NUNCA executar em produção". Domínio `@agrolex.dev`.
+     - **Destrutivo**: Apenas CREATE. Sem DELETE, DROP, ALTER, migration, RLS, checkout ou Mercado Pago.
+     - **Dados sintéticos**: PDF em memória (pdf-lib, StandardFonts). Matrícula 88.777, CPF 000.000.000-00, CAR GO-3501402-ABCD. Todos fictícios.
+  3. Veredito: Script seguro para HML. Bloqueio original (`SUPABASE_SERVICE_ROLE_KEY` truncada) afeta apenas o polling — fluxo de preparação independe de SR key.
+- **Deploy em produção**: **NÃO APLICÁVEL** (auditoria local)
+- **Próximo passo**: Atualização manual da `SUPABASE_SERVICE_ROLE_KEY` pelo operador humano, depois executar `node scripts/test-api-analyze-markdown.mjs`.
+
+---
+
+- **Data**: 11/06/2026
+- **Bloco**: PASSO 25.7 — Teste controlado do `/api/analyze` com `PDF_EXTRACTION_MODE=markdown`
+- **Arquivos criados**:
+  - `scripts/test-api-analyze-markdown.mjs` *(novo)* — Script end-to-end de teste controlado do pipeline completo
+- **Arquivos alterados**:
+  - `AGENTS.md`
+- **Alterações implementadas**:
+  1. Criação de script completo de teste E2E do endpoint `/api/analyze` com modo markdown.
+  2. Fluxo do script: criar usuário → gerar PDF sintético (StandardFonts) → upload storage → criar property → criar document → criar analysis → chamar POST /api/analyze → polling → validar findings.
+  3. Validações de contrato: `pdf_extraction_mode`, `pdf_extraction_diagnostics`, `isf_score`, `isf_version`, `isf_faixa`, `isf_eixos`, `risk_level`, `resumo`, `achados`, `module_results`, `processing_stages`, `completed_at`.
+  4. Script lê credenciais do `.env.local` para alinhar com o projeto Supabase em execução (`hbcnsgpdosooodmwfsgh`).
+  5. Upload de PDF via token JWT do usuário (`authedClient`) — não depende de service role key.
+- **Validações**: Script validado (sem erros de sintaxe). Teste E2E **NÃO EXECUTADO** — bloqueado por `SUPABASE_SERVICE_ROLE_KEY` truncada no `.env.local`.
+- **Fluxo de preparação validado**: criação de usuário ✓, upload de PDF ✓, criação de propriedade ✓, criação de documento ✓, criação de análise ✓.
+- **Fluxo bloqueado em**: chamada ao `/api/analyze` (erro 500: "Invalid API key" — o servidor Next.js local usa a service role key truncada para consultas admin ao Supabase).
+- **Próximo passo**: Atualizar `SUPABASE_SERVICE_ROLE_KEY` no `.env.local` com o valor real e reexecutar `node scripts/test-api-analyze-markdown.mjs`.
+- **Deploy em produção**: **NÃO APLICÁVEL** (teste local/staging)
+- **Servidor local**: Rodando com `PDF_EXTRACTION_MODE=markdown` em `http://localhost:3000`
+
+---
+
+- **Data**: 11/06/2026
+- **Bloco**: PASSO 25.3 — Integração PDF → Markdown no pipeline `/api/analyze`
+- **Arquivos alterados**:
+  - `AGENTS.md`
+  - `src/lib/pdf/types.ts` — Adicionado `'markdown'` ao tipo `PdfExtractionMode`
+  - `src/lib/pdf/config.ts` — Atualizadas docs do modo `'markdown'` e alias `'text'`
+  - `src/app/api/analyze/route.ts` — Ramificação segura com feature flag `PDF_EXTRACTION_MODE`
+- **Alterações implementadas**:
+  1. Pipeline dual `binary` (default) / `markdown` no loop de montagem de `geminiParts`.
+  2. Extração textual via `extractTextFromPdfBuffer` + normalização Markdown via `normalizePdfTextToMarkdown`.
+  3. Fallback per-PDF: PDF escaneado, corrompido, sem texto ou com erro de extração → usa binário (`inlineData`) com aviso registrado.
+  4. Diagnóstico persistido em `pdf_extraction_mode` e `pdf_extraction_diagnostics` nos `findings`.
+  5. Nenhum import estático de `pdf-parse` — apenas `import()` dinâmico server-side.
+- **Validações**: `npx tsc --noEmit` (✓), `npm test -- src/lib/pdf` (25/25 ✓), `npm run build` (32 rotas, ✓)
+- **Deploy em produção**: **NÃO EFETUADO**
+
+---
+
 - **Data**: 09/06/2026
 - **Bloco**: HOTFIX P1.4 — PROTEÇÃO CONTRA DUPLO DÉBITO EM REPROCESSAMENTOS
 - **Arquivos alterados**:

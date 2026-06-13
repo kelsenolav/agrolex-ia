@@ -440,14 +440,14 @@ describe('Cenário 8 — Persistência score_comparison', () => {
 describe('Classificação de risco (validação adicional)', () => {
   test('classificarRisco deve mapear corretamente todos os thresholds', () => {
     expect(classificarRisco(100)).toBe('muito_seguro');
-    expect(classificarRisco(85)).toBe('muito_seguro');
-    expect(classificarRisco(84)).toBe('seguro');
-    expect(classificarRisco(70)).toBe('seguro');
-    expect(classificarRisco(69)).toBe('atencao');
-    expect(classificarRisco(50)).toBe('atencao');
-    expect(classificarRisco(49)).toBe('alto_risco');
-    expect(classificarRisco(30)).toBe('alto_risco');
-    expect(classificarRisco(29)).toBe('critico');
+    expect(classificarRisco(90)).toBe('muito_seguro');
+    expect(classificarRisco(89)).toBe('seguro');
+    expect(classificarRisco(80)).toBe('seguro');
+    expect(classificarRisco(79)).toBe('atencao');
+    expect(classificarRisco(60)).toBe('atencao');
+    expect(classificarRisco(59)).toBe('alto_risco');
+    expect(classificarRisco(40)).toBe('alto_risco');
+    expect(classificarRisco(39)).toBe('critico');
     expect(classificarRisco(0)).toBe('critico');
   });
 

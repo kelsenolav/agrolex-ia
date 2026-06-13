@@ -125,8 +125,18 @@ export function normalizeStatus(rawStatus: string): NormalizedStatus {
 
 /**
  * Score AgroLex — Índice de Segurança Fundiária
+ *
+ * Fonte única de verdade para classificação de risco derivada do score numérico.
+ * Utiliza a taxonomia oficial ISF (isfTaxonomy.ts).
+ *
+ * Regras de negócio:
+ *   0-39   → CRÍTICO
+ *   40-59  → ALTO RISCO
+ *   60-79  → ATENÇÃO
+ *   80-89  → SEGURO
+ *   90-100 → MUITO SEGURO
  */
-export type ScoreFaixa = 'critico' | 'atencao' | 'seguro';
+export type ScoreFaixa = 'critico' | 'alto_risco' | 'atencao' | 'seguro' | 'muito_seguro';
 
 export interface ScoreAgroLexData {
   score: number;
@@ -137,19 +147,81 @@ export interface ScoreAgroLexData {
   acaoSugerida: string;
 }
 
-export function calcularScoreAgroLex(findings?: AnalysisFindings | null, riskLevel?: string | null): ScoreAgroLexData {
-  // Regra simples baseada em riscos existentes
-  let score = 70; // base neutra
+function buildScoreAgroLexData(score: number): ScoreAgroLexData {
+  const clampedScore = Math.max(0, Math.min(100, Math.round(score)));
 
-  if (!findings) {
+  // Classificação oficial — thresholds derivados da taxonomia central isfTaxonomy.ts
+  if (clampedScore <= 39) {
     return {
-      score,
+      score: clampedScore,
+      faixa: 'critico',
+      label: 'Crítico',
+      cor: '#DC2626',
+      bgCor: 'bg-red-500',
+      acaoSugerida: 'Requer auditoria complementar urgente',
+    };
+  }
+  if (clampedScore <= 59) {
+    return {
+      score: clampedScore,
+      faixa: 'alto_risco',
+      label: 'Alto Risco',
+      cor: '#F97316',
+      bgCor: 'bg-orange-500',
+      acaoSugerida: 'Recomenda-se ação prioritária de regularização',
+    };
+  }
+  if (clampedScore <= 79) {
+    return {
+      score: clampedScore,
+      faixa: 'atencao',
+      label: 'Atenção',
+      cor: '#F59E0B',
+      bgCor: 'bg-amber-500',
+      acaoSugerida: 'Recomenda-se monitoramento contínuo',
+    };
+  }
+  if (clampedScore <= 89) {
+    return {
+      score: clampedScore,
       faixa: 'seguro',
       label: 'Seguro',
       cor: '#059669',
       bgCor: 'bg-emerald-500',
-      acaoSugerida: 'Propriedade dentro dos padrões fundiários',
+      acaoSugerida: 'Propriedade com documentação adequada',
     };
+  }
+  return {
+    score: clampedScore,
+    faixa: 'muito_seguro',
+    label: 'Muito Seguro',
+    cor: '#10B981',
+    bgCor: 'bg-emerald-500',
+    acaoSugerida: 'Propriedade dentro dos padrões fundiários',
+  };
+}
+
+/**
+ * Calcula o Score AgroLex a partir dos findings e risk_level.
+ *
+ * @param overriddenScore - Se fornecido, usa este valor como score e deriva a classificação dele.
+ *   Isso garante que a UI use o score do ISF v2 como fonte única de verdade.
+ */
+export function calcularScoreAgroLex(
+  findings?: AnalysisFindings | null,
+  riskLevel?: string | null,
+  overriddenScore?: number | null,
+): ScoreAgroLexData {
+  // Se temos um score override (ex: ISF v2 calculado no backend), usa direto
+  if (overriddenScore !== null && overriddenScore !== undefined && Number.isFinite(overriddenScore)) {
+    return buildScoreAgroLexData(overriddenScore);
+  }
+
+  // Fallback: cálculo legado baseado nos findings
+  let score = 70; // base neutra
+
+  if (!findings) {
+    return buildScoreAgroLexData(score);
   }
 
   const problemas = findings.problemas || [];
@@ -172,7 +244,7 @@ export function calcularScoreAgroLex(findings?: AnalysisFindings | null, riskLev
   }).length;
 
   // Checklist reprovado/violado
-  const reprovados = checklist.filter((i: any) => 
+  const reprovados = checklist.filter((i: any) =>
     (i.status || '').toLowerCase().includes('reprovado') || (i.status || '').toLowerCase().includes('violado')
   ).length;
 
@@ -196,34 +268,7 @@ export function calcularScoreAgroLex(findings?: AnalysisFindings | null, riskLev
   // Clamp 0-100
   score = Math.max(0, Math.min(100, score));
 
-  if (score < 40) {
-    return {
-      score,
-      faixa: 'critico',
-      label: 'Crítico',
-      cor: '#DC2626',
-      bgCor: 'bg-red-500',
-      acaoSugerida: 'Requer auditoria complementar urgente',
-    };
-  }
-  if (score < 70) {
-    return {
-      score,
-      faixa: 'atencao',
-      label: 'Atenção',
-      cor: '#F59E0B',
-      bgCor: 'bg-amber-500',
-      acaoSugerida: 'Recomenda-se monitoramento contínuo',
-    };
-  }
-  return {
-    score,
-    faixa: 'seguro',
-    label: 'Seguro',
-    cor: '#059669',
-    bgCor: 'bg-emerald-500',
-    acaoSugerida: 'Propriedade dentro dos padrões fundiários',
-  };
+  return buildScoreAgroLexData(score);
 }
 
 /**

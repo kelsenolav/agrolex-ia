@@ -356,24 +356,19 @@ function ResultadoContent() {
   const safeLinhaDoTempo = useMemo(() => Array.isArray(findings?.linhaDoTempo) ? findings.linhaDoTempo : [], [findings]);
   const safeChecklist = useMemo(() => Array.isArray((findings as any)?.checklist) ? (findings as any).checklist : [], [findings]);
 
-  // P1B — Score: ISF v2 como primário, legado como fallback
+  // P1B — Score: ISF v2 como fonte única de verdade para classificação
+  // O score numérico do ISF v2 (quando disponível) é usado tanto como número
+  // quanto para derivar faixa, label, cor e ação sugerida.
   const isfV2FindingsForScore = (findings as unknown as Record<string, unknown>)?.isf_v2 as Record<string, unknown> | undefined ?? null;
   const isfV2ScoreForScore = (isfV2FindingsForScore as any)?.isf_score ?? null;
   const scoreData = useMemo(() => {
-    if (!findings) {
-      return {
-        score: 70,
-        faixa: 'seguro' as const,
-        label: 'Seguro',
-        cor: '#059669',
-        bgCor: 'bg-emerald-500',
-        acaoSugerida: 'Propriedade dentro dos padrões fundiários',
-      };
-    }
-    return {
-      ...calcularScoreAgroLex(findings, analise?.risk_level),
-      score: isfV2ScoreForScore !== null ? isfV2ScoreForScore : calcularScoreAgroLex(findings, analise?.risk_level).score,
-    };
+    // Passa o score ISF v2 como overriddenScore — se existir, toda a classificação
+    // (faixa, label, cor, acaoSugerida) é derivada dele. Se não, usa fallback legado.
+    return calcularScoreAgroLex(
+      findings ?? undefined,
+      analise?.risk_level,
+      isfV2ScoreForScore,
+    );
   }, [findings, analise?.risk_level, isfV2ScoreForScore]);
 
   // Contagem de achados por criticidade
@@ -476,11 +471,10 @@ function ResultadoContent() {
   const propName = analise.properties?.name || 'Propriedade';
   const propLocation = `${analise.properties?.city || ''}, ${analise.properties?.state || ''}`;
   
-  // P1B — Fonte primária: ISF v2, fallback: risk_level legado
-  const isfV2Findings = (findings as unknown as Record<string, unknown>)?.isf_v2 as Record<string, unknown> | undefined ?? null;
-  const isfV2RiskLabel = (isfV2Findings as any)?.risk_label || null;
-  const isfV2RiskLevel = (isfV2Findings as any)?.risk_level || null;
-  const risco = isfV2RiskLabel || analise.risk_level || "Pendente";
+  // P1B — "Grau de Risco" agora deriva do scoreData (fonte única de verdade),
+  // NÃO de strings legadas (risk_level, isfV2RiskLabel) que podem divergir do score numérico.
+  // scoreData já é calculado acima usando o score ISF v2 como overriddenScore.
+  const risco = scoreData.label;
   
   let finalResumo = findings!.isHtmlResumo ? findings!.resumo : parseMarkdown(findings!.resumo);
   const sanitizedResumo = DOMPurify.sanitize(finalResumo);
@@ -782,17 +776,12 @@ function ResultadoContent() {
                   </div>
                 )}
 
-                {/* Nível de Risco */}
+                {/* Nível de Risco — via taxonomy centralizada */}
                 {childRiskLevel && (
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-gray-500 font-bold">Nível de Risco:</span>
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                      childRiskLevel.toLowerCase() === 'critico' ? 'bg-red-100 text-red-700' :
-                      childRiskLevel.toLowerCase() === 'alto' ? 'bg-orange-100 text-orange-700' :
-                      childRiskLevel.toLowerCase() === 'medio' || childRiskLevel.toLowerCase() === 'médio' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-green-100 text-green-700'
-                    }`}>
-                      {childRiskLevel}
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${getISFStyle(childRiskLevel)}`}>
+                      {getISFLabel(childRiskLevel)}
                     </span>
                   </div>
                 )}
@@ -888,7 +877,7 @@ function ResultadoContent() {
 
         {/* SCORE + RISCO */}
         <div className="mt-8 flex items-center gap-8">
-          <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} size="md" />
+          <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} overriddenScore={isfV2ScoreForScore} size="md" />
           <div className={`${styles.bg} px-6 py-4 rounded-xl border ${styles.border} min-w-[140px] text-center`}>
             <p className={`text-[10px] font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
             <div className={`flex items-center gap-2 ${styles.text} justify-center`}>
@@ -1058,7 +1047,7 @@ function ResultadoContent() {
             <section className="print:break-inside-avoid">
               {/* SCORE — centralizado na tela, oculto no print */}
               <div className="flex justify-center mb-8 print:hidden">
-                <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} size="lg" />
+                <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} overriddenScore={isfV2ScoreForScore} size="lg" />
               </div>
 
               {/* RESUMO EXECUTIVO — largura total na tela; no print mantém baseline */}
@@ -1606,6 +1595,16 @@ function ResultadoContent() {
                     <FileText size={20} className="group-hover:scale-110 transition-transform" />
                   </button>
                 )}
+              </div>
+            </section>
+
+            {/* 10. DISCLAIMER JURÍDICO */}
+            <section className="print:break-inside-avoid border-t border-gray-200 pt-6 mt-6">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 flex items-start gap-3 print:bg-white print:border-slate-300">
+                <Info size={20} className="text-slate-400 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Este relatório tem caráter informativo e preliminar, destinado a apoiar a triagem documental rural. Ele não substitui parecer jurídico profissional, auditoria presencial, análise cartorial, registral, ambiental, agronômica ou orientação de advogado habilitado. Decisões sobre aquisição, regularização, crédito, garantias, litígios ou transferência de imóvel rural devem ser validadas por profissional especializado.
+                </p>
               </div>
             </section>
 

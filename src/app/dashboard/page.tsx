@@ -1073,8 +1073,9 @@ export default function DashboardPage() {
                       (modId: string) => findingsAny.case_file?.module_results?.[modId]?.status === 'completed'
                     );
                   
-                  // Score individual
-                  const scoreData = calcularScoreAgroLex(analise.findings, analise.risk_level);
+                  // Score individual — fonte primária: ISF v2, fallback: legado
+                  const isfV2ForScore = getISFV2FromFindings(analise.findings);
+                  const scoreData = calcularScoreAgroLex(analise.findings, analise.risk_level, isfV2ForScore.isf_score);
 
                   return (
                     <tr key={analise.id} className="hover:bg-gray-50 transition-colors">

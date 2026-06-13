@@ -30,7 +30,8 @@ const eslintConfig = defineConfig([
     "artifacts/**",
     "remove_prohibited.js",
     "tests/**",
-    "coverage/**"
+    "coverage/**",
+    ".vscode/**"
   ]),
 ]);
 

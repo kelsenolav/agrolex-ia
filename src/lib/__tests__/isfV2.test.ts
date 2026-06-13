@@ -237,7 +237,7 @@ describe('calcularISF', () => {
     ];
     const result = calcularISF(problemas);
     expect(result.isf_score).toBe(50);
-    expect(result.risk_level).toBe('atencao');
+    expect(result.risk_level).toBe('alto_risco');
   });
 
   test('deve retornar ISF 0 para problemas máximos', () => {
@@ -277,32 +277,33 @@ describe('calcularISF', () => {
 // ─── TESTES: CLASSIFICAÇÃO DE RISCO ─────────────────────────────────────
 
 describe('classificarRisco', () => {
-  test('score 0-29 deve ser critico', () => {
+  test('score 0-39 deve ser critico', () => {
     expect(classificarRisco(0)).toBe('critico');
     expect(classificarRisco(15)).toBe('critico');
-    expect(classificarRisco(29)).toBe('critico');
+    expect(classificarRisco(37)).toBe('critico');
+    expect(classificarRisco(39)).toBe('critico');
   });
 
-  test('score 30-49 deve ser alto_risco', () => {
-    expect(classificarRisco(30)).toBe('alto_risco');
+  test('score 40-59 deve ser alto_risco', () => {
     expect(classificarRisco(40)).toBe('alto_risco');
-    expect(classificarRisco(49)).toBe('alto_risco');
+    expect(classificarRisco(50)).toBe('alto_risco');
+    expect(classificarRisco(59)).toBe('alto_risco');
   });
 
-  test('score 50-69 deve ser atencao', () => {
-    expect(classificarRisco(50)).toBe('atencao');
+  test('score 60-79 deve ser atencao', () => {
     expect(classificarRisco(60)).toBe('atencao');
-    expect(classificarRisco(69)).toBe('atencao');
+    expect(classificarRisco(70)).toBe('atencao');
+    expect(classificarRisco(79)).toBe('atencao');
   });
 
-  test('score 70-84 deve ser seguro', () => {
-    expect(classificarRisco(70)).toBe('seguro');
-    expect(classificarRisco(77)).toBe('seguro');
-    expect(classificarRisco(84)).toBe('seguro');
+  test('score 80-89 deve ser seguro', () => {
+    expect(classificarRisco(80)).toBe('seguro');
+    expect(classificarRisco(85)).toBe('seguro');
+    expect(classificarRisco(89)).toBe('seguro');
   });
 
-  test('score 85-100 deve ser muito_seguro', () => {
-    expect(classificarRisco(85)).toBe('muito_seguro');
+  test('score 90-100 deve ser muito_seguro', () => {
+    expect(classificarRisco(90)).toBe('muito_seguro');
     expect(classificarRisco(95)).toBe('muito_seguro');
     expect(classificarRisco(100)).toBe('muito_seguro');
   });
@@ -482,7 +483,7 @@ describe('Cenários Reais', () => {
     ];
     const result = calcularISF(problemas);
     expect(result.isf_score).toBe(58);
-    expect(result.risk_level).toBe('atencao');
+    expect(result.risk_level).toBe('alto_risco');
   });
 
   test('imóvel com fraude documental deve ter FRA score alto', () => {

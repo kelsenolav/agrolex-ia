@@ -79,6 +79,10 @@ const FALLBACK_ELIGIBLE_PATTERNS = [
   'purchase credits',
   'balance is too low',
   'low balance',
+  // Erros de resposta parcial/bloqueada do Gemini (PASSO 25.7T)
+  'ai_blocked_by_safety',
+  'ai_blocked_by_recitation',
+  'ai_incomplete_response',
 ];
 
 const NON_FALLBACK_PATTERNS = [
@@ -416,7 +420,21 @@ async function generateWithGroq(
 // ── Gemini ────────────────────────────────────────────────────────────────────
 
 /**
+ * Extrai um resumo seguro dos safetyRatings para inclusão em mensagens de erro.
+ * Não inclui o conteúdo da resposta, apenas as categorias e probabilidades.
+ */
+function summarizeSafetyRatings(safetyRatings: any[] | undefined): string {
+  if (!safetyRatings || safetyRatings.length === 0) return 'nenhum';
+  return safetyRatings
+    .map((sr: any) => `${sr.category || 'desconhecida'}=${sr.probability || 'N/A'}`)
+    .join(', ');
+}
+
+/**
  * Gera conteúdo usando Gemini via SDK oficial (@google/generative-ai).
+ *
+ * PASSO 25.7T — Inspeciona finishReason, promptFeedback e safetyRatings
+ * para detectar respostas parciais ou bloqueadas e permitir fallback.
  */
 async function generateWithGemini(
   parts: GeminiPart[],
@@ -444,19 +462,97 @@ async function generateWithGemini(
 
   const startTime = Date.now();
 
+  // PASSO 25.7T: capturar o response completo (não apenas .text())
+  // para poder inspecionar finishReason, promptFeedback e safetyRatings.
   const aiPromise = model.generateContent(parts as any).then(async (result) => {
     const response = await result.response;
-    return response.text();
+    return response; // retorna o objeto EnhancedGenerateContentResponse completo
   });
 
-  let text = await withTimeout(aiPromise, timeoutMs, 'gemini_generation');
+  const response = await withTimeout(aiPromise, timeoutMs, 'gemini_generation');
   const durationMs = Date.now() - startTime;
+
+  // ── PASSO 25.7T: Inspeção de metadados de segurança ──────────────────────
+
+  const finishReason: string | undefined = (response as any)?.candidates?.[0]?.finishReason;
+  const blockReason: string | undefined = (response as any)?.promptFeedback?.blockReason;
+  const safetyRatings: any[] | undefined = (response as any)?.candidates?.[0]?.safetyRatings;
+
+  // 1. promptFeedback.blockReason → bloqueio total (não gera texto)
+  if (blockReason) {
+    const safetySummary = summarizeSafetyRatings(safetyRatings);
+    const err = new Error(
+      `[ai_blocked_by_safety] Gemini bloqueou a requisição. ` +
+      `blockReason=${blockReason}, safetyRatings=[${safetySummary}]`,
+    );
+    (err as any).technicalErrorType = 'ai_blocked_by_safety';
+    throw err;
+  }
+
+  // 2. finishReason SAFETY → conteúdo gerado foi cortado por segurança
+  if (finishReason === 'SAFETY') {
+    const safetySummary = summarizeSafetyRatings(safetyRatings);
+    const err = new Error(
+      `[ai_blocked_by_safety] Gemini interrompeu a geração por segurança. ` +
+      `finishReason=SAFETY, safetyRatings=[${safetySummary}]`,
+    );
+    (err as any).technicalErrorType = 'ai_blocked_by_safety';
+    throw err;
+  }
+
+  // 3. finishReason RECITATION → conteúdo gerado foi cortado por recitação de texto protegido
+  if (finishReason === 'RECITATION') {
+    const err = new Error(
+      `[ai_blocked_by_recitation] Gemini interrompeu a geração por recitação de conteúdo protegido. ` +
+      `finishReason=RECITATION`,
+    );
+    (err as any).technicalErrorType = 'ai_blocked_by_recitation';
+    throw err;
+  }
+
+  // 4. finishReason MAX_TOKENS → resposta truncada, pode estar incompleta
+  if (finishReason === 'MAX_TOKENS') {
+    const err = new Error(
+      `[ai_incomplete_response] Gemini atingiu o limite de tokens. ` +
+      `finishReason=MAX_TOKENS`,
+    );
+    (err as any).technicalErrorType = 'ai_incomplete_response';
+    throw err;
+  }
+
+  // ── Obter texto da resposta ──────────────────────────────────────────────
+
+  let text: string;
+  try {
+    text = response.text();
+  } catch (textError: unknown) {
+    // Se .text() lançar exceção (ex: resposta bloqueada sem candidatos),
+    // trata como bloqueio de safety para fallback
+    const errMsg = textError instanceof Error ? textError.message : String(textError);
+    const err = new Error(
+      `[ai_blocked_by_safety] Gemini: falha ao extrair texto da resposta. ` +
+      `Erro: ${errMsg.slice(0, 200)}`,
+    );
+    (err as any).technicalErrorType = 'ai_blocked_by_safety';
+    throw err;
+  }
 
   // Limpeza de delimitadores markdown
   if (text.startsWith('```markdown')) {
     text = text.replace(/^```markdown\n?/, '').replace(/\n?```$/, '');
   } else if (text.startsWith('```')) {
     text = text.replace(/^```\n?/, '').replace(/\n?```$/, '');
+  }
+
+  // Marcação de diagnóstico não-invasiva para finishReason não-STOP
+  // (ex: OTHER, FINISH_REASON_UNSPECIFIED) — registra mas não bloqueia
+  if (finishReason && finishReason !== 'STOP' && finishReason !== 'FINISH_REASON_UNSPECIFIED') {
+    // Apenas log seguro: finishReason inesperado mas sem bloqueio
+    // O texto gerado pode estar OK, então prosseguimos
+    // mas adicionamos um prefixo de diagnóstico no texto (para debug em staging)
+    if (getEnvVar('NODE_ENV', 'development') !== 'production') {
+      text = `[Gemini finishReason=${finishReason}]\n${text}`;
+    }
   }
 
   if (!text || text.trim().length < 50) {

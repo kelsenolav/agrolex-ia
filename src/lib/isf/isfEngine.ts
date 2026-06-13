@@ -35,11 +35,11 @@ export const PESOS_EIXOS: Record<Eixo, number> = {
 };
 
 export const RISK_THRESHOLDS: { faixa: FaixaRisco; min: number; max: number }[] = [
-  { faixa: 'critico',     min: 0,  max: 29 },
-  { faixa: 'alto_risco',  min: 30, max: 49 },
-  { faixa: 'atencao',     min: 50, max: 69 },
-  { faixa: 'seguro',      min: 70, max: 84 },
-  { faixa: 'muito_seguro',min: 85, max: 100 },
+  { faixa: 'critico',      min: 0,  max: 39 },
+  { faixa: 'alto_risco',   min: 40, max: 59 },
+  { faixa: 'atencao',      min: 60, max: 79 },
+  { faixa: 'seguro',       min: 80, max: 89 },
+  { faixa: 'muito_seguro', min: 90, max: 100 },
 ];
 
 export const LABEL_FAIXA: Record<FaixaRisco, string> = {
@@ -284,10 +284,10 @@ export function classificarRisco(score: number): FaixaRisco {
       return threshold.faixa;
     }
   }
-  if (score >= 85) return 'muito_seguro';
-  if (score >= 70) return 'seguro';
-  if (score >= 50) return 'atencao';
-  if (score >= 30) return 'alto_risco';
+  if (score >= 90) return 'muito_seguro';
+  if (score >= 80) return 'seguro';
+  if (score >= 60) return 'atencao';
+  if (score >= 40) return 'alto_risco';
   return 'critico';
 }
 
