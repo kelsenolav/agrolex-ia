@@ -390,10 +390,11 @@ export function calcularISFV2_2(
   const travas_aplicadas: string[] = [];
 
   // Trava 1 — D1 ausente (Origem do título não analisada)
-  // Sem análise da origem, o título é presumivelmente frágil. Teto máximo = 39 (Crítico).
+  // Sem achados em D1, cap em 54 (Alto Risco). O silêncio da IA sobre D1 não implica vício —
+  // implica ausência de evidência de problema, mas não certeza de qualidade.
   if (dimensoesFaltantes.includes('D1')) {
-    isfScore = Math.min(isfScore, 39);
-    travas_aplicadas.push('TRAVA_D1_AUSENTE: Origem do título não analisada — teto máximo 39 (Crítico)');
+    isfScore = Math.min(isfScore, 54);
+    travas_aplicadas.push('TRAVA_D1_AUSENTE: Origem do título não analisada — teto máximo 54 (Alto Risco)');
   }
 
   // Trava 2 — D2 ausente (Cadeia dominial não analisada)
@@ -599,7 +600,11 @@ export function inferirPontuacoesDeAchados(
       'indisponibilidade', 'bacenjud', 'cnj', 'receita federal',
       'acao real', 'reipersecutoria',
       'georreferenciamento', 'sigef', 'lei 10.267', 'certificacao',
-      'usucapiao', 'usucapiao registrado',
+      // Usucapião averbada na matrícula é gravame D3 (ação real reipersecutória)
+      // Peso alto via keywords múltiplas para garantir roteamento correto antes de D5
+      'usucapiao', 'usucapiao registrado', 'usucapiao averbada',
+      'litígio ativo', 'litigio ativo', 'acao averbada',
+      'acao premonitoria', 'averbacao de litigio', 'averbacao de acao',
       'gravame', 'restricao registral', 'registro de penhora',
       'registro de hipoteca', 'registro de alienacao',
       'averba premonitoria', 'acao pessoal reipersecutoria',
@@ -608,6 +613,9 @@ export function inferirPontuacoesDeAchados(
     ],
     D4: [
       'car', 'sicar', 'ambiental', 'ccir', 'itr',
+      // Duplicar CCIR com variações para ganhar empates contra D3 ("matrícula")
+      'ccir ausente', 'ccir vencido', 'ccir atualizado', 'ccir nao consta',
+      'cadastro de imovel rural', 'certificado de cadastro',
       'reserva legal', 'pra', 'regularizacao ambiental',
       'sobreposicao ambiental', 'divida ativa',
       'unidade de conservacao', 'terra indigena', 'quilombola',
@@ -648,10 +656,10 @@ export function inferirPontuacoesDeAchados(
     ],
   };
 
-  // PADRÃO NEUTRO para dimensões sem achados: 40 (Alto Risco, não Atenção).
-  // Sem evidência de qualidade, presume-se fragilidade — 40 é o limiar de Alto Risco (40-54).
-  // Dimensões com achados partem de 75 (Regular) e são deduzidas pelo impacto integral dos problemas.
-  const DEFAULT_NEUTRO = 40;
+  // PADRÃO NEUTRO para dimensões sem achados: 65 (Atenção).
+  // Silêncio da IA sobre uma dimensão = nenhum problema encontrado lá, não ausência de análise.
+  // Dimensões com achados partem de 80 e são deduzidas pelo impacto dos problemas.
+  const DEFAULT_NEUTRO = 65;
 
   const scores: Record<string, number> = {};
   const touched: Record<string, boolean> = {};
@@ -696,12 +704,12 @@ export function inferirPontuacoesDeAchados(
       }
     }
 
-    // Se encontrou uma dimensão, inicializa e deduzir impacto (integral, sem amortecimento)
+    // Se encontrou uma dimensão, inicializa e deduzir impacto
     if (melhorDim) {
-      if (scores[melhorDim] === undefined) scores[melhorDim] = 75;
-      // Penalização cumulativa: cada achado adicional na mesma dimensão deduz 5 pts extras
+      if (scores[melhorDim] === undefined) scores[melhorDim] = 80;
+      // Penalização cumulativa: cada achado adicional na mesma dimensão deduz 3 pts extras
       hitsPorDimensao[melhorDim] = (hitsPorDimensao[melhorDim] || 0) + 1;
-      const multAchado = hitsPorDimensao[melhorDim] > 1 ? (hitsPorDimensao[melhorDim] - 1) * 5 : 0;
+      const multAchado = hitsPorDimensao[melhorDim] > 1 ? (hitsPorDimensao[melhorDim] - 1) * 3 : 0;
       scores[melhorDim] = Math.max(0, scores[melhorDim] - Math.round(impacto) - multAchado);
       touched[melhorDim] = true;
 
@@ -741,8 +749,8 @@ export function inferirPontuacoesDeAchados(
   }
 
   // Retorna TODAS as 6 dimensões (D1–D6).
-  // Dimensões com achados → score deduzido a partir de 75 com impacto integral.
-  // Dimensões sem achados → score neutro 40 (Alto Risco, sem presunção de segurança).
+  // Dimensões com achados → score deduzido a partir de 80 com impacto dos problemas.
+  // Dimensões sem achados → score neutro 65 (Atenção — nenhum problema encontrado).
   const resultado: PontuacaoEntradaV2_2[] = [];
   for (const dim of DIMENSOES_V2_2) {
     resultado.push({

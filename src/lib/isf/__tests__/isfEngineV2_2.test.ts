@@ -410,24 +410,24 @@ describe('Classificação de faixas (classificarFaixaV2_2)', () => {
 // ─── CENÁRIO 9: INFERÊNCIA DE PONTUAÇÕES ────────────────────────────────
 
 describe('Inferência de pontuações a partir de achados', () => {
-  test('Lista vazia deve retornar 6 dimensões com score neutro 40 e criticidadeInferida vazia', () => {
+  test('Lista vazia deve retornar 6 dimensões com score neutro 65 e criticidadeInferida vazia', () => {
     const { pontuacoes, criticidadeInferida } = inferirPontuacoesDeAchados([]);
     expect(pontuacoes).toHaveLength(6);
     expect(criticidadeInferida.size).toBe(0);
-    // Todas as 6 dimensões devem ter score neutro 40 (Alto Risco)
+    // Todas as 6 dimensões devem ter score neutro 65 (Atenção — nenhum problema encontrado)
     for (const p of pontuacoes) {
-      expect(p.pontuacao).toBe(40);
+      expect(p.pontuacao).toBe(65);
       expect(p.itemSelecionado).toMatch(/^\[Inferido\]/);
     }
-    // ISF resultante com 6×40 deve ser ~40 (Alto Risco) sem disparar travas
+    // ISF resultante com 6×65: todas as dims fornecidas → ISF=65 (Atenção), sem travas
     const resultado = calcularISFV2_2(pontuacoes);
-    expect(resultado.isf_score).toBe(40);
-    expect(resultado.faixa).toBe('alto_risco');
+    expect(resultado.isf_score).toBe(65);
+    expect(resultado.faixa).toBe('atencao');
     expect(resultado.incompleto).toBe(false);
     expect(resultado.travas_aplicadas).toHaveLength(0);
   });
 
-  test('Achado de penhora deve reduzir D3, demais dimensões ficam com score neutro 40', () => {
+  test('Achado de penhora deve reduzir D3, demais dimensões ficam com score neutro 65', () => {
     const problemas = [
       { titulo: 'Penhora registrada na matrícula', criticidade: 'alta', descricao: 'Penhora de R$ 500 mil.' },
     ];
@@ -436,12 +436,12 @@ describe('Inferência de pontuações a partir de achados', () => {
     expect(criticidadeInferida.get('Penhora registrada na matrícula')).toBe('Alto');
     const D3 = pontuacoes.find(p => p.dimensaoId === 'D3');
     expect(D3).toBeDefined();
-    // impacto alta = 30 integral → 75 - 30 = 45
-    expect(D3!.pontuacao).toBe(45);
-    // Dimensões não afetadas devem ter score neutro 40
+    // impacto alta = 30 integral → 80 - 30 = 50
+    expect(D3!.pontuacao).toBe(50);
+    // Dimensões não afetadas devem ter score neutro 65
     const outras = pontuacoes.filter(p => p.dimensaoId !== 'D3');
     for (const p of outras) {
-      expect(p.pontuacao).toBe(40);
+      expect(p.pontuacao).toBe(65);
       expect(p.itemSelecionado).toMatch(/^\[Inferido\]/);
     }
   });
@@ -454,8 +454,8 @@ describe('Inferência de pontuações a partir de achados', () => {
     expect(criticidadeInferida.get('Lacuna na cadeia dominial')).toBe('Crítico');
     const D2 = pontuacoes.find(p => p.dimensaoId === 'D2');
     expect(D2).toBeDefined();
-    // impacto crítica = 50 integral → 75 - 50 = 25
-    expect(D2!.pontuacao).toBe(25);
+    // impacto crítica = 50 integral → 80 - 50 = 30
+    expect(D2!.pontuacao).toBe(30);
   });
 
   test('Achado de grilagem deve reduzir D6', () => {
@@ -465,8 +465,8 @@ describe('Inferência de pontuações a partir de achados', () => {
     const { pontuacoes, criticidadeInferida } = inferirPontuacoesDeAchados(problemas);
     expect(criticidadeInferida.get('Histórico de grilagem na região')).toBe('Alto');
     const D6 = pontuacoes.find(p => p.dimensaoId === 'D6');
-    // impacto alta = 30 integral → 75 - 30 = 45
-    expect(D6!.pontuacao).toBe(45);
+    // impacto alta = 30 integral → 80 - 30 = 50
+    expect(D6!.pontuacao).toBe(50);
   });
 
   test('Múltiplos achados no mesmo eixo devem acumular redução com penalização cumulativa', () => {
@@ -476,9 +476,8 @@ describe('Inferência de pontuações a partir de achados', () => {
     ];
     const { pontuacoes } = inferirPontuacoesDeAchados(problemas);
     const D3 = pontuacoes.find(p => p.dimensaoId === 'D3');
-    // Primeiro alta: 75 - 30 = 45. Segundo: 45 - 30 - 5 (penalização) = 10
-    // ou arredondamento pode variar. Deve ser < 45.
-    expect(D3!.pontuacao).toBeLessThan(45);
+    // Primeiro alta: 80 - 30 = 50. Segundo: 50 - 30 - 3 (penalização) = 17. Deve ser < 50.
+    expect(D3!.pontuacao).toBeLessThan(50);
   });
 
   test('Achado sem criticidade deve usar fallback medio (-15)', () => {
@@ -487,8 +486,8 @@ describe('Inferência de pontuações a partir de achados', () => {
     ];
     const { pontuacoes, criticidadeInferida } = inferirPontuacoesDeAchados(problemas);
     const D3 = pontuacoes.find(p => p.dimensaoId === 'D3');
-    // impacto medio = 15 integral → 75 - 15 = 60
-    expect(D3!.pontuacao).toBe(60);
+    // impacto medio = 15 integral → 80 - 15 = 65
+    expect(D3!.pontuacao).toBe(65);
     expect(criticidadeInferida.get('Penhora registrada')).toBe('Médio');
   });
 
