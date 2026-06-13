@@ -17,8 +17,24 @@ export function getAnalysisRiskLevel(analysis: {
   findings?: any;
   risk_level?: string | null;
 }): string {
-  // 1. Tentar ISF v2 dos findings
+  // 1a. Tentar ISF v2.2 dos findings (motor mais recente)
   const findings = analysis.findings;
+  if (findings) {
+    const isfV2_2 = findings.isf_v2_2 as Record<string, unknown> | undefined;
+    if (isfV2_2 && typeof isfV2_2.isf_score === 'number') {
+      const level = isfV2_2.faixa as string | undefined;
+      if (level) {
+        const normalized = level
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .trim();
+        if (normalized) return normalized;
+      }
+    }
+  }
+
+  // 1b. Tentar ISF v2.1 dos findings (motor legado)
   if (findings) {
     const isfV2 = findings.isf_v2 as Record<string, unknown> | undefined;
     if (isfV2 && typeof isfV2.risk_level === 'string') {

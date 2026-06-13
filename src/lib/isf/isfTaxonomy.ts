@@ -15,12 +15,14 @@
 
 // ─── KEY TYPE ────────────────────────────────────────────────────────────
 
-export type ISFLevel = 'critico' | 'alto_risco' | 'atencao' | 'seguro' | 'muito_seguro';
+export type ISFLevel = 'invalido' | 'critico' | 'alto_risco' | 'atencao' | 'regular' | 'seguro' | 'muito_seguro';
 
 export type RiskLevel =
+  | 'INVALIDO'
   | 'CRITICO'
   | 'ALTO_RISCO'
   | 'ATENCAO'
+  | 'REGULAR'
   | 'SEGURO'
   | 'MUITO_SEGURO';
 
@@ -28,15 +30,29 @@ export type RiskLevel =
  * Função central de classificação de risco fundiário.
  * Fonte única de verdade para derivar nível de risco a partir do score numérico.
  *
- * Regras de negócio:
- *   0-39   → CRITICO
- *   40-59  → ALTO_RISCO
- *   60-79  → ATENCAO
- *   80-89  → SEGURO
- *   90-100 → MUITO_SEGURO
+ * Suporta duas taxonomias:
+ *   v2.2 (6 dimensões): invalido (0-24), critico (25-39), alto_risco (40-54),
+ *                        atencao (55-69), regular (70-84), seguro (85-100)
+ *   v2.1 (legado): critico (0-39), alto_risco (40-59), atencao (60-79),
+ *                  seguro (80-89), muito_seguro (90-100)
+ *
+ * @param score - Score numérico (0-100)
+ * @param version - Versão da taxonomia ('2.2' ou undefined para legado)
  */
-export function classifyFundiaryRisk(score: number): RiskLevel {
+export function classifyFundiaryRisk(score: number, version?: string | null): RiskLevel {
   if (!Number.isFinite(score)) return 'CRITICO';
+
+  // v2.2 — 6 dimensões: Inválido, Crítico, Alto Risco, Atenção, Regular, Seguro
+  if (version === '2.2' || (version && version.startsWith('2.2'))) {
+    if (score <= 24) return 'INVALIDO';
+    if (score <= 39) return 'CRITICO';
+    if (score <= 54) return 'ALTO_RISCO';
+    if (score <= 69) return 'ATENCAO';
+    if (score <= 84) return 'REGULAR';
+    return 'SEGURO';
+  }
+
+  // v2.1 (legado): Crítico, Alto Risco, Atenção, Seguro, Muito Seguro
   if (score <= 39) return 'CRITICO';
   if (score <= 59) return 'ALTO_RISCO';
   if (score <= 79) return 'ATENCAO';
@@ -60,6 +76,16 @@ export interface ISFTaxonomyEntry {
 // ─── TAXONOMY MAP ────────────────────────────────────────────────────────
 
 export const ISF_TAXONOMY: Record<ISFLevel, ISFTaxonomyEntry> = {
+  invalido: {
+    label: 'Inválido',
+    severity: 6,
+    min: 0,
+    max: 24,
+    hex: '#A32D2D',
+    uiClass: 'bg-red-100 text-red-800 border-red-300',
+    pdfClass: 'isf-invalido',
+    description: 'Título presumivelmente nulo ou fraudulento',
+  },
   critico: {
     label: 'Crítico',
     severity: 5,
@@ -89,6 +115,16 @@ export const ISF_TAXONOMY: Record<ISFLevel, ISFTaxonomyEntry> = {
     uiClass: 'bg-yellow-50 text-yellow-700 border-yellow-200',
     pdfClass: 'isf-atencao',
     description: 'Atenção recomendada',
+  },
+  regular: {
+    label: 'Regular',
+    severity: 2.5,
+    min: 70,
+    max: 84,
+    hex: '#639922',
+    uiClass: 'bg-lime-50 text-lime-700 border-lime-200',
+    pdfClass: 'isf-regular',
+    description: 'Título razoável com pontos de atenção',
   },
   seguro: {
     label: 'Seguro',
@@ -139,12 +175,15 @@ export function normalizeISFLevel(level: string | null | undefined): ISFLevel | 
 
   // Mapeamento direto (case-sensitive, acentos)
   const exactMap: Record<string, ISFLevel> = {
+    'Inválido': 'invalido',
+    'Invalido': 'invalido',
     'Crítico': 'critico',
     'Critico': 'critico',
     'Alto Risco': 'alto_risco',
     'Alto risco': 'alto_risco',
     'Atenção': 'atencao',
     'Atencao': 'atencao',
+    'Regular': 'regular',
     'Seguro': 'seguro',
     'Muito Seguro': 'muito_seguro',
     'Muito seguro': 'muito_seguro',
@@ -160,9 +199,11 @@ export function normalizeISFLevel(level: string | null | undefined): ISFLevel | 
     .trim();
 
   const map: Record<string, ISFLevel> = {
+    invalido: 'invalido',
     critico: 'critico',
     alto_risco: 'alto_risco',
     atencao: 'atencao',
+    regular: 'regular',
     seguro: 'seguro',
     muito_seguro: 'muito_seguro',
   };
@@ -227,13 +268,28 @@ export function getISFDescription(level: string | null | undefined): string {
 
 /**
  * Classifica um score numérico (0-100) em um nível ISF.
+ * Suporta taxonomia v2.2 (6 dimensões) e v2.1 (legado).
+ *
+ * @param score - Score numérico (0-100)
+ * @param version - Versão da taxonomia. '2.2' ativa a classificação v2.2.
  */
-export function classifyISFScore(score: number): ISFLevel {
+export function classifyISFScore(score: number, version?: string | null): ISFLevel {
   const clampedScore = Math.max(0, Math.min(100, Math.round(score)));
 
+  // v2.2 — usa faixas específicas da metodologia 6 dimensões
+  if (version === '2.2' || (version && version.startsWith('2.2'))) {
+    if (clampedScore <= 24) return 'invalido';
+    if (clampedScore <= 39) return 'critico';
+    if (clampedScore <= 54) return 'alto_risco';
+    if (clampedScore <= 69) return 'atencao';
+    if (clampedScore <= 84) return 'regular';
+    return 'seguro';
+  }
+
+  // v2.1 (legado) — ordem de severidade decrescente
   for (const level of ['critico', 'alto_risco', 'atencao', 'seguro', 'muito_seguro'] as ISFLevel[]) {
     const entry = ISF_TAXONOMY[level];
-    if (clampedScore >= entry.min && clampedScore <= entry.max) {
+    if (entry && clampedScore >= entry.min && clampedScore <= entry.max) {
       return level;
     }
   }
@@ -252,9 +308,11 @@ export function classifyISFScore(score: number): ISFLevel {
 export const ISF_LEVELS_ORDERED: ISFLevel[] = [
   'muito_seguro',
   'seguro',
+  'regular',
   'atencao',
   'alto_risco',
   'critico',
+  'invalido',
 ];
 
 /**
@@ -263,9 +321,11 @@ export const ISF_LEVELS_ORDERED: ISFLevel[] = [
 export function getISFBgTint(level: string | null | undefined): string {
   const entry = getISFTaxonomy(level);
   switch (entry.severity) {
+    case 6: return 'bg-red-200';
     case 5: return 'bg-red-100';
     case 4: return 'bg-orange-100';
     case 3: return 'bg-yellow-100';
+    case 2.5: return 'bg-lime-100';
     case 2: return 'bg-green-100';
     case 1: return 'bg-emerald-100';
     default: return 'bg-slate-100';
@@ -278,9 +338,11 @@ export function getISFBgTint(level: string | null | undefined): string {
 export function getISFTextTint(level: string | null | undefined): string {
   const entry = getISFTaxonomy(level);
   switch (entry.severity) {
+    case 6: return 'text-red-800';
     case 5: return 'text-red-600';
     case 4: return 'text-orange-600';
     case 3: return 'text-yellow-600';
+    case 2.5: return 'text-lime-700';
     case 2: return 'text-green-600';
     case 1: return 'text-emerald-600';
     default: return 'text-slate-600';

@@ -601,10 +601,12 @@ export function inferirPontuacoesDeAchados(
     ],
   };
 
-  // CORREÇÃO: em vez de presumir segurança (100) por ausência de dados,
-  // inicializamos com objeto vazio e só pontuamos dimensões com evidência de achados.
-  // Dimensões sem achados serão tratadas como "Não analisada" pelo calcularISFV2_2,
-  // resultando em ISF mais baixo e flag incompleto=true.
+  // PADRÃO NEUTRO para dimensões sem achados: 60 (mediana entre Regular e Atenção).
+  // Evita travas severas (TRAVA_D1_D2_COMBINADA → teto 24) quando a IA não cobre
+  // todas as dimensões, sem presumir segurança total (100).
+  // Dimensões com achados partem de 100 e são deduzidas pelo impacto dos problemas.
+  const DEFAULT_NEUTRO = 60;
+
   const scores: Record<string, number> = {};
   const touched: Record<string, boolean> = {};
 
@@ -638,26 +640,24 @@ export function inferirPontuacoesDeAchados(
 
     // Se encontrou uma dimensão, inicializa e deduzir impacto
     if (melhorDim) {
-      // Inicializa score da dimensão em 100 na primeira vez que for tocada
       if (scores[melhorDim] === undefined) scores[melhorDim] = 100;
       scores[melhorDim] = Math.max(0, scores[melhorDim] - Math.round(impacto * 0.8));
       touched[melhorDim] = true;
     }
   }
 
-  // Retorna APENAS dimensões que tiveram achados classificados.
-  // Dimensões sem evidência NÃO são incluídas → serão tratadas como "Não analisada"
-  // pelo calcularISFV2_2, puxando o ISF para baixo corretamente.
+  // Retorna TODAS as 6 dimensões (D1–D6).
+  // Dimensões com achados → score deduzido a partir de 100.
+  // Dimensões sem achados → score neutro 60 (Regular, sem presunção de segurança).
   const resultado: PontuacaoEntradaV2_2[] = [];
   for (const dim of DIMENSOES_V2_2) {
-    if (touched[dim.id]) {
-      resultado.push({
-        dimensaoId: dim.id,
-        pontuacao: scores[dim.id],
-        itemSelecionado: encontrarItemProximo(dim.id, scores[dim.id]),
-      });
-    }
-    // else: dimensão omitida intencionalmente → será "Não analisada" no calcularISFV2_2
+    resultado.push({
+      dimensaoId: dim.id,
+      pontuacao: touched[dim.id] ? Math.max(0, scores[dim.id]) : DEFAULT_NEUTRO,
+      itemSelecionado: touched[dim.id]
+        ? encontrarItemProximo(dim.id, scores[dim.id])
+        : `[Inferido] ${encontrarItemProximo(dim.id, DEFAULT_NEUTRO)}`,
+    });
   }
 
   return resultado;

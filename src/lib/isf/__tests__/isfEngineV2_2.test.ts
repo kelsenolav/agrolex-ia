@@ -164,7 +164,7 @@ describe('Cenário realista — Título regular (~70–84)', () => {
     expect(result.faixa_label).toBe('Regular');
   });
 
-  test('Deve gerar alerta para D3 (≤35)', () => {
+  test('NÃO deve gerar alerta para D3 quando pontuação > 35', () => {
     // D3=70 > 35 → sem alerta
     const result = calcularISFV2_2(pontuacoes);
     const alertaD3 = result.alertas.find(a => a.dimensaoId === 'D3');
@@ -409,23 +409,39 @@ describe('Classificação de faixas (classificarFaixaV2_2)', () => {
 // ─── CENÁRIO 9: INFERÊNCIA DE PONTUAÇÕES ────────────────────────────────
 
 describe('Inferência de pontuações a partir de achados', () => {
-  test('Lista vazia deve retornar array vazio (sem presumir segurança por ausência de dados)', () => {
+  test('Lista vazia deve retornar 6 dimensões com score neutro 60 (sem presumir segurança nem ausência)', () => {
     const pontuacoes = inferirPontuacoesDeAchados([]);
-    expect(pontuacoes).toHaveLength(0);
-    // Sem achados, nenhuma dimensão é pontuada → calcularISFV2_2 retorna incompleto=true e ISF=0
-    // Isso evita o falso "Seguro (100)" quando não há dados para analisar
+    expect(pontuacoes).toHaveLength(6);
+    // Todas as 6 dimensões devem ter score neutro 60 (Regular, sem presunção de segurança)
+    for (const p of pontuacoes) {
+      expect(p.pontuacao).toBe(60);
+      expect(p.itemSelecionado).toMatch(/^\[Inferido\]/);
+    }
+    // ISF resultante com 6×60 deve ser ~60 (Atenção) sem disparar travas
+    const resultado = calcularISFV2_2(pontuacoes);
+    expect(resultado.isf_score).toBe(60);
+    expect(resultado.faixa).toBe('atencao');
+    expect(resultado.incompleto).toBe(false);
+    expect(resultado.travas_aplicadas).toHaveLength(0);
   });
 
-  test('Achado de penhora deve reduzir D3 (Integridade registral)', () => {
+  test('Achado de penhora deve reduzir D3, demais dimensões ficam com score neutro 60', () => {
     const problemas = [
       { titulo: 'Penhora registrada na matrícula', criticidade: 'alta', descricao: 'Penhora de R$ 500 mil.' },
     ];
     const pontuacoes = inferirPontuacoesDeAchados(problemas);
+    expect(pontuacoes).toHaveLength(6);
     const D3 = pontuacoes.find(p => p.dimensaoId === 'D3');
     expect(D3).toBeDefined();
     // impacto alta = 30 * 0.8 = 24 → 100 - 24 = 76
     expect(D3!.pontuacao).toBeLessThan(100);
     expect(D3!.pontuacao).toBeGreaterThan(70);
+    // Dimensões não afetadas devem ter score neutro 60
+    const outras = pontuacoes.filter(p => p.dimensaoId !== 'D3');
+    for (const p of outras) {
+      expect(p.pontuacao).toBe(60);
+      expect(p.itemSelecionado).toMatch(/^\[Inferido\]/);
+    }
   });
 
   test('Achado de cadeia dominial deve reduzir D2', () => {

@@ -321,23 +321,37 @@ export default function DashboardPage() {
 
   /**
    * P1B — Extrai ISF v2 dos findings de forma segura.
-   * Fonte primária: findings.isf_v2
+   * Fonte primária: findings.isf_v2_2 (motor 6 dimensões)
+   * Fallback: findings.isf_v2 (motor v2.1 legado)
    * Fallback: análise legada (risk_level + calcularScoreAgroLex)
    */
   function getISFV2FromFindings(findings: any): {
     isf_score: number | null;
     risk_label: string | null;
     risk_level: string | null;
+    isf_version: string | null;
   } {
+    // 1. Motor v2.2 (6 dimensões) — fonte primária
+    const isfV2_2 = findings?.isf_v2_2;
+    if (isfV2_2 && typeof isfV2_2.isf_score === 'number') {
+      return {
+        isf_score: isfV2_2.isf_score,
+        risk_label: isfV2_2.faixa_label || null,
+        risk_level: isfV2_2.faixa || null,
+        isf_version: '2.2',
+      };
+    }
+    // 2. Motor v2.1 (legado)
     const isfV2 = findings?.isf_v2;
     if (isfV2 && typeof isfV2.isf_score === 'number') {
       return {
         isf_score: isfV2.isf_score,
         risk_label: isfV2.risk_label || null,
         risk_level: isfV2.risk_level || null,
+        isf_version: '2.1',
       };
     }
-    return { isf_score: null, risk_label: null, risk_level: null };
+    return { isf_score: null, risk_label: null, risk_level: null, isf_version: null };
   }
 
   const handleStartAnalysis = async (analysisId: string, propertyId: string, retryOptions?: { retryMessage?: string; forceRetry?: boolean; isAutoChain?: boolean }) => {
@@ -549,16 +563,22 @@ export default function DashboardPage() {
   // Horas economizadas (benchmark: 8h por auditoria concluída)
   const horasEconomizadas = analisesConcluidas * 8;
 
-  // RiskFilter precisa combinar com busca e status
+  // RiskFilter — mapeia valores do dropdown para níveis retornados por getAnalysisRiskLevel
+  const RISK_FILTER_MAP: Record<string, string> = {
+    critico: 'critico',
+    alto: 'alto_risco',
+    medio: 'atencao',
+    baixo: 'seguro',
+    sem_risco: 'desconhecido',
+  };
+
   const analisesFiltradas = analises.filter(a => {
     const matchSearch = !searchTerm || 
       a.properties?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       a.properties?.city?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = !statusFilter || a.status === statusFilter;
     const matchRisk = !riskFilter || (
-      riskFilter === 'sem_risco'
-        ? getAnalysisRiskLevel(a) === 'desconhecido'
-        : getAnalysisRiskLevel(a) === riskFilter.toLowerCase()
+      getAnalysisRiskLevel(a) === (RISK_FILTER_MAP[riskFilter] || riskFilter.toLowerCase())
     );
     return matchSearch && matchStatus && matchRisk;
   });
