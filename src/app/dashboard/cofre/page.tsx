@@ -57,7 +57,7 @@ export default function CofrePage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
       <nav className="bg-purple-900 text-white shadow-md">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-purple-200">
             <Lock size={28} />
             <span className="text-xl font-bold text-white">Data Room Criptografado</span>
@@ -65,7 +65,7 @@ export default function CofrePage() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8 max-w-5xl">
+      <main className="container mx-auto max-w-7xl px-6 py-8">
         <div className="flex justify-between items-center mb-6">
           <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors font-medium">
             <ArrowLeft size={20} /> Voltar
@@ -116,3 +116,5 @@ export default function CofrePage() {
     </div>
   );
 }
+
+

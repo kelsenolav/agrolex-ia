@@ -117,7 +117,7 @@ export default function CalendarioPage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
       <nav className="bg-orange-600 text-white shadow-md">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-orange-200">
             <CalendarIcon size={28} />
             <span className="text-xl font-bold text-white">Gestão e Calendário Ambiental</span>
@@ -294,3 +294,4 @@ export default function CalendarioPage() {
     </div>
   );
 }
+

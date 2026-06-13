@@ -167,7 +167,7 @@ export default function Home() {
           variants={containerVariants}
           initial="hidden"
           animate="visible"
-          className="container mx-auto max-w-6xl relative z-10 mt-10 md:mt-20"
+          className="container mx-auto max-w-7xl relative z-10 mt-10 md:mt-20"
         >
           <div className="grid md:grid-cols-5 gap-8 items-center">
             {/* Coluna esquerda — conteúdo principal */}
@@ -322,7 +322,7 @@ export default function Home() {
 
       {/* ===== COMO FUNCIONA A ANÁLISE GRATUITA ===== */}
       <section id="analise-gratuita" className="py-20 px-4 relative z-10 bg-[#051F15] border-t border-white/5">
-        <div className="container mx-auto max-w-5xl">
+        <div className="container mx-auto max-w-7xl px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -460,7 +460,7 @@ export default function Home() {
 
       {/* ===== SCORE AgrolexI (P0) ===== */}
       <section id="score" className="py-24 px-4 relative z-10 bg-gradient-to-b from-[#03150D] to-[#051F15]">
-        <div className="container mx-auto max-w-5xl">
+        <div className="container mx-auto max-w-7xl px-6">
           <div className="text-center mb-16">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
@@ -801,7 +801,7 @@ export default function Home() {
 
       {/* ===== FAQ CENTRADO NO CLIENTE (P0) ===== */}
       <section id="faq" className="py-24 px-4 relative z-10 bg-[#03150D]">
-        <div className="container mx-auto max-w-4xl">
+        <div className="container mx-auto max-w-7xl px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-5xl font-bold mb-4">Perguntas que todo comprador faz</h2>
             <p className="text-gray-400 text-lg">Antes de fechar negócio, tire suas dúvidas.</p>
@@ -834,7 +834,7 @@ export default function Home() {
 
       {/* ===== CTA FINAL — Escalonado (P1) ===== */}
       <section className="py-24 px-4 relative z-10 bg-gradient-to-br from-brand-green to-[#052e1f]">
-        <div className="container mx-auto max-w-4xl text-center">
+        <div className="container mx-auto max-w-7xl px-6 text-center">
           <h2 className="text-3xl md:text-5xl font-bold mb-6">Quer segurança para sua próxima negociação?</h2>
           <p className="text-gray-300 text-lg mb-10 max-w-2xl mx-auto">
             Descubra agora se a propriedade que você está avaliando tem riscos ocultos. 
@@ -861,7 +861,7 @@ export default function Home() {
 
       {/* ===== FOOTER Premium — limpo (P1) ===== */}
       <footer className="border-t border-white/10 bg-black/60 pt-16 pb-8 z-10 relative">
-        <div className="container mx-auto px-6">
+        <div className="container mx-auto max-w-7xl px-6">
           <div className="grid md:grid-cols-3 gap-10 mb-12">
             <div>
               <div className="mb-4">
@@ -900,3 +900,4 @@ export default function Home() {
     </div>
   );
 }
+

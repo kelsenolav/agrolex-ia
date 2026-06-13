@@ -196,7 +196,7 @@ export default function AdminDashboardPage() {
 
       {/* Navbar */}
       <nav className="bg-brand-green text-white shadow-md">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
             <Logo size="sm" className="text-white" />
             <span className="text-xl font-bold text-white ml-1">Admin</span>
@@ -208,7 +208,7 @@ export default function AdminDashboardPage() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8 max-w-7xl">
+      <main className="container mx-auto max-w-7xl px-6 py-8">
         {/* Back Link */}
         <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-brand-green mb-6 transition-colors w-fit font-bold">
           <ArrowLeft size={20} /> Retornar ao Dashboard
@@ -364,3 +364,5 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+

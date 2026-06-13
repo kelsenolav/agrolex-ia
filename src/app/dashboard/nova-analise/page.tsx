@@ -704,7 +704,7 @@ export default function NovaAnalisePage() {
       )}
 
       <nav className="bg-brand-green text-white shadow-md">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
             <Logo size="sm" className="text-white" />
           </Link>
@@ -1196,3 +1196,4 @@ export default function NovaAnalisePage() {
     </div>
   );
 }
+

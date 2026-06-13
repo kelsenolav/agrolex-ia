@@ -639,7 +639,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Navbar */}
       <nav className="bg-brand-green text-white shadow-md">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-2 text-brand-gold">
             <Logo size="sm" className="text-white" />
           </Link>
@@ -664,7 +664,7 @@ export default function DashboardPage() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto max-w-7xl px-6 py-8">
         {/* Banner de Déficit de Páginas */}
         {dynamicBalance !== null && dynamicBalance < 0 && (
           <div className="mb-8 bg-gradient-to-r from-red-500/10 via-red-500/5 to-transparent border-l-4 border-red-500 rounded-r-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">

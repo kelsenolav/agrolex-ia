@@ -233,7 +233,7 @@ export default function DataRoomPage() {
 
       {/* Navbar */}
       <nav className="bg-brand-green text-white shadow-md">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
             <Logo size="sm" className="text-white" />
           </Link>
@@ -244,7 +244,7 @@ export default function DataRoomPage() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8 max-w-5xl">
+      <main className="container mx-auto max-w-7xl px-6 py-8">
         {/* Back Link */}
         <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-brand-green mb-6 transition-colors w-fit font-medium">
           <ArrowLeft size={20} /> Painel Principal
@@ -410,3 +410,5 @@ export default function DataRoomPage() {
     </div>
   );
 }
+
+

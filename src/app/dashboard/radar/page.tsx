@@ -77,7 +77,7 @@ function RadarContent() {
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
       <nav className="bg-gray-900 text-white shadow-md">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold">
             <Radar size={28} className="animate-pulse" />
             <span className="text-xl font-bold text-white">Radar Contínuo</span>
@@ -89,7 +89,7 @@ function RadarContent() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8 max-w-5xl">
+      <main className="container mx-auto max-w-7xl px-6 py-8">
         <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors w-fit font-medium">
           <ArrowLeft size={20} /> Voltar ao painel principal
         </Link>
@@ -170,3 +170,5 @@ export default function RadarPage() {
     </Suspense>
   );
 }
+
+

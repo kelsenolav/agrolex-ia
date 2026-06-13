@@ -350,7 +350,7 @@ export default function DashboardLeadsPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Nav */}
       <nav className="bg-brand-green text-white shadow-md">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
           <Link
             href="/dashboard"
             className="flex items-center gap-2 text-brand-gold"
@@ -363,7 +363,7 @@ export default function DashboardLeadsPage() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto max-w-7xl px-6 py-8">
         <Link
           href="/dashboard"
           className="flex items-center gap-2 text-gray-600 hover:text-brand-green mb-6 transition-colors w-fit font-medium"
@@ -693,3 +693,5 @@ export default function DashboardLeadsPage() {
     </div>
   );
 }
+
+

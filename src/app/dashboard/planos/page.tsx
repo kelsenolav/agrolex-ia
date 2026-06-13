@@ -158,14 +158,14 @@ export default function PlanosPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-brand-green text-white shadow-md">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold">
             <Logo size="sm" className="text-white" />
           </Link>
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-12">
+      <main className="container mx-auto max-w-7xl px-6 py-12">
         <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-brand-green mb-8 transition-colors w-fit font-medium">
           <ArrowLeft size={20} /> Voltar ao painel
         </Link>
@@ -419,3 +419,4 @@ export default function PlanosPage() {
     </div>
   );
 }
+
