@@ -2,6 +2,24 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 13/06/2026
+- **Bloco**: Deploy em produção — commit `88568b33` + vercel prod
+- **Arquivos alterados**:
+  - `src/app/api/analyze/route.ts` — 6 linhas (correções ISF v2.2)
+  - `src/app/dashboard/resultado/page.tsx` — 2 linhas (correções ISF v2.2)
+  - `src/components/isf/ISFExplainer.tsx` — +281/−22 linhas (refatoração ISF v2.2)
+  - `.clinerules/` — 5 arquivos de regras ARCHON (novo)
+- **Rotas afetadas**: `/api/analyze`, `/dashboard/resultado`
+- **Alterações implementadas**:
+  1. Commit `88568b33` — "fix(ISF v2.2): corrige divergencia de score no laudo e refatora ISFExplainer + regras ARCHON"
+  2. Push para `origin/stable/rebuild-beta-01-laudo-compartilhavel`
+- **Validações**: `npm run build` (32 rotas, ✓), `npm run lint` (0 erros, ✓), `npm test` (582/582 — 22 suítes, ✓)
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` em 53s
+- **URL validada**: https://agrolex-ia-qx32.vercel.app
+- **Problemas restantes**: Nenhum.
+
+---
+
 - **Data**: 12/06/2026
 - **Bloco**: PASSO 25.7U — Congelar Markdown como experimental e restaurar PDF binário como padrão
 - **Arquivos inspecionados (sem alteração)**:
