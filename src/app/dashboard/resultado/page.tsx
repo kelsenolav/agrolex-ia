@@ -1436,6 +1436,8 @@ function ResultadoContent() {
               <ISFExplainer
                 isfAchados={analise.isf_achados}
                 problemasFallback={findings?.problemas}
+                isfV2_2={(findings as unknown as Record<string, unknown>)?.isf_v2_2 as import('@/components/isf/ISFExplainer').ISFV2_2Payload | undefined ?? null}
+                isfVersion={analise.isf_version}
               />
             </LocalErrorBoundary>
 

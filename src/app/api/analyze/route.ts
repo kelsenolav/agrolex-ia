@@ -1708,7 +1708,11 @@ export async function POST(req: Request) {
                 // Manter eixos no formato v2.1 (Record) para compatibilidade com RadarChartV2
                 isf_eixos: isfResultV2_1 ? isfResultV2_1.eixos : effectiveISFResult.eixos,
                 isf_explainer: comparison || null,
-                isf_achados: isfResultV2_2 ? isfResultV2_2.alertas : parsedProblemas.map((p: any) => ({
+                // isf_achados: SEMPRE usar parsedProblemas (achados reais da análise),
+                // NUNCA isfResultV2_2.alertas (que são alertas de dimensão, formato incompatível com ISFExplainer).
+                // O ISFExplainer renderiza os achados com classificação por eixo (REG/DOM/LIT/POS/FRA)
+                // e também as dimensões v2.2 quando disponíveis via isf_v2_2.
+                isf_achados: parsedProblemas.map((p: any) => ({
                   titulo: p.titulo || 'Achado sem título',
                   criticidade: p.criticidade || 'médio',
                   recomendacao: p.recomendacao || '',

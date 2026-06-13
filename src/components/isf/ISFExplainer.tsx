@@ -12,7 +12,9 @@ import {
   FileSignature, 
   AlertCircle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Gauge,
+  Target,
 } from 'lucide-react';
 
 export interface ISFAchado {
@@ -23,9 +25,49 @@ export interface ISFAchado {
   descricao?: string;
 }
 
+/** Alertas gerados pelo motor ISF v2.2 (uma por dimensão com score ≤ alertaMin) */
+export interface ISFV2_2Alerta {
+  dimensaoId: string;
+  dimensaoNome: string;
+  tipo: 'critico' | 'alerta';
+  mensagem: string;
+}
+
+/** Score por dimensão no ISF v2.2 */
+export interface ISFV2_2Dimensao {
+  id: string;
+  nome: string;
+  pontuacao: number;
+  contribuicao: number;
+  peso: number;
+  itemSelecionado: string;
+}
+
+/** Payload completo do ISF v2.2 armazenado em findings.isf_v2_2 */
+export interface ISFV2_2Payload {
+  isf_version: string;
+  isf_score: number;
+  isf_score_bruto: number;
+  faixa: string;
+  faixa_label: string;
+  faixa_desc: string;
+  faixa_bg: string;
+  faixa_color: string;
+  faixa_meter: string;
+  dimensoes: ISFV2_2Dimensao[];
+  alertas: ISFV2_2Alerta[];
+  dimensoes_faltantes: string[];
+  incompleto: boolean;
+  travas_aplicadas: string[];
+}
+
 export interface ISFExplainerProps {
   isfAchados?: ISFAchado[] | null;
-  problemasFallback?: any[] | null; // Caso a coluna isf_achados seja nula (análises legadas)
+  problemasFallback?: any[] | null;
+  /** Payload v2.2 completo (findings.isf_v2_2) — usado para exibir scores/alertas/travas por dimensão */
+  isfV2_2?: ISFV2_2Payload | null;
+  /** Versão do motor ISF (22 = v2.2) */
+  isfVersion?: number | string | null;
 }
 
 const EIXOS_CONFIG = {
@@ -36,7 +78,17 @@ const EIXOS_CONFIG = {
   FRA: { label: 'Eixo Fraude', desc: 'Indícios de fraudes documentais, grilagem ou falsificações.', Icon: AlertCircle, color: 'text-rose-600 bg-rose-50 border-rose-200' }
 };
 
-// Classificador client-side simples para fallbacks de análises antigas
+// ─── Config visual das 6 dimensões v2.2 ─────────────────────────────────
+const DIMENSOES_V2_2_CONFIG: Record<string, { label: string; Icon: React.ComponentType<any>; color: string; weight: number }> = {
+  D1: { label: 'Origem do Título', Icon: FileSignature, color: 'text-amber-600 bg-amber-50 border-amber-200', weight: 0.30 },
+  D2: { label: 'Cadeira Dominial', Icon: Landmark, color: 'text-purple-600 bg-purple-50 border-purple-200', weight: 0.25 },
+  D3: { label: 'Integridade Registral', Icon: Scale, color: 'text-blue-600 bg-blue-50 border-blue-200', weight: 0.20 },
+  D4: { label: 'Conformidade Ambiental', Icon: MapPin, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', weight: 0.10 },
+  D5: { label: 'Histórico Litigioso', Icon: AlertTriangle, color: 'text-indigo-600 bg-indigo-50 border-indigo-200', weight: 0.10 },
+  D6: { label: 'Fatores Contextuais', Icon: Target, color: 'text-rose-600 bg-rose-50 border-rose-200', weight: 0.05 },
+};
+
+// ─── Classificador de eixo client-side (para fallbacks) ─────────────────
 function classificarEixoCliente(p: any): string {
   const texto = `${p.titulo || ''} ${p.descricao || ''} ${p.baseDocumental || ''}`.toLowerCase();
   
@@ -55,18 +107,43 @@ function classificarEixoCliente(p: any): string {
   if (/fraude|falsificação|falsificacao|falsidade|adulteração|adulteracao|falso|falsa|simulação|simulacao|grilagem|grilo|estelionato/i.test(texto)) {
     return 'FRA';
   }
-  return 'REG'; // Eixo padrão caso não dê match
+  return 'REG';
 }
 
-export default function ISFExplainer({ isfAchados, problemasFallback }: ISFExplainerProps) {
-  const [expandedEixo, setExpandedEixo] = useState<string | null>(null);
+// ─── Helper: cor da barra de score da dimensão ──────────────────────────
+function getScoreBarColor(pontuacao: number): string {
+  if (pontuacao <= 15) return 'bg-red-500';
+  if (pontuacao <= 30) return 'bg-red-400';
+  if (pontuacao <= 50) return 'bg-orange-400';
+  if (pontuacao <= 70) return 'bg-yellow-400';
+  if (pontuacao <= 85) return 'bg-emerald-400';
+  return 'bg-green-500';
+}
 
-  // Normalização e cruzamento dos dados
+function getScoreLabelColor(pontuacao: number): string {
+  if (pontuacao <= 30) return 'text-red-700 bg-red-50';
+  if (pontuacao <= 50) return 'text-orange-700 bg-orange-50';
+  if (pontuacao <= 70) return 'text-yellow-700 bg-yellow-50';
+  if (pontuacao <= 85) return 'text-emerald-700 bg-emerald-50';
+  return 'text-green-700 bg-green-50';
+}
+
+export default function ISFExplainer({ isfAchados, problemasFallback, isfV2_2, isfVersion }: ISFExplainerProps) {
+  const [expandedEixo, setExpandedEixo] = useState<string | null>(null);
+  const [expandedDimensao, setExpandedDimensao] = useState<string | null>(null);
+
+  const isV2_2 = isfVersion === 22 || String(isfVersion) === '2.2';
+  const hasV2_2Data = isV2_2 && isfV2_2 && Array.isArray(isfV2_2.dimensoes) && isfV2_2.dimensoes.length > 0;
+
+  // ── Normalização de achados para os 5 eixos legados ─────────────────
+  // ⚠️ Usar findings.problemas (problemasFallback) como fonte primária para
+  //    garantir consistência com o painel "Achados Críticos" da página de
+  //    resultado. O isf_achados (coluna) pode divergir após backfills ou
+  //    reprocessamentos parciais. O fallback para isfAchados existe para
+  //    análises antigas onde findings.problemas pode estar vazio.
   let achadosNormalizados: ISFAchado[] = [];
 
-  if (Array.isArray(isfAchados) && isfAchados.length > 0) {
-    achadosNormalizados = isfAchados;
-  } else if (Array.isArray(problemasFallback) && problemasFallback.length > 0) {
+  if (Array.isArray(problemasFallback) && problemasFallback.length > 0) {
     achadosNormalizados = problemasFallback.map(p => ({
       titulo: p.titulo || p.descricao || 'Achado Sem Título',
       criticidade: p.criticidade || 'médio',
@@ -74,9 +151,10 @@ export default function ISFExplainer({ isfAchados, problemasFallback }: ISFExpla
       eixo: classificarEixoCliente(p),
       descricao: p.descricao || ''
     }));
+  } else if (Array.isArray(isfAchados) && isfAchados.length > 0) {
+    achadosNormalizados = isfAchados;
   }
 
-  // Agrupamento pelos 5 eixos reais
   const eixosChaves = ['REG', 'DOM', 'LIT', 'POS', 'FRA'] as const;
   const achadosPorEixo = eixosChaves.reduce((acc, chave) => {
     acc[chave] = achadosNormalizados.filter(a => String(a.eixo).toUpperCase() === chave);
@@ -87,19 +165,30 @@ export default function ISFExplainer({ isfAchados, problemasFallback }: ISFExpla
     setExpandedEixo(expandedEixo === eixo ? null : eixo);
   };
 
+  const toggleDimensao = (dimId: string) => {
+    setExpandedDimensao(expandedDimensao === dimId ? null : dimId);
+  };
+
   const getCriticidadeStyle = (crit: string) => {
     const c = crit.toLowerCase();
-    if (c.includes('critico') || c.includes('crítico')) {
-      return 'bg-red-100 text-red-800 border-red-200';
-    }
-    if (c.includes('alto')) {
-      return 'bg-orange-100 text-orange-800 border-orange-200';
-    }
-    if (c.includes('medio') || c.includes('médio')) {
-      return 'bg-amber-100 text-amber-800 border-amber-200';
-    }
+    if (c.includes('critico') || c.includes('crítico')) return 'bg-red-100 text-red-800 border-red-200';
+    if (c.includes('alto')) return 'bg-orange-100 text-orange-800 border-orange-200';
+    if (c.includes('medio') || c.includes('médio')) return 'bg-amber-100 text-amber-800 border-amber-200';
     return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   };
+
+  // ── Construir mapa de alertas por dimensão para consulta rápida ──────
+  const alertasPorDimensao = new Map<string, ISFV2_2Alerta[]>();
+  if (hasV2_2Data && isfV2_2.alertas) {
+    for (const a of isfV2_2.alertas) {
+      const lista = alertasPorDimensao.get(a.dimensaoId) || [];
+      lista.push(a);
+      alertasPorDimensao.set(a.dimensaoId, lista);
+    }
+  }
+
+  // ── Construir mapa de travas aplicadas (para tooltip) ────────────────
+  const travasAplicadas = (hasV2_2Data && isfV2_2.travas_aplicadas) ? isfV2_2.travas_aplicadas : [];
 
   return (
     <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8 mt-6">
@@ -107,6 +196,172 @@ export default function ISFExplainer({ isfAchados, problemasFallback }: ISFExpla
         <ShieldCheck className="text-brand-gold" size={24} /> 
         Painel de Explicabilidade Técnico
       </h2>
+
+      {/* ═══ SEÇÃO v2.2 — DIMENSÕES, ALERTAS E TRAVAS ═══ */}
+      {hasV2_2Data && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-1">
+            <Gauge size={18} className="text-brand-gold" />
+            <p className="text-sm font-bold text-gray-700">
+              Metodologia ISF v2.2 — Score: <span className="text-brand-green font-black text-lg">{isfV2_2.isf_score}</span>
+              {(isfV2_2.isf_score_bruto !== undefined && isfV2_2.isf_score_bruto !== isfV2_2.isf_score) && (
+                <span className="text-xs text-gray-400 ml-1">(bruto: {isfV2_2.isf_score_bruto})</span>
+              )}
+            </p>
+            <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide" style={{
+              backgroundColor: isfV2_2.faixa_bg || '#FCEBEB',
+              color: isfV2_2.faixa_color || '#791F1F',
+            }}>
+              {isfV2_2.faixa_label}
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mb-4">{isfV2_2.faixa_desc}</p>
+
+          {/* Travass aplicadas (se houver) */}
+          {travasAplicadas.length > 0 && (
+            <div className="mb-5 bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-xs font-black text-red-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <AlertTriangle size={14} /> Travas de Teto Aplicadas
+              </p>
+              <ul className="space-y-1.5">
+                {travasAplicadas.map((trava, i) => (
+                  <li key={i} className="text-xs text-red-700 font-medium flex items-start gap-2">
+                    <span className="text-red-400 mt-0.5 flex-shrink-0">▸</span>
+                    <span>{trava}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[10px] text-red-600 mt-2 italic leading-relaxed">
+                Travass de teto são mecanismos de segurança que limitam o score máximo quando condições críticas são detectadas (ex: origem do título frágil, lacunas graves na cadeia dominial).
+              </p>
+            </div>
+          )}
+
+          {/* Tabela de Dimensões */}
+          <div className="space-y-3">
+            {isfV2_2.dimensoes.map((dim) => {
+              const config = DIMENSOES_V2_2_CONFIG[dim.id] || { label: dim.nome, Icon: HelpCircle, color: 'text-gray-600 bg-gray-50 border-gray-200', weight: 0 };
+              const IconComp = config.Icon;
+              const alertasDaDim = alertasPorDimensao.get(dim.id) || [];
+              const isOpenD = expandedDimensao === dim.id;
+              const barWidth = Math.min(100, dim.pontuacao);
+              const naoAnalisada = dim.itemSelecionado === 'Não analisada';
+
+              return (
+                <div key={dim.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => toggleDimensao(dim.id)}
+                    className="w-full flex items-center gap-3 p-4 bg-white hover:bg-gray-50/50 transition-colors text-left"
+                  >
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center border flex-shrink-0 ${config.color}`}>
+                      <IconComp size={18} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-gray-900 text-sm">{config.label}</span>
+                        <span className="text-[10px] text-gray-400 font-mono">{(config.weight * 100).toFixed(0)}%</span>
+                      </div>
+                      {/* Barra de score */}
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${naoAnalisada ? 'bg-gray-300' : getScoreBarColor(dim.pontuacao)}`}
+                            style={{ width: `${barWidth}%` }}
+                          />
+                        </div>
+                        <span className={`text-[11px] font-black px-1.5 py-0.5 rounded ${getScoreLabelColor(dim.pontuacao)}`}>
+                          {dim.pontuacao}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {alertasDaDim.length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-200">
+                          {alertasDaDim.length}
+                        </span>
+                      )}
+                      {isOpenD ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                    </div>
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {isOpenD && (
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: 'auto' }}
+                        exit={{ height: 0 }}
+                        transition={{ duration: 0.2, ease: 'easeInOut' }}
+                      >
+                        <div className="px-4 pb-4 bg-gray-50/60 border-t border-gray-150 space-y-3 pt-3">
+                          {/* Item selecionado */}
+                          <div className="text-xs text-gray-600 bg-white p-3 rounded-lg border border-gray-100">
+                            <span className="font-bold text-gray-500">Classificação: </span>
+                            {dim.itemSelecionado}
+                          </div>
+
+                          {/* Contribuição ao score */}
+                          <div className="text-xs text-gray-500 flex gap-4">
+                            <span>Score: <strong>{dim.pontuacao}</strong>/100</span>
+                            <span>Contribuição: <strong>{dim.contribuicao.toFixed(1)}</strong> pts (peso {dim.peso.toFixed(2)})</span>
+                          </div>
+
+                          {/* Alertas desta dimensão */}
+                          {alertasDaDim.length > 0 && (
+                            <div className="space-y-2">
+                              {alertasDaDim.map((alerta, i) => (
+                                <div key={i} className={`p-3 rounded-lg border text-xs flex items-start gap-2.5 ${
+                                  alerta.tipo === 'critico'
+                                    ? 'bg-red-50 border-red-200 text-red-800'
+                                    : 'bg-amber-50 border-amber-200 text-amber-800'
+                                }`}>
+                                  {alerta.tipo === 'critico'
+                                    ? <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+                                    : <AlertCircle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                                  }
+                                  <div>
+                                    <p className="font-bold text-[11px] uppercase tracking-wide mb-0.5">
+                                      {alerta.tipo === 'critico' ? '⚠️ Alerta Crítico' : '⚡ Atenção'}
+                                    </p>
+                                    <p className="leading-relaxed">{alerta.mensagem}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Sem alertas */}
+                          {alertasDaDim.length === 0 && dim.pontuacao > 30 && (
+                            <div className="flex items-center gap-2 p-2.5 bg-white border border-gray-100 rounded-lg text-emerald-700 text-xs">
+                              <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
+                              <span>Nenhum alerta nesta dimensão.</span>
+                            </div>
+                          )}
+
+                          {naoAnalisada && (
+                            <div className="flex items-center gap-2 p-2.5 bg-gray-100 border border-gray-200 rounded-lg text-gray-500 text-xs italic">
+                              <HelpCircle size={14} className="flex-shrink-0" />
+                              <span>Esta dimensão não foi analisada. Score neutro atribuído (60).</span>
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+
+          {isfV2_2.incompleto && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-700 flex items-center gap-2">
+              <AlertTriangle size={14} className="text-yellow-500 flex-shrink-0" />
+              <span>Análise incompleta — algumas dimensões não foram preenchidas ({isfV2_2.dimensoes_faltantes.join(', ')}).</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ SEÇÃO LEGADA — 5 EIXOS ═══ */}
       <p className="text-sm text-gray-500 mb-6">
         Análise forense detalhada dos riscos territoriais organizada sob a matriz metodológica de 5 eixos fundiários do ISF v2.
       </p>
@@ -126,7 +381,6 @@ export default function ISFExplainer({ isfAchados, problemasFallback }: ISFExpla
                 isExpanded ? 'border-gray-300 shadow-md' : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
               }`}
             >
-              {/* Header do Eixo */}
               <button
                 onClick={() => toggleEixo(chave)}
                 className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50/50 transition-colors text-left"
@@ -152,7 +406,6 @@ export default function ISFExplainer({ isfAchados, problemasFallback }: ISFExpla
                 </div>
               </button>
 
-              {/* Corpo do Eixo */}
               <AnimatePresence initial={false}>
                 {isExpanded && (
                   <motion.div
