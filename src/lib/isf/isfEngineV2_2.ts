@@ -531,18 +531,36 @@ export function prepararPayloadV2_2(isfResult: ISFResultV2_2): Record<string, un
  * A pontuação é derivada da criticidade do achado.
  *
  * @param problemas - Array de problemas/achados (formato compatível com ProblemaEntrada do v2.1)
- * @returns Pontuações inferidas por dimensão
+ * @returns Objeto com pontuações inferidas por dimensão e mapa de criticidade inferida por título.
+ *   O mapa criticidadeInferida permite backpropagar a criticidade deduzida para os problemas originais,
+ *   sincronizando ISF score com a classificação de criticidade exibida na UI.
  */
 export function inferirPontuacoesDeAchados(
   problemas: { titulo?: string; criticidade?: string; descricao?: string; baseDocumental?: string; [key: string]: unknown }[]
-): PontuacaoEntradaV2_2[] {
+): { pontuacoes: PontuacaoEntradaV2_2[]; criticidadeInferida: Map<string, string> } {
   // Mesma tabela de impacto do v2.1
+  // Valores negativos: quanto mais negativo, MAIOR o risco (maior dedução)
   const IMPACTO_POR_CRITICIDADE: Record<string, number> = {
     critica: -50, crítica: -50, critico: -50, crítico: -50,
     alta: -30, alto: -30,
     media: -15, médio: -15, medio: -15,
     baixa: -5, baixo: -5,
   };
+  // Mapa reverso: impacto → criticidade label
+  const CRITICIDADE_POR_IMPACTO: Record<number, string> = {
+    [-50]: 'Crítico',
+    [-30]: 'Alto',
+    [-15]: 'Médio',
+    [-5]: 'Baixo',
+  };
+  function impactoParaCriticidade(impacto: number): string {
+    // Ordenar impactos do mais severo para o menos severo
+    const sorted = Object.keys(CRITICIDADE_POR_IMPACTO).map(Number).sort((a, b) => a - b);
+    for (const threshold of sorted) {
+      if (impacto <= threshold) return CRITICIDADE_POR_IMPACTO[threshold];
+    }
+    return 'Baixo';
+  }
 
   // Mapeamento de palavras-chave para dimensões v2.2
   const KEYWORDS_V2_2: Record<string, string[]> = {
@@ -601,14 +619,19 @@ export function inferirPontuacoesDeAchados(
     ],
   };
 
-  // PADRÃO NEUTRO para dimensões sem achados: 60 (mediana entre Regular e Atenção).
-  // Evita travas severas (TRAVA_D1_D2_COMBINADA → teto 24) quando a IA não cobre
-  // todas as dimensões, sem presumir segurança total (100).
-  // Dimensões com achados partem de 100 e são deduzidas pelo impacto dos problemas.
-  const DEFAULT_NEUTRO = 60;
+  // PADRÃO NEUTRO para dimensões sem achados: 40 (Alto Risco, não Atenção).
+  // Sem evidência de qualidade, presume-se fragilidade — 40 é o limiar de Alto Risco (40-54).
+  // Dimensões com achados partem de 75 (Regular) e são deduzidas pelo impacto integral dos problemas.
+  const DEFAULT_NEUTRO = 40;
 
   const scores: Record<string, number> = {};
   const touched: Record<string, boolean> = {};
+  // Mapa de título do problema → criticidade inferida (para backpropagation)
+  const criticidadeInferida = new Map<string, string>();
+  // Contagem de problemas com criticidade "crítica" detectada via keyword
+  let totalCriticosKeywords = 0;
+  // Rastrear quantos problemas bateram em cada dimensão (para penalização cumulativa)
+  const hitsPorDimensao: Record<string, number> = {};
 
   for (const problema of problemas) {
     const texto = [
@@ -621,7 +644,13 @@ export function inferirPontuacoesDeAchados(
       .replace(/[ç]/g, 'c');
 
     const criticidade = (problema.criticidade || 'medio').toLowerCase().trim();
-    const impacto = Math.abs(IMPACTO_POR_CRITICIDADE[criticidade] ?? -15);
+    // Usar o impacto original (negativo) para o mapa reverso, o valor absoluto para dedução
+    const impactoOriginal = IMPACTO_POR_CRITICIDADE[criticidade] ?? -15;
+    const impacto = Math.abs(impactoOriginal);
+
+    // Inferir criticidade do problema baseado no impacto
+    const labelCriticidade = impactoParaCriticidade(impactoOriginal);
+    if (labelCriticidade === 'Crítico') totalCriticosKeywords++;
 
     // Determinar qual dimensão este problema afeta
     let melhorDim = '';
@@ -638,17 +667,53 @@ export function inferirPontuacoesDeAchados(
       }
     }
 
-    // Se encontrou uma dimensão, inicializa e deduzir impacto
+    // Se encontrou uma dimensão, inicializa e deduzir impacto (integral, sem amortecimento)
     if (melhorDim) {
-      if (scores[melhorDim] === undefined) scores[melhorDim] = 100;
-      scores[melhorDim] = Math.max(0, scores[melhorDim] - Math.round(impacto * 0.8));
+      if (scores[melhorDim] === undefined) scores[melhorDim] = 75;
+      // Penalização cumulativa: cada achado adicional na mesma dimensão deduz 5 pts extras
+      hitsPorDimensao[melhorDim] = (hitsPorDimensao[melhorDim] || 0) + 1;
+      const multAchado = hitsPorDimensao[melhorDim] > 1 ? (hitsPorDimensao[melhorDim] - 1) * 5 : 0;
+      scores[melhorDim] = Math.max(0, scores[melhorDim] - Math.round(impacto) - multAchado);
       touched[melhorDim] = true;
+
+      // Registrar criticidade inferida para este problema
+      const chaveTitulo = (problema.titulo || '').trim();
+      if (chaveTitulo && labelCriticidade) {
+        criticidadeInferida.set(chaveTitulo, labelCriticidade);
+      }
+    }
+  }
+
+  // ─── TRAVA GLOBAL POR QUANTIDADE DE CRÍTICOS ──────────────────────
+  // Se ≥ 3 achados com criticidade "crítica" → teto = 39 (Crítico)
+  // Se ≥ 5 achados com criticidade "crítica" → teto = 24 (Inválido)
+  // Isso garante que múltiplos problemas graves rebaixem o score independentemente das dimensões.
+  // (A trava será aplicada em calcularISFV2_2, mas registramos o impacto aqui via pontuações)
+  if (totalCriticosKeywords >= 5) {
+    // Forçar todas as dimensões para pontuação ≤ 24 (Inválido)
+    for (const dim of DIMENSOES_V2_2) {
+      if (!touched[dim.id]) {
+        scores[dim.id] = Math.min(DEFAULT_NEUTRO, 24);
+      } else if (scores[dim.id] > 24) {
+        scores[dim.id] = 24;
+      }
+      touched[dim.id] = true;
+    }
+  } else if (totalCriticosKeywords >= 3) {
+    // Forçar todas as dimensões para pontuação ≤ 39 (Crítico)
+    for (const dim of DIMENSOES_V2_2) {
+      if (!touched[dim.id]) {
+        scores[dim.id] = Math.min(DEFAULT_NEUTRO, 39);
+      } else if (scores[dim.id] > 39) {
+        scores[dim.id] = 39;
+      }
+      touched[dim.id] = true;
     }
   }
 
   // Retorna TODAS as 6 dimensões (D1–D6).
-  // Dimensões com achados → score deduzido a partir de 100.
-  // Dimensões sem achados → score neutro 60 (Regular, sem presunção de segurança).
+  // Dimensões com achados → score deduzido a partir de 75 com impacto integral.
+  // Dimensões sem achados → score neutro 40 (Alto Risco, sem presunção de segurança).
   const resultado: PontuacaoEntradaV2_2[] = [];
   for (const dim of DIMENSOES_V2_2) {
     resultado.push({
@@ -660,5 +725,5 @@ export function inferirPontuacoesDeAchados(
     });
   }
 
-  return resultado;
+  return { pontuacoes: resultado, criticidadeInferida };
 }

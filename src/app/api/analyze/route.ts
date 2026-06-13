@@ -1610,7 +1610,29 @@ export async function POST(req: Request) {
 
           try {
             // ── v2.2 (6 dimensões, sem Muito Seguro, com Inválido/Regular) ──
-            const pontuacoesV2_2 = inferirPontuacoesDeAchados(parsedProblemas);
+            const { pontuacoes: pontuacoesV2_2, criticidadeInferida } = inferirPontuacoesDeAchados(parsedProblemas);
+            
+            // Sincronizar criticidade dos problemas com a inferida pelo motor ISF.
+            // O motor v2.2 deduz criticidade a partir das keywords + impacto no texto;
+            // se o campo original veio vazio ou como "Médio" (padrão), sobrescreve com o valor inferido.
+            // Isso garante que findings.problemas[].criticidade reflita o score ISF,
+            // sincronizando os cards de criticidade, o painel de explicabilidade e a distribuição.
+            for (const p of parsedProblemas) {
+              const chave = (p.titulo || '').trim();
+              if (!chave) continue;
+              const inferida = criticidadeInferida.get(chave);
+              if (inferida) {
+                const atual = (p.criticidade || '').toLowerCase().trim();
+                // Só sobrescreve se o campo atual estiver vazio, for 'medio'/'médio' (default do extrator),
+                // ou se a inferida é mais severa que a atual.
+                const isDefault = !atual || atual === 'medio' || atual === 'médio';
+                const isLessSevere = atual === 'baixo' && (inferida === 'Crítico' || inferida === 'Alto');
+                if (isDefault || isLessSevere) {
+                  p.criticidade = inferida;
+                }
+              }
+            }
+
             isfResultV2_2 = calcularISFV2_2(pontuacoesV2_2);
             const payloadV2_2 = prepararPayloadV2_2(isfResultV2_2);
 

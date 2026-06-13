@@ -409,37 +409,38 @@ describe('Classificação de faixas (classificarFaixaV2_2)', () => {
 // ─── CENÁRIO 9: INFERÊNCIA DE PONTUAÇÕES ────────────────────────────────
 
 describe('Inferência de pontuações a partir de achados', () => {
-  test('Lista vazia deve retornar 6 dimensões com score neutro 60 (sem presumir segurança nem ausência)', () => {
-    const pontuacoes = inferirPontuacoesDeAchados([]);
+  test('Lista vazia deve retornar 6 dimensões com score neutro 40 e criticidadeInferida vazia', () => {
+    const { pontuacoes, criticidadeInferida } = inferirPontuacoesDeAchados([]);
     expect(pontuacoes).toHaveLength(6);
-    // Todas as 6 dimensões devem ter score neutro 60 (Regular, sem presunção de segurança)
+    expect(criticidadeInferida.size).toBe(0);
+    // Todas as 6 dimensões devem ter score neutro 40 (Alto Risco)
     for (const p of pontuacoes) {
-      expect(p.pontuacao).toBe(60);
+      expect(p.pontuacao).toBe(40);
       expect(p.itemSelecionado).toMatch(/^\[Inferido\]/);
     }
-    // ISF resultante com 6×60 deve ser ~60 (Atenção) sem disparar travas
+    // ISF resultante com 6×40 deve ser ~40 (Alto Risco) sem disparar travas
     const resultado = calcularISFV2_2(pontuacoes);
-    expect(resultado.isf_score).toBe(60);
-    expect(resultado.faixa).toBe('atencao');
+    expect(resultado.isf_score).toBe(40);
+    expect(resultado.faixa).toBe('alto_risco');
     expect(resultado.incompleto).toBe(false);
     expect(resultado.travas_aplicadas).toHaveLength(0);
   });
 
-  test('Achado de penhora deve reduzir D3, demais dimensões ficam com score neutro 60', () => {
+  test('Achado de penhora deve reduzir D3, demais dimensões ficam com score neutro 40', () => {
     const problemas = [
       { titulo: 'Penhora registrada na matrícula', criticidade: 'alta', descricao: 'Penhora de R$ 500 mil.' },
     ];
-    const pontuacoes = inferirPontuacoesDeAchados(problemas);
+    const { pontuacoes, criticidadeInferida } = inferirPontuacoesDeAchados(problemas);
     expect(pontuacoes).toHaveLength(6);
+    expect(criticidadeInferida.get('Penhora registrada na matrícula')).toBe('Alto');
     const D3 = pontuacoes.find(p => p.dimensaoId === 'D3');
     expect(D3).toBeDefined();
-    // impacto alta = 30 * 0.8 = 24 → 100 - 24 = 76
-    expect(D3!.pontuacao).toBeLessThan(100);
-    expect(D3!.pontuacao).toBeGreaterThan(70);
-    // Dimensões não afetadas devem ter score neutro 60
+    // impacto alta = 30 integral → 75 - 30 = 45
+    expect(D3!.pontuacao).toBe(45);
+    // Dimensões não afetadas devem ter score neutro 40
     const outras = pontuacoes.filter(p => p.dimensaoId !== 'D3');
     for (const p of outras) {
-      expect(p.pontuacao).toBe(60);
+      expect(p.pontuacao).toBe(40);
       expect(p.itemSelecionado).toMatch(/^\[Inferido\]/);
     }
   });
@@ -448,42 +449,81 @@ describe('Inferência de pontuações a partir de achados', () => {
     const problemas = [
       { titulo: 'Lacuna na cadeia dominial', criticidade: 'critica', descricao: 'Lacuna de 20 anos.' },
     ];
-    const pontuacoes = inferirPontuacoesDeAchados(problemas);
+    const { pontuacoes, criticidadeInferida } = inferirPontuacoesDeAchados(problemas);
+    expect(criticidadeInferida.get('Lacuna na cadeia dominial')).toBe('Crítico');
     const D2 = pontuacoes.find(p => p.dimensaoId === 'D2');
     expect(D2).toBeDefined();
-    // impacto crítica = 50 * 0.8 = 40 → 100 - 40 = 60
-    expect(D2!.pontuacao).toBe(60);
+    // impacto crítica = 50 integral → 75 - 50 = 25
+    expect(D2!.pontuacao).toBe(25);
   });
 
   test('Achado de grilagem deve reduzir D6', () => {
     const problemas = [
       { titulo: 'Histórico de grilagem na região', criticidade: 'alta', descricao: 'Município com grilagem sistêmica.' },
     ];
-    const pontuacoes = inferirPontuacoesDeAchados(problemas);
+    const { pontuacoes, criticidadeInferida } = inferirPontuacoesDeAchados(problemas);
+    expect(criticidadeInferida.get('Histórico de grilagem na região')).toBe('Alto');
     const D6 = pontuacoes.find(p => p.dimensaoId === 'D6');
-    // impacto alta = 30 * 0.8 = 24 → 100 - 24 = 76
-    expect(D6!.pontuacao).toBeLessThan(100);
+    // impacto alta = 30 integral → 75 - 30 = 45
+    expect(D6!.pontuacao).toBe(45);
   });
 
-  test('Múltiplos achados no mesmo eixo devem acumular redução', () => {
+  test('Múltiplos achados no mesmo eixo devem acumular redução com penalização cumulativa', () => {
     const problemas = [
       { titulo: 'Penhora registrada', criticidade: 'alta', descricao: 'Penhora.' },
       { titulo: 'Bloqueio judicial', criticidade: 'alta', descricao: 'Bloqueio.' },
     ];
-    const pontuacoes = inferirPontuacoesDeAchados(problemas);
+    const { pontuacoes } = inferirPontuacoesDeAchados(problemas);
     const D3 = pontuacoes.find(p => p.dimensaoId === 'D3');
-    // Cada alta reduz ~24. Duas = ~48 → 100 - 48 = 52, mas limitado a 0 no mínimo
-    expect(D3!.pontuacao).toBeLessThan(60);
+    // Primeiro alta: 75 - 30 = 45. Segundo: 45 - 30 - 5 (penalização) = 10
+    // ou arredondamento pode variar. Deve ser < 45.
+    expect(D3!.pontuacao).toBeLessThan(45);
   });
 
   test('Achado sem criticidade deve usar fallback medio (-15)', () => {
     const problemas = [
       { titulo: 'Penhora registrada' }, // sem criticidade
     ];
-    const pontuacoes = inferirPontuacoesDeAchados(problemas);
+    const { pontuacoes, criticidadeInferida } = inferirPontuacoesDeAchados(problemas);
     const D3 = pontuacoes.find(p => p.dimensaoId === 'D3');
-    // impacto medio = 15 * 0.8 = 12 → 100 - 12 = 88
-    expect(D3!.pontuacao).toBe(88);
+    // impacto medio = 15 integral → 75 - 15 = 60
+    expect(D3!.pontuacao).toBe(60);
+    expect(criticidadeInferida.get('Penhora registrada')).toBe('Médio');
+  });
+
+  test('3 achados críticos devem ativar trava global e forçar score ≤ 39 (Crítico ou Inválido)', () => {
+    const problemas = [
+      { titulo: 'Vício de origem', criticidade: 'critica', descricao: 'Origem não autorizada.' },
+      { titulo: 'Cadeia dominial quebrada', criticidade: 'critica', descricao: 'Lacuna de 30 anos.' },
+      { titulo: 'Sentença desfavorável', criticidade: 'critica', descricao: 'Perda de área.' },
+    ];
+    const { pontuacoes, criticidadeInferida } = inferirPontuacoesDeAchados(problemas);
+    expect(criticidadeInferida.size).toBe(3);
+    // Após trava, todas as dimensões devem estar ≤ 39
+    for (const p of pontuacoes) {
+      expect(p.pontuacao).toBeLessThanOrEqual(39);
+    }
+    const resultado = calcularISFV2_2(pontuacoes);
+    expect(resultado.isf_score).toBeLessThanOrEqual(39);
+    // Score pode ser ≤24 (invalido) dependendo do cálculo ponderado — ambas são aceitáveis
+    expect(['critico', 'invalido']).toContain(resultado.faixa);
+  });
+
+  test('5 achados críticos devem ativar trava de inválido e forçar score ≤ 24', () => {
+    const problemas = [
+      { titulo: 'Vício de origem', criticidade: 'critica', descricao: 'Origem.' },
+      { titulo: 'Cadeia quebrada', criticidade: 'critica', descricao: 'Lacuna.' },
+      { titulo: 'Sentença adversa', criticidade: 'critica', descricao: 'Perda.' },
+      { titulo: 'Fraude documental', criticidade: 'critica', descricao: 'Falsificação.' },
+      { titulo: 'Grillagem sistêmica', criticidade: 'critica', descricao: 'Grilagem.' },
+    ];
+    const { pontuacoes } = inferirPontuacoesDeAchados(problemas);
+    for (const p of pontuacoes) {
+      expect(p.pontuacao).toBeLessThanOrEqual(24);
+    }
+    const resultado = calcularISFV2_2(pontuacoes);
+    expect(resultado.isf_score).toBeLessThanOrEqual(24);
+    expect(resultado.faixa).toBe('invalido');
   });
 });
 
