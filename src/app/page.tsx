@@ -145,9 +145,7 @@ export default function Home() {
         className="fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-[#051F15]/80 border-b border-white/10"
       >
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="text-2xl font-black flex items-center gap-2 text-white">
-            <Logo size="md" className="text-white" />
-          </div>
+          <Logo size="md" />
           <nav className="hidden md:flex gap-8">
             <Link href="#riscos" className="text-gray-300 hover:text-brand-gold transition-colors font-medium text-sm tracking-wide">RISCOS</Link>
             <Link href="#score" className="text-gray-300 hover:text-brand-gold transition-colors font-medium text-sm tracking-wide">SCORE</Link>
@@ -866,8 +864,8 @@ export default function Home() {
         <div className="container mx-auto px-6">
           <div className="grid md:grid-cols-3 gap-10 mb-12">
             <div>
-              <div className="text-2xl font-black flex items-center gap-2 text-white mb-4">
-                <Logo size="sm" className="text-white" />
+              <div className="mb-4">
+                <Logo size="sm" />
               </div>
               <p className="text-gray-400 text-sm leading-relaxed">
                 Inteligência Artificial especializada em segurança fundiária. Auditoria automatizada de imóveis rurais para proteger seu patrimônio.
