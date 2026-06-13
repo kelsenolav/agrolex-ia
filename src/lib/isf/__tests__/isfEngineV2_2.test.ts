@@ -174,7 +174,7 @@ describe('Cenário realista — Título regular (~70–84)', () => {
 
 // ─── CENÁRIO 5: TÍTULO CRÍTICO (25–39) ──────────────────────────────────
 
-describe('Cenário realista — Título crítico (~25–39)', () => {
+describe('Cenário realista — Título crítico (~25–39) com D1 e D2 frágeis', () => {
   const pontuacoes: PontuacaoEntradaV2_2[] = [
     criarPontuacao('D1', 30, 'Título INCRA provisório com cláusula não cumprida'),
     criarPontuacao('D2', 25, 'Transmitente sem capacidade/legitimidade'),
@@ -184,14 +184,19 @@ describe('Cenário realista — Título crítico (~25–39)', () => {
     criarPontuacao('D6', 45, 'Município com PNRA ativo'),
   ];
 
-  test('ISF deve estar entre 25 e 39', () => {
+  test('ISF deve ser ≤ 24 (Inválido) pela trava combinada D1+D2', () => {
     const result = calcularISFV2_2(pontuacoes);
-    // 30*0.30 + 25*0.25 + 35*0.20 + 45*0.10 + 30*0.10 + 45*0.05
-    // = 9 + 6.25 + 7 + 4.5 + 3 + 2.25 = 32 → 32
-    expect(result.isf_score).toBeGreaterThanOrEqual(25);
-    expect(result.isf_score).toBeLessThanOrEqual(39);
-    expect(result.faixa).toBe('critico');
-    expect(result.faixa_label).toBe('Crítico');
+    // Score bruto: 30*0.30 + 25*0.25 + 35*0.20 + 45*0.10 + 20*0.10 + 45*0.05
+    // = 9 + 6.25 + 7 + 4.5 + 2 + 2.25 = 31 → 31
+    // TRAVA_D1_VICIO (D1=30 ≤30) → cap 39
+    // TRAVA_D2_LACUNAS (D2=25 ≤25) → cap 39
+    // TRAVA_D1_D2_COMBINADA (D1≤30 E D2≤25) → cap 24
+    expect(result.isf_score).toBeLessThanOrEqual(24);
+    expect(result.isf_score_bruto).toBe(31);
+    expect(result.faixa).toBe('invalido');
+    expect(result.faixa_label).toBe('Inválido');
+    expect(result.travas_aplicadas.length).toBeGreaterThanOrEqual(3);
+    expect(result.travas_aplicadas.some(t => t.includes('TRAVA_D1_D2_COMBINADA'))).toBe(true);
   });
 
   test('Alertas críticos para D1, D2 e D5', () => {
@@ -201,6 +206,32 @@ describe('Cenário realista — Título crítico (~25–39)', () => {
     expect(idsCriticos).toContain('D1');
     expect(idsCriticos).toContain('D2');
     expect(idsCriticos).toContain('D5');
+  });
+});
+
+describe('Cenário realista — Título crítico (~25–39) sem travamento combinado', () => {
+  // D1=55 (Regularização fundiária) e D2=35 (Restrição legal) — frágeis mas não no limiar de trava
+  const pontuacoes: PontuacaoEntradaV2_2[] = [
+    criarPontuacao('D1', 55, 'Regularização fundiária (Reurb)'),
+    criarPontuacao('D2', 35, 'Transmissão em período de restrição legal'),
+    criarPontuacao('D3', 35, 'Penhora ou bloqueio judicial'),
+    criarPontuacao('D4', 25, 'Débito de ITR na dívida ativa'),
+    criarPontuacao('D5', 20, 'Processo INCRA de revisão em curso'),
+    criarPontuacao('D6', 20, 'Município com histórico de grilagem'),
+  ];
+
+  test('ISF deve estar entre 25 e 39 (Crítico sem trava combinada)', () => {
+    const result = calcularISFV2_2(pontuacoes);
+    // D1=55 > 30 → sem TRAVA_D1_VICIO
+    // D2=35 > 25 → sem TRAVA_D2_LACUNAS nem TRAVA_D1_D2_COMBINADA
+    // Score bruto: 55*0.30 + 35*0.25 + 35*0.20 + 25*0.10 + 20*0.10 + 20*0.05
+    // = 16.5 + 8.75 + 7 + 2.5 + 2 + 1 = 37.75 → 38
+    expect(result.isf_score).toBeGreaterThanOrEqual(25);
+    expect(result.isf_score).toBeLessThanOrEqual(39);
+    expect(result.isf_score_bruto).toBe(38);
+    expect(result.faixa).toBe('critico');
+    expect(result.faixa_label).toBe('Crítico');
+    expect(result.travas_aplicadas).toHaveLength(0);
   });
 });
 
@@ -378,12 +409,11 @@ describe('Classificação de faixas (classificarFaixaV2_2)', () => {
 // ─── CENÁRIO 9: INFERÊNCIA DE PONTUAÇÕES ────────────────────────────────
 
 describe('Inferência de pontuações a partir de achados', () => {
-  test('Lista vazia deve retornar 6 dimensões com pontuação 100', () => {
+  test('Lista vazia deve retornar array vazio (sem presumir segurança por ausência de dados)', () => {
     const pontuacoes = inferirPontuacoesDeAchados([]);
-    expect(pontuacoes).toHaveLength(6);
-    for (const p of pontuacoes) {
-      expect(p.pontuacao).toBe(100);
-    }
+    expect(pontuacoes).toHaveLength(0);
+    // Sem achados, nenhuma dimensão é pontuada → calcularISFV2_2 retorna incompleto=true e ISF=0
+    // Isso evita o falso "Seguro (100)" quando não há dados para analisar
   });
 
   test('Achado de penhora deve reduzir D3 (Integridade registral)', () => {

@@ -230,6 +230,8 @@ export interface ISFAlert {
 export interface ISFResultV2_2 {
   isf_version: '2.2';
   isf_score: number;               // 0–100
+  /** Score bruto antes das travas de teto (para diagnóstico) */
+  isf_score_bruto: number;
   faixa: FaixaRiscoV2_2;
   faixa_label: string;
   faixa_desc: string;
@@ -242,6 +244,8 @@ export interface ISFResultV2_2 {
   dimensoesFaltantes: string[];
   /** Se true, o cálculo está incompleto (alguma dimensão não preenchida) */
   incompleto: boolean;
+  /** Travas de teto aplicadas (vazia se nenhuma) */
+  travas_aplicadas: string[];
 }
 
 export interface PontuacaoEntradaV2_2 {
@@ -379,12 +383,80 @@ export function calcularISFV2_2(
 
   isfScore = Math.max(0, Math.min(100, isfScore));
 
+  // Guardar score bruto antes das travas (para diagnóstico)
+  const isfScoreBruto = isfScore;
+
+  // ─── TRAVAS DE TETO ──────────────────────────────────────────────────
+  const travas_aplicadas: string[] = [];
+
+  // Trava 1 — D1 ausente (Origem do título não analisada)
+  // Sem análise da origem, o título é presumivelmente frágil. Teto máximo = 39 (Crítico).
+  if (dimensoesFaltantes.includes('D1')) {
+    isfScore = Math.min(isfScore, 39);
+    travas_aplicadas.push('TRAVA_D1_AUSENTE: Origem do título não analisada — teto máximo 39 (Crítico)');
+  }
+
+  // Trava 2 — D2 ausente (Cadeia dominial não analisada)
+  // Sem análise da cadeia dominial, risco de evicção não pode ser descartado. Teto máximo = 54 (Alto Risco).
+  if (dimensoesFaltantes.includes('D2')) {
+    isfScore = Math.min(isfScore, 54);
+    travas_aplicadas.push('TRAVA_D2_AUSENTE: Cadeia dominial não analisada — teto máximo 54 (Alto Risco)');
+  }
+
+  // Trava 3 — D1 frágil (≤30, vício originário)
+  // Vício na origem contamina toda a cadeia. Teto máximo = 39 (Crítico) se D1 ≤ 30.
+  const scoreD1 = entradasMap.get('D1');
+  if (scoreD1 && typeof scoreD1.pontuacao === 'number' && !isNaN(scoreD1.pontuacao)) {
+    const ptD1 = Math.max(0, Math.min(100, Math.round(scoreD1.pontuacao)));
+    if (ptD1 <= 30) {
+      isfScore = Math.min(isfScore, 39);
+      travas_aplicadas.push(`TRAVA_D1_VICIO: D1 = ${ptD1} (vício originário ≤ 30) — teto máximo 39 (Crítico)`);
+    }
+  }
+
+  // Trava 4 — D2 frágil (≤25, lacunas graves)
+  // Duas ou mais lacunas ou cadeia não reconstituível. Teto máximo = 39 (Crítico) se D2 ≤ 25.
+  const scoreD2 = entradasMap.get('D2');
+  if (scoreD2 && typeof scoreD2.pontuacao === 'number' && !isNaN(scoreD2.pontuacao)) {
+    const ptD2 = Math.max(0, Math.min(100, Math.round(scoreD2.pontuacao)));
+    if (ptD2 <= 25) {
+      isfScore = Math.min(isfScore, 39);
+      travas_aplicadas.push(`TRAVA_D2_LACUNAS: D2 = ${ptD2} (lacunas graves ≤ 25) — teto máximo 39 (Crítico)`);
+    }
+  }
+
+  // Trava 5 — D1 + D2 ambos frágeis ou ausentes
+  // Combinação letal: sem origem E sem cadeia. Teto máximo = 24 (Inválido).
+  const d1Analisada = !dimensoesFaltantes.includes('D1');
+  const d2Analisada = !dimensoesFaltantes.includes('D2');
+  const d1Fragil = d1Analisada && (() => { const e = entradasMap.get('D1')!; return Math.max(0, Math.min(100, Math.round(e.pontuacao))) <= 30; })();
+  const d2Fragil = d2Analisada && (() => { const e = entradasMap.get('D2')!; return Math.max(0, Math.min(100, Math.round(e.pontuacao))) <= 25; })();
+  const d1Critica = !d1Analisada || d1Fragil;
+  const d2Critica = !d2Analisada || d2Fragil;
+
+  if (d1Critica && d2Critica) {
+    isfScore = Math.min(isfScore, 24);
+    travas_aplicadas.push('TRAVA_D1_D2_COMBINADA: Origem E Cadeia dominial críticas/ausentes — teto máximo 24 (Inválido)');
+  }
+
+  // Trava 6 — D3 com ação real reipersecutória ou usucapião por terceiro (≤20)
+  // Risco imediato de perda. Teto máximo = 39 (Crítico) se D3 ≤ 20.
+  const scoreD3 = entradasMap.get('D3');
+  if (scoreD3 && typeof scoreD3.pontuacao === 'number' && !isNaN(scoreD3.pontuacao)) {
+    const ptD3 = Math.max(0, Math.min(100, Math.round(scoreD3.pontuacao)));
+    if (ptD3 <= 20) {
+      isfScore = Math.min(isfScore, 39);
+      travas_aplicadas.push(`TRAVA_D3_GRAVAME: D3 = ${ptD3} (ação real reipersecutória ou usucapião ≤ 20) — teto máximo 39 (Crítico)`);
+    }
+  }
+
   const faixa = classificarFaixaV2_2(isfScore);
   const alertas = gerarAlertasV2_2(pontuacoes);
 
   return {
     isf_version: '2.2',
     isf_score: isfScore,
+    isf_score_bruto: isfScoreBruto,
     faixa: faixa.faixa,
     faixa_label: faixa.label,
     faixa_desc: faixa.desc,
@@ -395,6 +467,7 @@ export function calcularISFV2_2(
     alertas,
     dimensoesFaltantes,
     incompleto,
+    travas_aplicadas,
   };
 }
 
@@ -434,6 +507,7 @@ export function prepararPayloadV2_2(isfResult: ISFResultV2_2): Record<string, un
     isf_v2_2: {
       isf_version: isfResult.isf_version,
       isf_score: isfResult.isf_score,
+      isf_score_bruto: isfResult.isf_score_bruto,
       faixa: isfResult.faixa,
       faixa_label: isfResult.faixa_label,
       faixa_desc: isfResult.faixa_desc,
@@ -444,6 +518,7 @@ export function prepararPayloadV2_2(isfResult: ISFResultV2_2): Record<string, un
       alertas: isfResult.alertas,
       dimensoes_faltantes: isfResult.dimensoesFaltantes,
       incompleto: isfResult.incompleto,
+      travas_aplicadas: isfResult.travas_aplicadas,
     },
   };
 }
@@ -526,8 +601,12 @@ export function inferirPontuacoesDeAchados(
     ],
   };
 
-  // Inicializar pontuações: 100 (perfeito) em cada dimensão
-  const scores: Record<string, number> = { D1: 100, D2: 100, D3: 100, D4: 100, D5: 100, D6: 100 };
+  // CORREÇÃO: em vez de presumir segurança (100) por ausência de dados,
+  // inicializamos com objeto vazio e só pontuamos dimensões com evidência de achados.
+  // Dimensões sem achados serão tratadas como "Não analisada" pelo calcularISFV2_2,
+  // resultando em ISF mais baixo e flag incompleto=true.
+  const scores: Record<string, number> = {};
+  const touched: Record<string, boolean> = {};
 
   for (const problema of problemas) {
     const texto = [
@@ -557,21 +636,28 @@ export function inferirPontuacoesDeAchados(
       }
     }
 
-    // Se encontrou uma dimensão, deduzir impacto
-    if (melhorDim && scores[melhorDim] !== undefined) {
+    // Se encontrou uma dimensão, inicializa e deduzir impacto
+    if (melhorDim) {
+      // Inicializa score da dimensão em 100 na primeira vez que for tocada
+      if (scores[melhorDim] === undefined) scores[melhorDim] = 100;
       scores[melhorDim] = Math.max(0, scores[melhorDim] - Math.round(impacto * 0.8));
+      touched[melhorDim] = true;
     }
   }
 
-  // Converter para PontuacaoEntradaV2_2[]
+  // Retorna APENAS dimensões que tiveram achados classificados.
+  // Dimensões sem evidência NÃO são incluídas → serão tratadas como "Não analisada"
+  // pelo calcularISFV2_2, puxando o ISF para baixo corretamente.
   const resultado: PontuacaoEntradaV2_2[] = [];
   for (const dim of DIMENSOES_V2_2) {
-    const pontuacao = scores[dim.id] ?? 100;
-    resultado.push({
-      dimensaoId: dim.id,
-      pontuacao,
-      itemSelecionado: encontrarItemProximo(dim.id, pontuacao),
-    });
+    if (touched[dim.id]) {
+      resultado.push({
+        dimensaoId: dim.id,
+        pontuacao: scores[dim.id],
+        itemSelecionado: encontrarItemProximo(dim.id, scores[dim.id]),
+      });
+    }
+    // else: dimensão omitida intencionalmente → será "Não analisada" no calcularISFV2_2
   }
 
   return resultado;
