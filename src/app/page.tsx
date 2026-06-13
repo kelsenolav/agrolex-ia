@@ -144,7 +144,7 @@ export default function Home() {
         transition={{ duration: 0.5 }}
         className="fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-[#051F15]/80 border-b border-white/10"
       >
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
+        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
           <Logo size="md" />
           <nav className="hidden md:flex gap-8">
             <Link href="#riscos" className="text-gray-300 hover:text-brand-gold transition-colors font-medium text-sm tracking-wide">RISCOS</Link>
