@@ -1053,10 +1053,9 @@ export async function POST(req: Request) {
       }
     }
 
-        // PASSO 25.3 — Diagnóstico do modo de extração PDF (hoisted para scope do catch)
-        const { PDF_EXTRACTION_CONFIG } = await import('@/lib/pdf/config');
-        const pdfMode: string = PDF_EXTRACTION_CONFIG.mode;
-        const useMarkdownPipeline = pdfMode === 'markdown' || pdfMode === 'text';
+        // Auto-detect per PDF: always try text extraction first, fall back to binary for scanned/empty PDFs
+        const pdfMode: string = 'auto';
+        const useMarkdownPipeline = true;
         let pdfExtractionDiags: {
           total_pdfs: number;
           markdown_success: number;
