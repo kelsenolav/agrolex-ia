@@ -3,6 +3,29 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 13/06/2026
+- **Bloco**: Deploy em produção — commit `e71a1c38` + vercel prod
+- **Arquivos alterados**:
+  - `src/app/api/analyze/route.ts` — +32/−18 linhas (travamento forceRetry, correção mapeamento faixas v2.2, remoção import fantasma)
+  - `src/components/isf/ISFExplainer.tsx` — +14/−7 linhas (expansão keywords client-side, normalização NFD, inversão prioridade isfAchados)
+- **Rotas afetadas**: `/api/analyze`, `/dashboard/resultado`
+- **Alterações implementadas**:
+  1. Commit `e71a1c38` — "fix(ISF v2.2): travamento forceRetry, keywords client-side expandidas e inversao prioridade isfAchados"
+  2. Push para `origin/stable/rebuild-beta-01-laudo-compartilhavel`
+  3. Nova trava anti-reprocessamento: `retryExhausted` sem `forceRetry` → HTTP 400
+  4. Correção do `retryStartState`: reset correto no forceRetry (antes ignorava)
+  5. Adicionado `muito_seguro` ao mapeamento de faixas v2.2 → coluna CHECK constraint
+  6. Correção de ternário no `isf_faixa` (branches duplicadas de `isfResultV2_2`)
+  7. Keywords client-side (`classificarEixoCliente`) expandidas massivamente e alinhadas com server-side (`classificarEixo` em isfEngine.ts)
+  8. Normalização NFD + diacríticos + ç→c para matching robusto de keywords
+  9. Inversão de prioridade: `isfAchados` (server-classified) agora é fonte primária; `problemasFallback` virou fallback real
+- **Validações**: `npm run build` (32 rotas, ✓), `npm run lint` (0 erros, ✓), `npm test` (582/582 — 22 suítes, ✓)
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` em 1m
+- **URL validada**: https://agrolex-ia-qx32.vercel.app
+- **Problemas restantes**: Nenhum.
+
+---
+
+- **Data**: 13/06/2026
 - **Bloco**: Deploy em produção — commit `88568b33` + vercel prod
 - **Arquivos alterados**:
   - `src/app/api/analyze/route.ts` — 6 linhas (correções ISF v2.2)
