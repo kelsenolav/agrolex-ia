@@ -39,8 +39,10 @@ export async function proxy(request: NextRequest) {
   const refreshToken = request.cookies.get(AUTH_REFRESH_COOKIE)?.value;
 
   if (accessToken) {
-    const { data, error } = await supabase.auth.getClaims(accessToken);
-    if (!error && data?.claims) return NextResponse.next();
+    // Corrigido: getClaims() não existe na API do Supabase JS client.
+    // getUser() valida o token JWT e retorna o usuário (ou erro) corretamente.
+    const { data, error } = await supabase.auth.getUser(accessToken);
+    if (!error && data?.user) return NextResponse.next();
   }
 
   if (refreshToken) {

@@ -38,7 +38,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
 }
 
 type RiskLevel = 'Baixo' | 'Médio' | 'Alto' | 'Crítico';
-type RiskLevelSource = 'ai_section' | 'ai_text' | 'fallback';
+type RiskLevelSource = 'ai_section' | 'ai_text' | 'fallback' | 'ai_json';
 type RecoverableErrorType = 'ai_timeout' | 'ai_unavailable' | 'ai_incomplete_response' | 'ai_quota_exceeded';
 
 interface DerivedRiskLevel {
@@ -212,20 +212,180 @@ function countWords(value: string): number {
     .length;
 }
 
+/**
+ * Regra de validação de seção obrigatória com fallback em 3 camadas.
+ *
+ * Camada 1 — Busca exata da key canônica.
+ * Camada 2 — Variações aceitáveis (aliases).
+ * Camada 3 — Fallback semântico: 2+ hints presentes no texto.
+ *
+ * Rejeita APENAS se nenhuma das 3 camadas encontrar evidência.
+ */
+type RequiredSectionRule = {
+  /** Identificador canônico (busca exata, camada 1) */
+  key: string;
+  /** Nome legível para mensagens de erro */
+  label: string;
+  /** Variações aceitáveis (camada 2) */
+  aliases: string[];
+  /** Hints semânticos para fallback (camada 3) — exige 2+ matches */
+  semanticHints?: string[];
+};
+
+/**
+ * Regras unificadas para as 6 seções obrigatórias do parecer rápido
+ * de Cadeia Dominial (isChainOfTitleOnly).
+ *
+ * Ordem: IDENTIFICAÇÃO → CADEIA DOMINIAL → ACHADOS →
+ *        CLASSIFICAÇÃO DE RISCO → RECOMENDAÇÕES → DOCUMENTOS ANALISADOS
+ */
+const FAST_CHAIN_REQUIRED_SECTIONS: RequiredSectionRule[] = [
+  {
+    key: 'identificacao',
+    label: 'identificação',
+    aliases: [
+      'identificacao da matricula',
+      'identificacao do imovel',
+      'dados da matricula',
+      'dados do imovel',
+      'qualificacao registral',
+      'qualificacao do imovel',
+      'matricula analisada',
+    ],
+    semanticHints: ['matricula', 'cartorio', 'cri', 'proprietario', 'imovel'],
+  },
+  {
+    key: 'cadeia dominial',
+    label: 'cadeia dominial',
+    aliases: [
+      'cadeia dominial registral',
+      'cadeia de dominio',
+      'historico registral',
+      'historico de transmissoes',
+      'sequencia de proprietarios',
+      'resumo da cadeia dominial',
+      'cadeia de transmissao',
+    ],
+    semanticHints: ['transmissao', 'proprietario', 'adquirente', 'registro anterior', 'matricula'],
+  },
+  {
+    key: 'achados',
+    label: 'achados',
+    aliases: [
+      'achados dominiais',
+      'achados tecnicos',
+      'achados da analise',
+      'irregularidades',
+      'inconsistencias',
+      'inconsistencias registrais',
+      'problemas identificados',
+      'pontos de atencao',
+      'constatacoes',
+      'apontamentos',
+      'irregularidades encontradas',
+      'observacoes tecnicas',
+    ],
+    semanticHints: ['risco juridico', 'base documental', 'grau de criticidade', 'achado', 'recomendacao'],
+  },
+  {
+    key: 'classificacao de risco',
+    label: 'classificação de risco',
+    aliases: [
+      'grau de risco',
+      'nivel de risco',
+      'risco final',
+      'classificacao do risco',
+      'risco classificado como',
+      'avaliacao de risco',
+      'grau de risco fundiario',
+    ],
+    semanticHints: ['risco', 'baixo', 'medio', 'alto', 'critico'],
+  },
+  {
+    key: 'recomendacoes',
+    label: 'recomendações',
+    aliases: [
+      'recomendacoes objetivas',
+      'recomendacoes tecnicas',
+      'providencias recomendadas',
+      'acoes recomendadas',
+      'encaminhamentos',
+      'proximos passos',
+      'providencias',
+      'recomendacoes finais',
+    ],
+    semanticHints: ['recomenda', 'providencia', 'documento', 'acao'],
+  },
+  {
+    key: 'documentos analisados',
+    label: 'documentos analisados',
+    aliases: [
+      'documento analisado',
+      'matricula analisada',
+      'documentacao analisada',
+      'documento anexado',
+      'documentos anexados',
+      'documentos apresentados',
+      'arquivo analisado',
+      'certidao analisada',
+      'matricula apresentada',
+    ],
+    semanticHints: ['matricula', 'certidao de inteiro teor', 'certidao', 'escritura', 'contrato', 'registro', 'documento'],
+  },
+];
+
+/**
+ * Valida a presença de uma seção obrigatória com 3 camadas de fallback.
+ *
+ * Camada 1 — Busca exata da key canônica.
+ * Camada 2 — Qualquer alias presente no texto.
+ * Camada 3 — Fallback semântico: 2+ hints presentes.
+ *
+ * @returns true se a seção foi detectada em qualquer camada.
+ */
+function validateSectionPresence(normalized: string, rule: RequiredSectionRule): boolean {
+  // Camada 1: key canônica
+  if (normalized.includes(rule.key)) {
+    return true;
+  }
+
+  // Camada 2: aliases (variações aceitáveis)
+  if (rule.aliases.some((alias) => normalized.includes(alias))) {
+    return true;
+  }
+
+  // Camada 3: fallback semântico (exige 2+ hints)
+  if (rule.semanticHints && rule.semanticHints.length >= 2) {
+    const hintMatches = rule.semanticHints.filter((hint) => normalized.includes(hint));
+    if (hintMatches.length >= 2) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Valida a qualidade da resposta da IA para o modo rápido de Cadeia Dominial.
+ *
+ * Verifica, para cada uma das 6 seções obrigatórias, a presença via 3 camadas
+ * de fallback (key canônica → aliases → hints semânticos).
+ *
+ * Também valida: contagem mínima de palavras, sinal de documentos insuficientes
+ * e indícios de idioma estrangeiro.
+ *
+ * @returns null se a resposta é válida, ou uma string com a descrição do problema.
+ */
 function validateFastChainOfTitleResponse(resumo: string): string | null {
   const normalized = normalizeForQualityCheck(resumo);
-  const requiredSections = [
-    'identificacao',
-    'documentos analisados',
-    'cadeia dominial',
-    'achados',
-    'classificacao de risco',
-    'recomendacoes'
-  ];
 
-  const missingSection = requiredSections.find((section) => !normalized.includes(section));
-  if (missingSection) {
-    return `Resposta incompleta: seção obrigatória ausente (${missingSection}).`;
+  // Validar cada seção obrigatória com fallback em 3 camadas
+  let allSectionsPresent = true;
+  for (const rule of FAST_CHAIN_REQUIRED_SECTIONS) {
+    if (!validateSectionPresence(normalized, rule)) {
+      allSectionsPresent = false;
+      return `Resposta incompleta: seção obrigatória ausente (${rule.label}).`;
+    }
   }
 
   const insufficientDocumentSignals = [
@@ -240,8 +400,13 @@ function validateFastChainOfTitleResponse(resumo: string): string | null {
 
   const wordCount = countWords(resumo);
   const hasInsufficientDocumentSignal = insufficientDocumentSignals.some((signal) => normalized.includes(signal));
-  if (wordCount < 600 && !hasInsufficientDocumentSignal) {
-    return `Resposta incompleta: parecer com ${wordCount} palavras, abaixo do mínimo esperado.`;
+
+  // PASSO 25.7O — Piso de palavras adaptativo:
+  // - Se todas as 6 seções estão presentes, aceita respostas mais concisas (mínimo 200 palavras).
+  // - Se alguma seção está ausente, mantém o piso de 600 palavras como guardrail.
+  const effectiveMinWords = allSectionsPresent ? 200 : 600;
+  if (wordCount < effectiveMinWords && !hasInsufficientDocumentSignal) {
+    return `Resposta incompleta: parecer com ${wordCount} palavras, abaixo do mínimo esperado (${effectiveMinWords}).`;
   }
 
   const englishIndicators = [
@@ -259,7 +424,171 @@ function validateFastChainOfTitleResponse(resumo: string): string | null {
     return `Resposta inadequada: indícios de idioma estrangeiro (${englishHits.join(', ') || 'public deed'}).`;
   }
 
+  // PASSO 25.7R — Detectar placeholders no formato [texto] (template genérico não preenchido)
+  const placeholderPattern = /\[[^\]]{3,}\]/;
+  if (placeholderPattern.test(resumo)) {
+    const matches = resumo.match(/\[[^\]]{3,}\]/g) || [];
+    const examples = matches.slice(0, 5).join(', ');
+    return `Resposta rejeitada: template genérico detectado com placeholders não preenchidos (ex: ${examples}).`;
+  }
+
   return null;
+}
+
+/**
+ * PASSO 25.7I — Validação mínima do JSON estruturado de cadeia_dominial.
+ *
+ * Verifica: objeto raiz, documentos_analisados (array, length>=1),
+ * resumo_cadeia_dominial (string não vazia), achados (array),
+ * classificacao_risco.nivel (string), recomendacoes (array),
+ * parecer_markdown (string não vazia), e ausência de idioma inglês.
+ *
+ * @returns null se válido, ou string com descrição do erro.
+ */
+function validateChainOfTitleJson(parsed: Record<string, any>): string | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return 'JSON inválido: objeto raiz não encontrado.';
+  }
+
+  if (!Array.isArray(parsed.documentos_analisados) || parsed.documentos_analisados.length < 1) {
+    return 'JSON inválido: documentos_analisados ausente ou vazio.';
+  }
+
+  if (!parsed.resumo_cadeia_dominial || typeof parsed.resumo_cadeia_dominial !== 'string' || parsed.resumo_cadeia_dominial.trim().length === 0) {
+    return 'JSON inválido: resumo_cadeia_dominial ausente ou vazio.';
+  }
+
+  if (!Array.isArray(parsed.achados)) {
+    return 'JSON inválido: achados não é array.';
+  }
+
+  if (!parsed.classificacao_risco || typeof parsed.classificacao_risco !== 'object') {
+    return 'JSON inválido: classificacao_risco ausente.';
+  }
+
+  if (!parsed.classificacao_risco.nivel || typeof parsed.classificacao_risco.nivel !== 'string') {
+    return 'JSON inválido: classificacao_risco.nivel ausente.';
+  }
+
+  if (!Array.isArray(parsed.recomendacoes)) {
+    return 'JSON inválido: recomendacoes não é array.';
+  }
+
+  if (!parsed.parecer_markdown || typeof parsed.parecer_markdown !== 'string' || parsed.parecer_markdown.trim().length === 0) {
+    return 'JSON inválido: parecer_markdown ausente ou vazio.';
+  }
+
+  // Verificar idioma inglês
+  const englishIndicators = [
+    'public deed', 'ownership', 'chain of title', 'risk classification',
+    'missing documents', 'recommendations', 'registry events', 'title deed',
+    'findings', 'property', 'mortgage', 'lien', 'encumbrance'
+  ];
+  const textToCheck = (
+    (parsed.resumo_cadeia_dominial || '') + ' ' +
+    (parsed.parecer_markdown || '') + ' ' +
+    JSON.stringify(parsed.achados || []) + ' ' +
+    JSON.stringify(parsed.classificacao_risco || {})
+  ).toLowerCase();
+  const hits = englishIndicators.filter((ind) => textToCheck.includes(ind));
+  if (hits.length >= 2) {
+    return `JSON inválido: indícios de idioma estrangeiro (${hits.join(', ')}).`;
+  }
+
+  return null;
+}
+
+/**
+ * PASSO 25.7I — Tenta parsear a resposta da IA como JSON estruturado.
+ *
+ * Estratégia:
+ * 1. Tentar JSON.parse() direto da resposta bruta.
+ * 2. Se falhar, tentar extrair o primeiro objeto JSON {...} do texto
+ *    (a IA pode ter adicionado markdown ou texto ao redor).
+ * 3. Se extrair, validar com validateChainOfTitleJson.
+ *
+ * @returns { success: true, data } ou { success: false, error }.
+ */
+function tryParseChainOfTitleJson(rawText: string): { success: true; data: Record<string, any> } | { success: false; error: string } {
+  // PASSO 25.7O — Função helper para tentar parse + validar
+  const attemptParse = (text: string): { success: true; data: Record<string, any> } | { success: false; error: string } => {
+    try {
+      const parsed = JSON.parse(text.trim());
+      const validationError = validateChainOfTitleJson(parsed);
+      if (!validationError) {
+        return { success: true, data: parsed };
+      }
+      return { success: false, error: validationError };
+    } catch (_) {
+      return { success: false, error: 'Falha ao parsear JSON.' };
+    }
+  };
+
+  // Tentativa 1: parse direto do texto bruto
+  const directResult = attemptParse(rawText);
+  if (directResult.success) return directResult;
+
+  // Tentativa 2: remover crases markdown (```json ... ```) antes do parse
+  const cleaned = rawText
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+  const cleanedResult = attemptParse(cleaned);
+  if (cleanedResult.success) return cleanedResult;
+
+  // Tentativa 3: extrair primeiro objeto JSON {...} do texto
+  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    const extractedResult = attemptParse(jsonMatch[0]);
+    if (extractedResult.success) return extractedResult;
+    return { success: false, error: extractedResult.error };
+  }
+
+  return { success: false, error: directResult.error || 'Nenhum objeto JSON encontrado na resposta.' };
+}
+
+/**
+ * PASSO 25.7I — Mapeia nível de risco do JSON estruturado para formato interno.
+ */
+function mapJsonRiskToLevel(nivel: string): RiskLevel {
+  const n = (nivel || '').toLowerCase().trim();
+  if (n === 'critico' || n === 'crítico') return 'Crítico';
+  if (n === 'alto') return 'Alto';
+  if (n === 'medio' || n === 'médio') return 'Médio';
+  return 'Baixo';
+}
+
+/**
+ * PASSO 25.7I — Converte achados do JSON estruturado para formato interno.
+ */
+function mapJsonAchadosToProblemas(achados: any[]): any[] {
+  return (achados || []).map((a: any) => ({
+    titulo: a.titulo || 'Achado',
+    descricao: a.descricao || '',
+    criticidade: mapJsonRiskToLevel(a.risco || 'medio'),
+    recomendacao: a.providencia || '',
+    base_documental: a.base_documental || '',
+  }));
+}
+
+/**
+ * PASSO 25.7I — Converte documentos_faltantes do JSON estruturado para formato interno.
+ */
+function mapJsonDocumentosFaltantes(docs: any[]): any[] {
+  return (docs || []).map((d: any) => ({
+    documento: d.documento || '',
+    descricao: d.motivo || '',
+  }));
+}
+
+/**
+ * PASSO 25.7I — Converte recomendacoes do JSON estruturado para formato interno.
+ */
+function mapJsonRecomendacoes(recs: any[]): any[] {
+  return (recs || []).map((r: any) => ({
+    descricao: `${r.prioridade ? `[${r.prioridade.toUpperCase()}] ` : ''}${r.descricao || ''}`,
+    prioridade: r.prioridade || 'media',
+  }));
 }
 
 // Parsers locais de arquivos geoespaciais
@@ -380,16 +709,6 @@ export async function POST(req: Request) {
     const { getUserSubscription } = await import('@/lib/subscriptions');
     const userSubData = await getUserSubscription(user.id, supabaseAdmin);
     const planType = userSubData.plan_type;
-
-    // CAMADA 2: Bloqueio Backend contra bypass de trial
-    const { getTrialStatus } = await import('@/lib/trial/trialControl');
-    const trialStatus = await getTrialStatus(user.id, user.email || '');
-
-    if (planType === 'trial' && trialStatus.used) {
-      return NextResponse.json({
-        error: 'Sua análise gratuita já foi utilizada. Para continuar utilizando o AgroLex e acessar análises completas, desbloqueie o acesso profissional.'
-      }, { status: 403 });
-    }
 
     // Validação de status atual
     const currentStatus = (analysis.status || '').toLowerCase().trim();
@@ -615,7 +934,35 @@ export async function POST(req: Request) {
       }
     }
 
-    const runBackground = async () => {
+        // PASSO 25.3 — Diagnóstico do modo de extração PDF (hoisted para scope do catch)
+        const { PDF_EXTRACTION_CONFIG } = await import('@/lib/pdf/config');
+        const pdfMode: string = PDF_EXTRACTION_CONFIG.mode;
+        const useMarkdownPipeline = pdfMode === 'markdown' || pdfMode === 'text';
+        let pdfExtractionDiags: {
+          total_pdfs: number;
+          markdown_success: number;
+          binary_fallback: number;
+          scanned_count: number;
+          empty_count: number;
+          extraction_total_ms: number;
+          warnings: string[];
+        } = {
+          total_pdfs: 0,
+          markdown_success: 0,
+          binary_fallback: 0,
+          scanned_count: 0,
+          empty_count: 0,
+          extraction_total_ms: 0,
+          warnings: [],
+        };
+
+        const runBackground = async () => {
+      // PASSO 25.7O — Variáveis de diagnóstico (hoisted para scope do catch)
+      let validationPath: 'json_first' | 'textual_fallback' | 'none' = 'none';
+      let markdownResponse = "";
+      // PASSO 25.7Q — Flag de debug para observabilidade do payload/resposta
+      const debugPayloadEnabled = process.env.PDF_MARKDOWN_DEBUG === '1';
+
       try {
         const startedAt = Date.now();
         let geminiMs = 0;
@@ -643,17 +990,90 @@ export async function POST(req: Request) {
           }
           
           if (doc.file_path.toLowerCase().endsWith('.pdf') || doc.document_type?.toLowerCase().includes('matrícula') || doc.document_type === 'Certidão Inteiro Teor' || doc.document_type === 'Matrícula') {
-            const base64Data = buffer.toString('base64');
-            
-            geminiParts.push({
-              inlineData: {
-                data: base64Data,
-                mimeType: "application/pdf"
+            pdfExtractionDiags.total_pdfs++;
+
+            // ── Pipeline Markdown (ativado via PDF_EXTRACTION_MODE) ──
+            if (useMarkdownPipeline) {
+              let usedMarkdown = false;
+              try {
+                const { extractTextFromPdfBuffer } = await import('@/lib/pdf/textExtractor.server');
+                const { normalizePdfTextToMarkdown } = await import('@/lib/pdf/markdownNormalizer');
+
+                const extraction = await extractTextFromPdfBuffer(buffer, { maxPages: 50 });
+                pdfExtractionDiags.extraction_total_ms += extraction.extractionDurationMs;
+
+                const docName = doc.file_path?.split('/').pop() || null;
+                const docType = doc.document_type || null;
+
+                if (extraction.isScanned) {
+                  pdfExtractionDiags.scanned_count++;
+                  pdfExtractionDiags.warnings.push(
+                    `PDF escaneado (sem texto digital): ${docName || docType || 'documento'} — usando fallback binário.`
+                  );
+                } else if (!extraction.hasExtractableText) {
+                  pdfExtractionDiags.empty_count++;
+                  pdfExtractionDiags.warnings.push(
+                    `PDF sem texto extraível: ${docName || docType || 'documento'} — usando fallback binário.`
+                  );
+                } else {
+                  // Extração bem-sucedida: normalizar para Markdown
+                  const markdownContent = normalizePdfTextToMarkdown(extraction, {
+                    docIndex: pdfExtractionDiags.markdown_success + 1,
+                    docType,
+                    docName,
+                  });
+
+                  if (markdownContent && markdownContent.trim().length > 0) {
+                    geminiParts.push({
+                      text: markdownContent,
+                    });
+                    geminiParts.push({
+                      text: `\n[Nota: O texto acima foi extraído do PDF: ${docType || docName || 'Documento'} — ${extraction.pageCount} página(s)]\n`,
+                    });
+                    pdfExtractionDiags.markdown_success++;
+                    usedMarkdown = true;
+                  } else {
+                    // Markdown vazio após normalização (ex: PDF com pouquíssimo texto)
+                    pdfExtractionDiags.empty_count++;
+                    pdfExtractionDiags.warnings.push(
+                      `Markdown vazio após normalização: ${docName || docType || 'documento'} — usando fallback binário.`
+                    );
+                  }
+                }
+              } catch (extractErr: any) {
+                console.warn('[PDF Extraction] Erro ao extrair texto do PDF:', extractErr?.message || extractErr);
+                pdfExtractionDiags.warnings.push(
+                  `Erro na extração de: ${doc.file_path?.split('/').pop() || doc.document_type || 'documento'} — usando fallback binário.`
+                );
               }
-            });
-            geminiParts.push({
-              text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`
-            });
+
+              // Fallback para binary se markdown não funcionou
+              if (!usedMarkdown) {
+                pdfExtractionDiags.binary_fallback++;
+                const base64Data = buffer.toString('base64');
+                geminiParts.push({
+                  inlineData: {
+                    data: base64Data,
+                    mimeType: "application/pdf",
+                  },
+                });
+                geminiParts.push({
+                  text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`,
+                });
+              }
+            } else {
+              // ── Pipeline Binary (default) ──
+              const base64Data = buffer.toString('base64');
+              geminiParts.push({
+                inlineData: {
+                  data: base64Data,
+                  mimeType: "application/pdf"
+                }
+              });
+              geminiParts.push({
+                text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`
+              });
+            }
           }
         }
 
@@ -685,7 +1105,27 @@ export async function POST(req: Request) {
           geminiParts.unshift({ text: instructions });
         }
 
-        let markdownResponse = "";
+        // PASSO 25.7Q — Debug: log da estrutura do payload enviado para a IA
+        if (debugPayloadEnabled) {
+          const payloadSummary = geminiParts.map((p, i) => {
+            if (p.text) {
+              const textPreview = typeof p.text === 'string' ? `${p.text.length} chars` : 'non-string';
+              return { index: i, type: 'text', size: textPreview, preview: (typeof p.text === 'string' ? p.text.slice(0, 200) : 'non-string-text') };
+            }
+            if (p.inlineData) {
+              return { index: i, type: 'inlineData', mimeType: p.inlineData.mimeType, base64Length: p.inlineData.data?.length || 0 };
+            }
+            return { index: i, type: 'unknown' };
+          });
+          console.log('[PDF_MARKDOWN_DEBUG] Payload structure:', JSON.stringify({
+            totalParts: geminiParts.length,
+            parts: payloadSummary,
+            isFastChainOfTitleOnly,
+            useMarkdownPipeline,
+            pdfMode,
+          }, null, 2));
+        }
+
         let providerUsed: AiProvider = 'gemini';
         let fallbackTriggered = false;
         let fallbackReason: string | null = null;
@@ -718,25 +1158,86 @@ export async function POST(req: Request) {
           markdownResponse = `### PARECER TÉCNICO GEOESPACIAL (APENAS GEOMETRIA KML/GPX)\n\nFoi efetuado o upload de arquivo de geometria de limites físicos e georreferenciamento em formato digital nativo. Não foram inseridas matrículas textuais em PDF para análise textual.\n\n* **Limite Físico Importado:** ${polygonCoords.length} pontos de curva detectados.\n* **Status de Integração:** Geometria disponível no visualizador de mapas 3D.`;
         }
 
-        // Validar retorno da IA
-        if (!markdownResponse || markdownResponse.trim().length < 120 || markdownResponse.includes("PLACEHOLDER")) {
-          throw new Error("A IA gerou um laudo incompleto ou muito curto.");
+        // PASSO 25.7Q — Debug: log da resposta bruta da IA
+        if (debugPayloadEnabled) {
+          console.log('[PDF_MARKDOWN_DEBUG] AI raw response:', JSON.stringify({
+            responseLength: markdownResponse.length,
+            responseWords: countWords(markdownResponse),
+            providerUsed,
+            fallbackTriggered,
+            fallbackReason,
+            durationMs: geminiMs,
+            preview: markdownResponse.slice(0, 2000),
+          }, null, 2));
         }
 
+        // PASSO 25.7R — Capturar raw_ai_response_preview universal (caminho de sucesso ou erro)
+        const rawAiPreview = (markdownResponse && markdownResponse.length > 0 ? markdownResponse.slice(0, 2000) : null);
+
+        // Validar retorno da IA
+        if (!markdownResponse || markdownResponse.trim().length < 120 || markdownResponse.includes("PLACEHOLDER")) {
+          const shortResponseError = new Error("A IA gerou um laudo incompleto ou muito curto.");
+          (shortResponseError as any).rawAiResponsePreview = rawAiPreview;
+          (shortResponseError as any).technicalErrorType = 'ai_incomplete_response';
+          throw shortResponseError;
+        }
+
+        // PASSO 25.7R — Detectar placeholders no formato [texto] (template genérico) logo na validação inicial
+        const bracketPlaceholderPattern = /\[[^\]]{3,}\]/;
+        if (bracketPlaceholderPattern.test(markdownResponse) && !isFastChainOfTitleOnly) {
+          // Para módulos não-cadeia_dominial, placeholder com colchetes é tratado como erro imediato
+          const matches = markdownResponse.match(/\[[^\]]{3,}\]/g) || [];
+          const placeholderError = new Error(`Template genérico detectado com placeholders não preenchidos (ex: ${matches.slice(0, 3).join(', ')}).`);
+          (placeholderError as any).rawAiResponsePreview = rawAiPreview;
+          (placeholderError as any).technicalErrorType = 'ai_incomplete_response';
+          throw placeholderError;
+        }
+
+        // PASSO 25.7O — chainOfTitleJsonParsed para uso no pós-processamento
+        let chainOfTitleJsonParsed: Record<string, any> | null = null;
+
         if (isFastChainOfTitleOnly) {
-          const fastQualityIssue = validateFastChainOfTitleResponse(markdownResponse);
-          if (fastQualityIssue) {
-            const qualityError = new Error(fastQualityIssue);
-            (qualityError as any).technicalErrorType = 'ai_incomplete_response';
-            (qualityError as any).userMessage = 'A IA retornou um parecer incompleto. Tente reprocessar.';
-            (qualityError as any).findingsCurrentStep = 'A IA retornou um parecer incompleto. Tente reprocessar.';
-            throw qualityError;
+          // PASSO 25.7I — Tentar parsing JSON estruturado primeiro
+          const jsonParseResult = tryParseChainOfTitleJson(markdownResponse);
+          
+          if (jsonParseResult.success) {
+            chainOfTitleJsonParsed = jsonParseResult.data;
+            // Substituir markdownResponse pelo parecer_markdown do JSON
+            markdownResponse = chainOfTitleJsonParsed.parecer_markdown;
+            validationPath = 'json_first';
+            console.log('[Analyze API] PASSO 25.7O — JSON estruturado parseado com sucesso para cadeia_dominial');
+          } else {
+            // PASSO 25.7I — Fallback textual: JSON inválido/incompleto
+            validationPath = 'textual_fallback';
+            console.warn('[Analyze API] PASSO 25.7O — JSON inválido/incompleto:', jsonParseResult.error);
+            console.warn('[Analyze API] PASSO 25.7O — Usando fallback textual (validateFastChainOfTitleResponse)');
+            
+            const fastQualityIssue = validateFastChainOfTitleResponse(markdownResponse);
+            if (fastQualityIssue) {
+              const qualityError = new Error(fastQualityIssue);
+              (qualityError as any).technicalErrorType = 'ai_incomplete_response';
+              (qualityError as any).userMessage = 'A IA retornou um parecer incompleto. Tente reprocessar.';
+              (qualityError as any).findingsCurrentStep = 'A IA retornou um parecer incompleto. Tente reprocessar.';
+              (qualityError as any).rawAiResponsePreview = markdownResponse.slice(0, 2000);
+              (qualityError as any).validationPath = validationPath;
+              (qualityError as any).jsonParseError = jsonParseResult.error;
+              throw qualityError;
+            }
           }
         }
 
-        const derivedRisk = deriveRiskLevelFromResumo(markdownResponse);
-        const riskLevel = derivedRisk.level;
-        const riskLevelSource = derivedRisk.source;
+        let riskLevel: RiskLevel;
+        let riskLevelSource: RiskLevelSource;
+        
+        if (chainOfTitleJsonParsed) {
+          // PASSO 25.7I — Risk level do JSON estruturado
+          riskLevel = mapJsonRiskToLevel(chainOfTitleJsonParsed.classificacao_risco.nivel);
+          riskLevelSource = 'ai_json' as RiskLevelSource;
+        } else {
+          const derivedRisk = deriveRiskLevelFromResumo(markdownResponse);
+          riskLevel = derivedRisk.level;
+          riskLevelSource = derivedRisk.source;
+        }
 
         let latitude: number | null = null;
         let longitude: number | null = null;
@@ -824,6 +1325,12 @@ export async function POST(req: Request) {
         const postprocessStartAt = Date.now();
         const resultJson = {
           ...updatedFindings,
+          // PASSO 25.3 — Diagnóstico de extração PDF
+          pdf_extraction_mode: pdfMode,
+          pdf_extraction_diagnostics: pdfExtractionDiags,
+          // PASSO 25.7R — Diagnóstico de validação no caminho de sucesso
+          ...(validationPath && validationPath !== 'none' ? { validation_path: validationPath } : {}),
+          ...(rawAiPreview ? { raw_ai_response_preview: rawAiPreview } : {}),
           isHtmlResumo: false,
           resumo: markdownResponse,
           problemas: [],
@@ -892,9 +1399,22 @@ export async function POST(req: Request) {
           .eq('id', analysisId);
 
         try {
-          const parsedProblemas = extractProblemsFromReport(markdownResponse);
-          const parsedDocumentosFaltantes = extractMissingDocumentsFromReport(markdownResponse);
-          const parsedRecomendacoes = extractRecommendationsFromReport(markdownResponse);
+          // PASSO 25.7I — Usar dados do JSON estruturado se disponível, senão extratores textuais
+          let parsedProblemas: any[];
+          let parsedDocumentosFaltantes: any[];
+          let parsedRecomendacoes: any[];
+          let parsedAchados: any[] | null = null;
+
+          if (chainOfTitleJsonParsed) {
+            parsedProblemas = mapJsonAchadosToProblemas(chainOfTitleJsonParsed.achados || []);
+            parsedDocumentosFaltantes = mapJsonDocumentosFaltantes(chainOfTitleJsonParsed.documentos_faltantes || []);
+            parsedRecomendacoes = mapJsonRecomendacoes(chainOfTitleJsonParsed.recomendacoes || []);
+            parsedAchados = chainOfTitleJsonParsed.achados || [];
+          } else {
+            parsedProblemas = extractProblemsFromReport(markdownResponse);
+            parsedDocumentosFaltantes = extractMissingDocumentsFromReport(markdownResponse);
+            parsedRecomendacoes = extractRecommendationsFromReport(markdownResponse);
+          }
           const postprocessMs = Date.now() - postprocessStartAt;
           const totalMs = Date.now() - startedAt;
           let caseFileExtractError: string | null = null;
@@ -985,7 +1505,9 @@ export async function POST(req: Request) {
 
           const patchedFindings = {
             ...resultJson,
+            ...(chainOfTitleJsonParsed ? { chain_of_title_json: chainOfTitleJsonParsed } : {}),
             problemas: parsedProblemas,
+            ...(parsedAchados ? { achados: parsedAchados } : {}),
             recomendacoes: parsedRecomendacoes,
             documentosFaltantes: parsedDocumentosFaltantes,
             case_file: enrichedCaseFile,
@@ -1119,8 +1641,15 @@ export async function POST(req: Request) {
           };
         }
 
+        // PASSO 25.7Q — Capturar rawAiResponsePreview universal (qualquer caminho de erro)
+        const universalRawPreview = innerError?.rawAiResponsePreview
+          || (markdownResponse && markdownResponse.length > 0 ? markdownResponse.slice(0, 2000) : null);
+
         const failedFindings = {
           ...updatedFindings,
+          // PASSO 25.7N — Persistir diagnóstico de extração PDF mesmo em erro
+          pdf_extraction_mode: pdfMode,
+          pdf_extraction_diagnostics: pdfExtractionDiags,
           current_step: findingsCurrentStep,
           error_message: sanitizedMessage || 'Erro no processamento interno',
           technical_error_type: isTimeoutExhausted ? 'max_ai_timeout_attempts' : technicalErrorType,
@@ -1129,6 +1658,10 @@ export async function POST(req: Request) {
           retry_reason: isTimeoutExhausted ? "max_ai_timeout_attempts" : (isRecoverableFailure ? technicalErrorType : null),
           retry_exhausted: isTimeoutExhausted ? true : undefined,
           ...(retryState ? { retry_state: retryState } : {}),
+          // PASSO 25.7O — Persistir diagnóstico de validação JSON-first vs textual
+          ...(validationPath && validationPath !== 'none' ? { validation_path: validationPath } : {}),
+          ...(innerError?.jsonParseError ? { json_parse_error: innerError.jsonParseError } : {}),
+          ...(universalRawPreview ? { raw_ai_response_preview: universalRawPreview } : {}),
           case_file: {
             ...updatedFindings.case_file,
             ...(retryState ? { retry_state: retryState } : {}),
