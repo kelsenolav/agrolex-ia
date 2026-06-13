@@ -1608,64 +1608,40 @@ export async function POST(req: Request) {
           let comparison: any = null;
           const ISF_VERSION_STRING = '2.2';  // versão canônica como string
 
-          try {
-            // ── v2.2 (6 dimensões, sem Muito Seguro, com Inválido/Regular) ──
-            const { pontuacoes: pontuacoesV2_2, criticidadeInferida } = inferirPontuacoesDeAchados(parsedProblemas);
-            
-            // Sincronizar criticidade dos problemas com a inferida pelo motor ISF.
-            // O motor v2.2 deduz criticidade a partir das keywords + impacto no texto;
-            // se o campo original veio vazio ou como "Médio" (padrão), sobrescreve com o valor inferido.
-            // Isso garante que findings.problemas[].criticidade reflita o score ISF,
-            // sincronizando os cards de criticidade, o painel de explicabilidade e a distribuição.
-            for (const p of parsedProblemas) {
-              const chave = (p.titulo || '').trim();
-              if (!chave) continue;
-              const inferida = criticidadeInferida.get(chave);
-              if (inferida) {
-                const atual = (p.criticidade || '').toLowerCase().trim();
-                // Só sobrescreve se o campo atual estiver vazio, for 'medio'/'médio' (default do extrator),
-                // ou se a inferida é mais severa que a atual.
-                const isDefault = !atual || atual === 'medio' || atual === 'médio';
-                const isLessSevere = atual === 'baixo' && (inferida === 'Crítico' || inferida === 'Alto');
-                if (isDefault || isLessSevere) {
-                  p.criticidade = inferida;
+          // ── FASE 1 — Cache de ISF por herança ──
+          // Se a análise pai já possui isf_v2_2 no findings (ex: reprocessamento da mesma matrícula),
+          // reusar o resultado em vez de recalcular (elimina divergência IA-dependente).
+          const inheritedIsfV2_2 = findings.isf_v2_2 as any;
+          const hasInheritedIsf = inheritedIsfV2_2 && typeof inheritedIsfV2_2.isf_score === 'number' && inheritedIsfV2_2.isf_score > 0;
+
+          if (!hasInheritedIsf) {
+            try {
+              // ── v2.2 (6 dimensões, sem Muito Seguro, com Inválido/Regular) ──
+              const { pontuacoes: pontuacoesV2_2, criticidadeInferida } = inferirPontuacoesDeAchados(parsedProblemas);
+              
+              // Sincronizar criticidade dos problemas com a inferida pelo motor ISF.
+              for (const p of parsedProblemas) {
+                const chave = (p.titulo || '').trim();
+                if (!chave) continue;
+                const inferida = criticidadeInferida.get(chave);
+                if (inferida) {
+                  const atual = (p.criticidade || '').toLowerCase().trim();
+                  const isDefault = !atual || atual === 'medio' || atual === 'médio';
+                  const isLessSevere = atual === 'baixo' && (inferida === 'Crítico' || inferida === 'Alto');
+                  if (isDefault || isLessSevere) {
+                    p.criticidade = inferida;
+                  }
                 }
               }
-            }
 
-            isfResultV2_2 = calcularISFV2_2(pontuacoesV2_2);
-            const payloadV2_2 = prepararPayloadV2_2(isfResultV2_2);
+              isfResultV2_2 = calcularISFV2_2(pontuacoesV2_2);
+              const payloadV2_2 = prepararPayloadV2_2(isfResultV2_2);
 
-            // ── v2.1 (compatibilidade — mantido para análises antigas e comparação) ──
-            const complementaryCount =
-              (Array.isArray(recommendedModules) ? recommendedModules.length : 0) +
-              (Array.isArray(findings.complementary_modules) ? findings.complementary_modules.length : 0);
-
-            const isfContext: ISFContext = {
-              complementaryModulesCount: complementaryCount,
-              documentosFaltantesCount: Array.isArray(parsedDocumentosFaltantes) ? parsedDocumentosFaltantes.length : 0,
-              cadeiaDominialIncompleta: detectarCadeiaDominialIncompleta(markdownResponse, parsedProblemas),
-              fragilidadeRegistral: detectarFragilidadeRegistral(markdownResponse, parsedProblemas),
-              analysisDepth: typeof findings.analysis_depth === 'number' ? findings.analysis_depth : 1,
-              statusIndicaComplementacao: analysis.status === 'pending' || analysis.status === 'error' || complementaryCount > 0,
-            };
-
-            isfResultV2_1 = calcularISFv2(parsedProblemas as any, isfContext);
-            comparison = calcularComparacao(isfResultV2_1.isf_score, isfResultV2_2.isf_score);
-
-            // Persistir ambos: v2.2 como primário, v2.1 como compatibilidade
-            isfPayload = {
-              ...payloadV2_2,
-              ...gerarPayloadISFCompleto(isfResultV2_1, comparison),
-            };
-          } catch (isfCalcError: any) {
-            isfError = ((isfCalcError && (isfCalcError.message || isfCalcError.toString())) || 'Erro desconhecido no ISF v2.2')
-              .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
-            // Fallback: tentar v2.1 isoladamente se v2.2 falhar
-            try {
+              // ── v2.1 (compatibilidade — mantido para análises antigas e comparação) ──
               const complementaryCount =
                 (Array.isArray(recommendedModules) ? recommendedModules.length : 0) +
                 (Array.isArray(findings.complementary_modules) ? findings.complementary_modules.length : 0);
+
               const isfContext: ISFContext = {
                 complementaryModulesCount: complementaryCount,
                 documentosFaltantesCount: Array.isArray(parsedDocumentosFaltantes) ? parsedDocumentosFaltantes.length : 0,
@@ -1674,13 +1650,55 @@ export async function POST(req: Request) {
                 analysisDepth: typeof findings.analysis_depth === 'number' ? findings.analysis_depth : 1,
                 statusIndicaComplementacao: analysis.status === 'pending' || analysis.status === 'error' || complementaryCount > 0,
               };
+
               isfResultV2_1 = calcularISFv2(parsedProblemas as any, isfContext);
-              comparison = calcularComparacao(0, isfResultV2_1.isf_score);
-              isfPayload = gerarPayloadISFCompleto(isfResultV2_1, comparison);
-              isfError = null; // v2.1 funcionou como fallback
-            } catch (_) {
-              // v2.1 também falhou — manter isfError do v2.2
+              comparison = calcularComparacao(isfResultV2_1.isf_score, isfResultV2_2.isf_score);
+
+              // Persistir ambos: v2.2 como primário, v2.1 como compatibilidade
+              isfPayload = {
+                ...payloadV2_2,
+                ...gerarPayloadISFCompleto(isfResultV2_1, comparison),
+              };
+            } catch (isfCalcError: any) {
+              isfError = ((isfCalcError && (isfCalcError.message || isfCalcError.toString())) || 'Erro desconhecido no ISF v2.2')
+                .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
+              // Fallback: tentar v2.1 isoladamente se v2.2 falhar
+              try {
+                const complementaryCount =
+                  (Array.isArray(recommendedModules) ? recommendedModules.length : 0) +
+                  (Array.isArray(findings.complementary_modules) ? findings.complementary_modules.length : 0);
+                const isfContext: ISFContext = {
+                  complementaryModulesCount: complementaryCount,
+                  documentosFaltantesCount: Array.isArray(parsedDocumentosFaltantes) ? parsedDocumentosFaltantes.length : 0,
+                  cadeiaDominialIncompleta: detectarCadeiaDominialIncompleta(markdownResponse, parsedProblemas),
+                  fragilidadeRegistral: detectarFragilidadeRegistral(markdownResponse, parsedProblemas),
+                  analysisDepth: typeof findings.analysis_depth === 'number' ? findings.analysis_depth : 1,
+                  statusIndicaComplementacao: analysis.status === 'pending' || analysis.status === 'error' || complementaryCount > 0,
+                };
+                isfResultV2_1 = calcularISFv2(parsedProblemas as any, isfContext);
+                comparison = calcularComparacao(0, isfResultV2_1.isf_score);
+                isfPayload = gerarPayloadISFCompleto(isfResultV2_1, comparison);
+                isfError = null; // v2.1 funcionou como fallback
+              } catch (_) {
+                // v2.1 também falhou — manter isfError do v2.2
+              }
             }
+          } else {
+            // Cache hit: reusar ISF v2.2 existente no findings
+            isfResultV2_2 = inheritedIsfV2_2;
+            isfPayload = prepararPayloadV2_2(inheritedIsfV2_2);
+
+            // v2.1 também pode ser herdado se existir
+            const inheritedIsfV2_1 = findings.isf_v2 as any;
+            if (inheritedIsfV2_1 && typeof inheritedIsfV2_1.isf_score === 'number') {
+              isfResultV2_1 = inheritedIsfV2_1;
+              comparison = calcularComparacao(inheritedIsfV2_1.isf_score, inheritedIsfV2_2.isf_score);
+              isfPayload = {
+                ...isfPayload,
+                ...gerarPayloadISFCompleto(inheritedIsfV2_1, comparison),
+              };
+            }
+            console.log(`[ISF Cache] ISF herdado de análise anterior: score=${inheritedIsfV2_2.isf_score}`);
           }
 
           const patchedFindings = {
