@@ -91,7 +91,7 @@ const RadarChartV2 = React.memo(function RadarChartV2({ isfEixos }: RadarChartV2
       transition={{ duration: 0.5, ease: 'easeOut' }}
       className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm print:shadow-none print:border h-[350px] flex flex-col justify-between"
     >
-      <div className="flex-1 min-h-0 w-full relative">
+      <div className="w-full min-h-[280px] h-[280px] relative">
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
             <PolarGrid stroke="#E5E7EB" />

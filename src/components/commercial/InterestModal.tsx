@@ -161,7 +161,7 @@ export default function InterestModal({
                     onFocus={handleFieldFocus}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green bg-gray-50 cursor-not-allowed"
-                    placeholder="exemplo@agrolex.com"
+                    placeholder="exemplo@AgrolexI.com"
                     disabled
                   />
                 </div>
@@ -277,7 +277,7 @@ export default function InterestModal({
                   Você será avisado assim que os planos forem liberados.
                 </p>
                 <p className="text-xs text-brand-green font-bold bg-green-50 py-2.5 px-4 rounded-xl border border-green-200 inline-block">
-                  Sua posição foi registrada na fila de prioridade comercial do AgroLex.
+                  Sua posição foi registrada na fila de prioridade comercial do AgrolexI.
                 </p>
               </div>
 

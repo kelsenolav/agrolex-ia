@@ -54,6 +54,7 @@ export interface AnalysisFindings {
   };
   complementary_children?: ComplementaryChild[];
   case_file?: any;
+  matricula_rules?: import('@/lib/isf/matriculaRules').MatriculaRulesResult;
 }
 
 export interface ComplementaryChild {

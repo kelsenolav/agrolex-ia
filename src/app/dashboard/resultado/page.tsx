@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, Suspense, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ShieldCheck, ArrowLeft, AlertTriangle, FileCheck, Info, CheckCircle2, Loader2, Clock, ArrowUpRight, FileText, MapPin, Scale, Landmark, ChevronRight, TrendingUp, AlertCircle, XCircle, Search, FileSignature } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { supabase } from '@/lib/supabase';
 import type { Analysis, AnalysisFindings, ReportProblem, TimelineEvent, ChecklistItem, ComplementaryChild } from '@/types/analise';
 import { calcularScoreAgroLex, MODULE_NAMES } from '@/types/analise';
@@ -137,35 +138,65 @@ function ResultadoContent() {
         console.error('Erro ao verificar trial status:', err);
       }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('name, plan_type, trial_used, subscription_status')
-        .eq('id', session.user.id)
-        .single();
-      if (profile) {
-        if (profile.name) setUserName(profile.name);
-        setTrialProfile(profile as TrialProfile);
-        setIsTrialUser(profile.plan_type === 'trial');
+      // Perfil: fallback seguro se colunas comerciais não existirem no schema
+      let profilePlanType = 'trial';
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name, plan_type, trial_used, subscription_status')
+          .eq('id', session.user.id)
+          .single();
+        if (profile) {
+          if (profile.name) setUserName(profile.name);
+          setTrialProfile(profile as TrialProfile);
+          profilePlanType = profile.plan_type || 'trial';
+          setIsTrialUser(profile.plan_type === 'trial');
+        }
+      } catch {
+        // Colunas comerciais podem não existir no schema — usar padrão trial
+        const { data: baseProfile } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', session.user.id)
+          .single();
+        if (baseProfile?.name) setUserName(baseProfile.name);
+        setIsTrialUser(true);
       }
 
       // FASE 3: Buscar lead_id do usuário para persistência de eventos
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('id, metadata')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
-      if (lead) {
-        setLeadId(lead.id);
+      // Schema real: PK = lead_id (não id), sem coluna metadata
+      // Usa marketing_leads como fallback se leads não existir
+      try {
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('lead_id')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        if (lead?.lead_id) {
+          setLeadId(lead.lead_id);
+        }
+      } catch {
+        // Tabela leads pode não existir — tentar marketing_leads como fallback
+        try {
+          const { data: mLead } = await supabase
+            .from('marketing_leads')
+            .select('id')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+          if (mLead?.id) {
+            setLeadId(mLead.id);
+          }
+        } catch {
+          // Nenhuma tabela de leads existe — leadId fica null (eventos não persistem)
+        }
       }
     };
     fetchProfile();
   }, [router]);
 
   /**
-   * FASE 3 — Registra evento comercial no campo leads.metadata.commercial_events.
-   * Seguro: falha silenciosamente se não houver lead ou campo metadata.
-   * TODO: Se leads.metadata não existir no schema, criar migration para adicionar
-   *       coluna JSONB `metadata` na tabela `leads` antes de ativar persistência real.
+   * FASE 3 — Registra evento comercial. Fallback silencioso se tabela leads
+   * não tiver coluna metadata (schema real não tem) ou PK se chamar lead_id.
    */
   const registrarEventoComercial = async (
     tipo: Parameters<typeof createCommercialEvent>[0],
@@ -173,21 +204,40 @@ function ResultadoContent() {
   ) => {
     if (!leadId) return; // sem lead capturado, não persiste
     try {
-      // Buscar metadata atual do lead
-      const { data: leadData } = await supabase
-        .from('leads')
+      // Tentativa 1: marketing_leads (tem coluna metadata)
+      const { data: mLeadData } = await supabase
+        .from('marketing_leads')
         .select('metadata')
         .eq('id', leadId)
         .maybeSingle();
-
-      const currentMetadata = (leadData?.metadata as Record<string, unknown> | null) ?? null;
+      if (mLeadData) {
+        const currentMetadata = (mLeadData.metadata as Record<string, unknown> | null) ?? null;
+        const novoEvento = createCommercialEvent(tipo, meta);
+        const metadataAtualizado = buildMetadataWithEvent(currentMetadata, novoEvento);
+        await supabase
+          .from('marketing_leads')
+          .update({ metadata: metadataAtualizado })
+          .eq('id', leadId);
+        return;
+      }
+    } catch {
+      // Fallback silencioso — não quebra a UX
+    }
+    try {
+      // Tentativa 2: leads (PK = lead_id, pode não ter metadata)
       const novoEvento = createCommercialEvent(tipo, meta);
-      const metadataAtualizado = buildMetadataWithEvent(currentMetadata, novoEvento);
-
-      await supabase
+      const { data: leadData } = await supabase
         .from('leads')
-        .update({ metadata: metadataAtualizado })
-        .eq('id', leadId);
+        .select('lead_id')
+        .eq('lead_id', leadId)
+        .maybeSingle();
+      if (leadData) {
+        // Tenta update com metadata (falha silenciosa se coluna não existir)
+        await supabase
+          .from('leads')
+          .update({ metadata: { commercial_events: [novoEvento] } } as any)
+          .eq('lead_id', leadId);
+      }
     } catch {
       // Falha silenciosa — não quebra a UX
     }
@@ -387,15 +437,17 @@ function ResultadoContent() {
 
   // Contagem de achados por criticidade
   const problemas = safeProblemas as ReportProblem[];
+  const normCrit = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const { achadosCriticos, achadosAltos, achadosMedios } = useMemo(() => {
-    const criticos = problemas.filter(p => String(p.criticidade || '').toLowerCase().includes('critico')).length;
+    const criticos = problemas.filter(p => normCrit(String(p.criticidade || '')).includes('critico')).length;
     const altos = problemas.filter(p => {
-      const c = String(p.criticidade || '').toLowerCase();
+      const c = normCrit(String(p.criticidade || ''));
       return c.includes('alto') && !c.includes('critico');
     }).length;
     const medios = problemas.filter(p => {
-      const c = String(p.criticidade || '').toLowerCase();
-      return c.includes('medio') || c.includes('médio');
+      const c = normCrit(String(p.criticidade || ''));
+      return c.includes('medio');
     }).length;
     return { achadosCriticos: criticos, achadosAltos: altos, achadosMedios: medios };
   }, [problemas]);
@@ -727,11 +779,11 @@ function ResultadoContent() {
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Achados Específicos ({childProblemas.length})</p>
                     <div className="space-y-2">
                       {childProblemas.map((prob, i) => {
-                        const c = (prob.criticidade || '').toLowerCase();
+                        const c = normCrit(prob.criticidade || '');
                         let badgeColor = 'bg-green-100 text-green-700';
                         if (c.includes('critico')) badgeColor = 'bg-red-100 text-red-700';
                         else if (c.includes('alto')) badgeColor = 'bg-orange-100 text-orange-700';
-                        else if (c.includes('medio') || c.includes('médio')) badgeColor = 'bg-yellow-100 text-yellow-700';
+                        else if (c.includes('medio')) badgeColor = 'bg-yellow-100 text-yellow-700';
 
                         return (
                           <div key={i} className="bg-gray-50 p-3 rounded-lg border border-gray-100">
@@ -849,8 +901,7 @@ function ResultadoContent() {
       <nav className="bg-brand-green text-white shadow-md print:hidden">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
-            <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">AgroLex</span>
+            <Logo size="sm" className="text-white" />
           </Link>
         </div>
       </nav>
@@ -859,10 +910,11 @@ function ResultadoContent() {
       <div className="hidden print:flex print:flex-col print:items-center print:justify-between print:min-h-[270mm] print:w-full print:px-16 print:py-12 cover-page">
         {/* TOPO — Logo + Marca (25-35% altura) */}
         <div className="flex flex-col items-center justify-center flex-1 min-h-[30vh]">
-          <div className="w-44 h-44 bg-brand-green rounded-[32px] flex items-center justify-center shadow-2xl shadow-brand-green/20">
-            <ShieldCheck size={108} className="text-brand-gold" />
+          <div className="w-44 h-44 bg-white rounded-[32px] flex items-center justify-center shadow-2xl shadow-brand-green/20 p-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/agrolexi-logo.png" alt="AgrolexI" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-5xl font-black text-gray-900 mt-8 tracking-tight">AgroLex</h1>
+          <h1 className="text-5xl font-black text-gray-900 mt-8 tracking-tight">AgrolexI</h1>
           <p className="text-xl text-brand-green font-semibold mt-2 tracking-wider">Inteligência Fundiária</p>
         </div>
 
@@ -904,7 +956,7 @@ function ResultadoContent() {
         {/* RODAPÉ INSTITUCIONAL */}
         <div className="w-full mt-8 pt-6 border-t border-gray-200 text-center">
           <p className="text-xs text-gray-400 leading-relaxed">
-            AgroLex Inteligência Fundiária • CNPJ: XX.XXX.XXX/XXXX-XX<br/>
+            AgrolexI Inteligência Fundiária • CNPJ: XX.XXX.XXX/XXXX-XX<br/>
             Documento confidencial e de uso interno • Protegido por LGPD
           </p>
         </div>
@@ -1165,7 +1217,7 @@ function ResultadoContent() {
                 {(isTrialUser ? problemas.slice(0, 3) : problemas).map((prob: ReportProblem, i: number) => {
                   const titulo = prob.titulo || prob.descricao || 'Problema identificado';
                   const descricao = prob.descricao && prob.descricao !== prob.titulo ? prob.descricao : null;
-                  const c = (prob.criticidade || '').toLowerCase();
+                  const c = normCrit(prob.criticidade || '');
 
                   let cardBg = 'bg-green-50 border-green-200';
                   let badgeBg = 'bg-green-200 text-green-900';
@@ -1182,7 +1234,7 @@ function ResultadoContent() {
                     badgeBg = 'bg-orange-200 text-orange-900';
                     semaforo = 'bg-orange-500';
                     Icon = AlertCircle;
-                  } else if (c.includes('medio') || c.includes('médio')) {
+                  } else if (c.includes('medio')) {
                     cardBg = 'bg-yellow-50 border-yellow-200';
                     badgeBg = 'bg-yellow-200 text-yellow-900';
                     semaforo = 'bg-yellow-500';
@@ -1190,7 +1242,7 @@ function ResultadoContent() {
                   }
 
                   return (
-                    <li key={i} className={`${cardBg} p-4 rounded-xl border shadow-sm print:shadow-none print:bg-white ${c.includes('critico') ? 'border-l-4 border-l-red-400' : c.includes('alto') ? 'border-l-4 border-l-orange-400' : c.includes('medio') || c.includes('médio') ? 'border-l-4 border-l-yellow-400' : 'border-l-4 border-l-green-400'}`}>
+                    <li key={i} className={`${cardBg} p-4 rounded-xl border shadow-sm print:shadow-none print:bg-white ${c.includes('critico') ? 'border-l-4 border-l-red-400' : c.includes('alto') ? 'border-l-4 border-l-orange-400' : c.includes('medio') ? 'border-l-4 border-l-yellow-400' : 'border-l-4 border-l-green-400'}`}>
                       <div className="flex items-start gap-3 mb-2">
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${badgeBg}`}>
                           <Icon size={14} />
@@ -1250,7 +1302,7 @@ function ResultadoContent() {
                     Sua análise identificou sinais relevantes que podem impactar a segurança jurídica deste imóvel.
                   </p>
                   <p className="text-gray-700 text-sm mt-1.5 leading-relaxed font-semibold">
-                    O AgroLex encontrou informações que merecem análise detalhada antes de qualquer compra, venda, financiamento ou regularização.
+                    O AgrolexI encontrou informações que merecem análise detalhada antes de qualquer compra, venda, financiamento ou regularização.
                   </p>
                 </div>
                 
@@ -1296,7 +1348,7 @@ function ResultadoContent() {
 
                 {/* Gatilho de Credibilidade */}
                 <div className="max-w-md mx-auto bg-gray-50 border border-gray-200 rounded-xl p-5 text-left">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Como o AgroLex trabalha</p>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Como o AgrolexI trabalha</p>
                   <ul className="space-y-2 text-xs text-gray-600">
                     <li className="flex items-center gap-2">
                       <span className="text-brand-green font-bold">✓</span> Análise automatizada de documentos
@@ -1424,7 +1476,7 @@ function ResultadoContent() {
             {/* 5c. RADAR DE RISCO AGROLEX — v2 (ISF) */}
             <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-200 pb-3 uppercase tracking-wide">
-                <Search className="text-brand-gold" size={24} /> Radar de Risco AgroLex
+                <Search className="text-brand-gold" size={24} /> Radar de Risco AgrolexI
               </h2>
               <LocalErrorBoundary title="Não foi possível carregar o gráfico do radar">
                 <RadarChartV2 isfEixos={analise.isf_eixos} />
@@ -1440,6 +1492,154 @@ function ResultadoContent() {
                 isfVersion={analise.isf_version}
               />
             </LocalErrorBoundary>
+
+            {/* 5f. MATRICULA INDIVIDUAL - Regras Automaticas */}
+            {!!(findings as any)?.matricula_rules && (() => {
+              const mr = (findings as any).matricula_rules;
+              const ficha: Record<string, unknown> = mr.ficha || {};
+              const semaforo: Array<{operacao:string;status:string;motivo:string}> = mr.semaforo_operacoes || [];
+              const scorecard: Array<{documento:string;apresentado:boolean;critico:boolean;motivo_ausencia?:string}> = mr.scorecard_documentos || [];
+              const passos: Array<{ordem:number;acao:string;foro_orgao?:string;prazo_recomendado?:string;prioridade:string}> = mr.proximos_passos || [];
+              const conf: {nivel:string;percentual:number;descricao:string}|undefined = mr.confianca;
+              const sColor: Record<string,string> = {
+                livre: 'bg-green-100 text-green-800 border-green-300',
+                condicionado: 'bg-amber-100 text-amber-800 border-amber-300',
+                inviavel: 'bg-red-100 text-red-800 border-red-300',
+                bloqueado: 'bg-red-200 text-red-900 border-red-400',
+              };
+              const sDot: Record<string,string> = { livre:'bg-green-500', condicionado:'bg-amber-400', inviavel:'bg-red-400', bloqueado:'bg-red-600' };
+              const sLabel: Record<string,string> = { livre:'LIVRE', condicionado:'CONDICIONADO', inviavel:'INVIAVEL', bloqueado:'BLOQUEADO' };
+              const prioColor: Record<string,string> = { alta:'bg-red-50 border-red-200', media:'bg-amber-50 border-amber-200', baixa:'bg-gray-50 border-gray-200' };
+              const prioBadge: Record<string,string> = { alta:'bg-red-500 text-white', media:'bg-amber-500 text-white', baixa:'bg-gray-300 text-gray-700' };
+              const fichaRows: [string,string][] = ([
+                ['Matricula', ficha.numero_matricula as string],
+                ['Cartorio', ficha.cartorio as string],
+                ['Comarca', ficha.comarca as string],
+                ['UF', ficha.uf as string],
+                ['Area Numerica', ficha.area_numerica as string],
+                ['Area por Extenso', ficha.area_extenso as string],
+                ['Area Divergente', (ficha.area_divergente as boolean) ? 'Sim - verificar' : undefined],
+                ['Proprietario Atual', ficha.proprietario_atual as string],
+                ['CPF/CNPJ', ficha.cpf_cnpj_proprietario as string],
+                ['Conjuge', ficha.conjuge as string],
+                ['Regime de Bens', ficha.regime_bens as string],
+                ['Datum Geodesico', ficha.datum_geodesico as string],
+                ['CCIR', ficha.ccir as string],
+                ['CCIR Exercicio', ficha.ccir_exercicio as string],
+                ['Data da Certidao', ficha.data_certidao as string],
+                ['Titulo Originario', (ficha.titulo_originario_apresentado as boolean) ? 'Apresentado' : 'Nao apresentado'],
+                ['Total de Atos', ficha.total_atos != null ? String(ficha.total_atos) : undefined],
+              ] as [string, string|undefined][]).filter(([, v]) => !!v) as [string,string][];
+              return (
+                <div className="space-y-6 mt-6">
+                  {fichaRows.length > 0 && (
+                    <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-6">
+                      <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                        <FileText className="text-brand-gold" size={20} /> Ficha de Dados Estruturados
+                      </h2>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-gray-50 rounded-xl p-4 border border-gray-200">
+                        {fichaRows.map(([label, value], i) => (
+                          <div key={i} className="flex flex-col">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</span>
+                            <span className="text-sm text-gray-800 font-medium">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {semaforo.length > 0 && (
+                    <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-6">
+                      <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                        <ShieldCheck className="text-brand-gold" size={20} /> Semaforo por Tipo de Operacao
+                      </h2>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {semaforo.map((op, i) => (
+                          <div key={i} className={'p-4 rounded-xl border flex flex-col gap-1 ' + (sColor[op.status] || 'bg-gray-100 text-gray-700 border-gray-200')}>
+                            <div className="flex items-center gap-2 font-bold text-sm">
+                              <span className={'w-2.5 h-2.5 rounded-full flex-shrink-0 ' + (sDot[op.status] || 'bg-gray-400')} />
+                              <span>{op.operacao}</span>
+                              <span className="ml-auto text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-white/60">
+                                {sLabel[op.status] || op.status.toUpperCase()}
+                              </span>
+                            </div>
+                            <p className="text-xs leading-relaxed opacity-80">{op.motivo}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {scorecard.length > 0 && (
+                    <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-6">
+                      <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                        <FileCheck className="text-brand-gold" size={20} /> Scorecard de Documentos
+                      </h2>
+                      <div className="space-y-2">
+                        {scorecard.map((doc, i) => (
+                          <div key={i} className={'flex items-start gap-3 p-3 rounded-lg border ' + (doc.apresentado ? 'bg-green-50 border-green-200' : doc.critico ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200')}>
+                            <span className={'text-base font-bold flex-shrink-0 ' + (doc.apresentado ? 'text-green-600' : doc.critico ? 'text-red-600' : 'text-gray-400')}>
+                              {doc.apresentado ? '[OK]' : '[X]'}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium text-gray-800">{doc.documento}</span>
+                                {doc.critico && !doc.apresentado && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">CRITICO</span>
+                                )}
+                              </div>
+                              {!doc.apresentado && doc.motivo_ausencia && (
+                                <p className="text-xs text-gray-500 mt-0.5">{doc.motivo_ausencia}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {passos.length > 0 && (
+                    <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-6">
+                      <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                        <ChevronRight className="text-brand-gold" size={20} /> Proximos Passos Recomendados
+                      </h2>
+                      <ol className="space-y-3">
+                        {passos.map((passo, i) => (
+                          <li key={i} className={'flex gap-3 p-4 rounded-xl border ' + (prioColor[passo.prioridade] || 'bg-gray-50 border-gray-200')}>
+                            <span className={'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ' + (prioBadge[passo.prioridade] || 'bg-gray-300 text-gray-700')}>
+                              {passo.ordem}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-800">{passo.acao}</p>
+                              <div className="flex flex-wrap gap-3 mt-1">
+                                {passo.foro_orgao && <span className="text-xs text-gray-500 flex items-center gap-1"><Landmark size={11} /> {passo.foro_orgao}</span>}
+                                {passo.prazo_recomendado && <span className="text-xs text-gray-500 flex items-center gap-1"><Clock size={11} /> {passo.prazo_recomendado}</span>}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+                  )}
+                  {conf && (
+                    <section className="print:break-inside-avoid border-t-2 border-gray-100 pt-6">
+                      <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                        <TrendingUp className="text-brand-gold" size={20} /> Indicador de Confianca da Analise
+                      </h2>
+                      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700">Base Documental</span>
+                          <span className={'text-sm font-bold ' + (conf.nivel === 'alta' ? 'text-green-700' : conf.nivel === 'media' ? 'text-amber-700' : 'text-red-700')}>
+                            {conf.percentual}% — {conf.nivel === 'alta' ? 'Alta' : conf.nivel === 'media' ? 'Media' : 'Baixa'}
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-3 mb-3">
+                          <div className={'h-3 rounded-full transition-all ' + (conf.nivel === 'alta' ? 'bg-green-500' : conf.nivel === 'media' ? 'bg-amber-400' : 'bg-red-400')} style={{ width: `${conf.percentual}%` }} />
+                        </div>
+                        <p className="text-xs text-gray-600">{conf.descricao}</p>
+                      </div>
+                    </section>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* 5e. CHECKLIST DOCUMENTAL INTELIGENTE */}
             {renderChecklist()}
@@ -1630,8 +1830,9 @@ function ResultadoContent() {
           <div className="border-t border-gray-100 bg-gray-50 p-6 print:bg-white print:border-t">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-gray-500">
               <div className="flex items-center gap-2">
-                <ShieldCheck size={16} className="text-brand-gold" />
-                <span className="font-bold text-gray-700">AgroLex Inteligência Fundiária</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/agrolexi-logo.png" alt="AgrolexI" className="w-4 h-4 object-contain" />
+                <span className="font-bold text-gray-700">AgrolexI Inteligência Fundiária</span>
               </div>
               <div className="text-center md:text-right">
                 <p>CNPJ: XX.XXX.XXX/XXXX-XX</p>

@@ -23,6 +23,7 @@ import {
   encontrarItemProximo,
   inferirPontuacoesDeAchados,
   prepararPayloadV2_2,
+  normalizeFindingSeverity,
   DIMENSOES_V2_2,
   FAIXAS_V2_2,
   PESOS_DIMENSOES_V2_2,
@@ -580,5 +581,57 @@ describe('Constantes exportadas', () => {
       expect(dim.alertaMin).toBeDefined();
       expect(typeof dim.alertaMin).toBe('number');
     }
+  });
+});
+
+// ─── CENÁRIO 12: NORMALIZAÇÃO DE SEVERIDADE — REGRA DE USUCAPIÃO ─────────
+
+describe('normalizeFindingSeverity — Regra de Usucapião (CRÍTICO forçado)', () => {
+  test('promove achado de usucapião com criticidade HIGH/ALTO para CRÍTICO', () => {
+    const finding = { titulo: 'Ação de Usucapião Averbada', criticidade: 'Alto', descricao: 'AV-5 usucapião' };
+    const result = normalizeFindingSeverity(finding);
+    expect(result.criticidade).toBe('Crítico');
+  });
+
+  test('força criticidade Crítico mesmo quando IA retorna Médio', () => {
+    const finding = { titulo: 'Usucapião proposta por terceiro', criticidade: 'Médio', descricao: 'Ação em curso' };
+    const result = normalizeFindingSeverity(finding);
+    expect(result.criticidade).toBe('Crítico');
+  });
+
+  test('detecta por código JUDICIAL_USUCAPIAO_AVERBADA', () => {
+    const finding = { code: 'JUDICIAL_USUCAPIAO_AVERBADA', titulo: 'Algum achado', criticidade: 'Alto' };
+    const result = normalizeFindingSeverity(finding);
+    expect(result.criticidade).toBe('Crítico');
+  });
+
+  test('detecta por código USUCAPIAO_ATIVA', () => {
+    const finding = { code: 'USUCAPIAO_ATIVA', titulo: 'Usucapião', criticidade: 'Alto' };
+    const result = normalizeFindingSeverity(finding);
+    expect(result.criticidade).toBe('Crítico');
+  });
+
+  test('mantém criticidade original de achados sem usucapião', () => {
+    const finding = { titulo: 'Penhora registrada', criticidade: 'Alto', descricao: 'Bloqueio judicial' };
+    const result = normalizeFindingSeverity(finding);
+    expect(result.criticidade).toBe('Alto');
+  });
+
+  test('achado com descrição contendo usucapião é detectado', () => {
+    const finding = { titulo: 'Gravame relevante', criticidade: 'Alto', descricao: 'Averbada ação de usucapião AV-7' };
+    const result = normalizeFindingSeverity(finding);
+    expect(result.criticidade).toBe('Crítico');
+  });
+
+  test('achado sem campos de texto não quebra (retorna inalterado)', () => {
+    const finding = { criticidade: 'Médio' };
+    const result = normalizeFindingSeverity(finding);
+    expect(result.criticidade).toBe('Médio');
+  });
+
+  test('não gera falso positivo para "prescrição aquisitiva" sem menção a usucapião', () => {
+    const finding = { titulo: 'Prescrição aquisitiva', criticidade: 'Médio', descricao: 'Posse prolongada' };
+    const result = normalizeFindingSeverity(finding);
+    expect(result.criticidade).toBe('Médio');
   });
 });

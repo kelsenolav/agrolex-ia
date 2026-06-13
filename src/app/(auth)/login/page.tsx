@@ -2,7 +2,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { supabase } from '@/lib/supabase';
 import { updateLeadActivity } from '@/lib/marketing/leadCapture';
 
@@ -78,8 +79,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-brand-light flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <Link href="/" className="flex justify-center items-center gap-2 text-brand-green mb-6 hover:scale-105 transition-transform">
-          <ShieldCheck size={40} className="text-brand-gold" />
-          <span className="text-3xl font-bold">AgroLex</span>
+          <Logo size="lg" />
         </Link>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
           Acesse sua conta

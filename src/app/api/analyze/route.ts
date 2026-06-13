@@ -9,7 +9,7 @@ import { buildRecommendedModules } from '@/lib/recommendations';
 import { generateWithFallback, type FallbackResult, type AiProvider } from '@/lib/aiProviders';
 import { calcularComparacao } from '@/lib/isf/isfV2';
 import { calcularISFv2, classificarEixo, type ISFContext } from '@/lib/isf/isfEngine';
-import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2 } from '@/lib/isf/isfEngineV2_2';
+import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2, normalizeFindingSeverity } from '@/lib/isf/isfEngineV2_2';
 import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
 import {
   initializeProcessingStages,
@@ -1600,6 +1600,35 @@ export async function POST(req: Request) {
               .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]');
           }
 
+          // ── Normalização de severidade pós-ISF (regra de usucapião → Crítico) ──
+          parsedProblemas = parsedProblemas.map(normalizeFindingSeverity);
+
+          // ── Módulo de regras automáticas (matricula_individual) ──
+          let matriculaRulesResult: import('@/lib/isf/matriculaRules').MatriculaRulesResult | null = null;
+          if (selectedModules.includes('matricula_individual')) {
+            try {
+              const { runMatriculaRules } = await import('@/lib/isf/matriculaRules');
+              matriculaRulesResult = runMatriculaRules(markdownResponse, parsedProblemas, parsedDocumentosFaltantes);
+              // Merge alertas de regra com parsedProblemas (sem duplicar)
+              for (const alerta of matriculaRulesResult.alertas_regra) {
+                const jaExiste = parsedProblemas.some((p: {titulo?: string}) =>
+                  (p.titulo || '').toLowerCase().includes((alerta.titulo || '').toLowerCase().slice(0, 20))
+                );
+                if (!jaExiste) {
+                  parsedProblemas.push({
+                    titulo: alerta.titulo,
+                    criticidade: alerta.criticidade,
+                    descricao: alerta.descricao,
+                    eixo: alerta.eixo,
+                    origem: 'regra_automatica',
+                  });
+                }
+              }
+            } catch (rulesErr) {
+              console.warn('[MatriculaRules] Erro (ignorado):', rulesErr);
+            }
+          }
+
           // ── ISF v2.2 (primário) + v2.1 (compatibilidade) ──
           let isfPayload: Record<string, unknown> = {};
           let isfError: string | null = null;
@@ -1627,7 +1656,10 @@ export async function POST(req: Request) {
                 if (inferida) {
                   const atual = (p.criticidade || '').toLowerCase().trim();
                   const isDefault = !atual || atual === 'medio' || atual === 'médio';
-                  const isLessSevere = atual === 'baixo' && (inferida === 'Crítico' || inferida === 'Alto');
+                  const isLessSevere = (
+                    (atual.replace(/[.!?,;]+$/, '') === 'baixo' && (inferida === 'Crítico' || inferida === 'Alto')) ||
+                    (atual.replace(/[.!?,;]+$/, '') === 'alto' && inferida === 'Crítico')
+                  );
                   if (isDefault || isLessSevere) {
                     p.criticidade = inferida;
                   }
@@ -1714,6 +1746,7 @@ export async function POST(req: Request) {
             ...(isfResultV2_2 ? { isf_v2_2: isfResultV2_2 } : {}),
             ...(isfResultV2_1 ? { isf_v2: isfResultV2_1 } : {}),
             ...(isfError ? { isf_v2_error: isfError } : {}),
+            ...(matriculaRulesResult ? { matricula_rules: matriculaRulesResult } : {}),
             structured_extract_source: 'local_parser',
             structured_extract_at: new Date().toISOString(),
             processing_metrics: {

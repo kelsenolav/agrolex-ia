@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from 'next/link';
 import { ShieldCheck, ArrowLeft, UploadCloud, FileText, PlusCircle, XCircle, Layers, CheckCircle2, AlertCircle, Info, ShieldAlert } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { AUDIT_MODULES, getModulePrice, buildDocumentProfile, getModuleCompatibility, calculateAuditModulesTotal } from "@/lib/auditModules";
@@ -157,21 +158,36 @@ export default function NovaAnalisePage() {
         }
       };
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('subscription_status, plan_type, trial_used, trial_analysis_id, trial_started_at, trial_ends_at, lead_id')
-        .eq('id', session.user.id)
-        .single();
-
-      const tp: TrialProfile = {
-        subscription_status: profile?.subscription_status,
-        plan_type: profile?.plan_type,
-        trial_used: profile?.trial_used,
-        trial_analysis_id: profile?.trial_analysis_id,
-        trial_started_at: profile?.trial_started_at,
-        trial_ends_at: profile?.trial_ends_at,
-        lead_id: profile?.lead_id,
+      // Perfil: fallback seguro se colunas comerciais não existirem no schema
+      let tp: TrialProfile = {
+        subscription_status: 'trial',
+        plan_type: 'trial',
+        trial_used: false,
+        trial_analysis_id: null,
+        trial_started_at: null,
+        trial_ends_at: null,
+        lead_id: null,
       };
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('subscription_status, plan_type, trial_used, trial_analysis_id, trial_started_at, trial_ends_at, lead_id')
+          .eq('id', session.user.id)
+          .single();
+        if (profile) {
+          tp = {
+            subscription_status: profile.subscription_status,
+            plan_type: profile.plan_type,
+            trial_used: profile.trial_used,
+            trial_analysis_id: profile.trial_analysis_id,
+            trial_started_at: profile.trial_started_at,
+            trial_ends_at: profile.trial_ends_at,
+            lead_id: profile.lead_id,
+          };
+        }
+      } catch {
+        // Colunas comerciais podem não existir — usar defaults trial
+      }
       setTrialProfile(tp);
 
       // SPRINT P0.2 — Buscar status do trial no marketing_leads
@@ -193,7 +209,7 @@ export default function NovaAnalisePage() {
       // Obj 1: Bloqueio (apenas se não houver saldo disponível)
       if (fetchedCredits <= 0) {
         setTrialBlocked(true);
-        setTrialBlockReasonState('Você não possui saldo de páginas. Para continuar utilizando o AgroLex, adquira créditos ou assine um plano.');
+        setTrialBlockReasonState('Você não possui saldo de páginas. Para continuar utilizando o AgrolexI, adquira créditos ou assine um plano.');
         setPageReady(true);
         
         // Telemetria: trial_blocked e upgrade_cta_view
@@ -690,8 +706,7 @@ export default function NovaAnalisePage() {
       <nav className="bg-brand-green text-white shadow-md">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
-            <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">AgroLex</span>
+            <Logo size="sm" className="text-white" />
           </Link>
           <div className="flex gap-4 items-center">
             <span className="text-sm bg-white/10 px-3 py-1.5 rounded-lg border border-white/20 font-bold flex items-center gap-1.5 text-brand-gold">
@@ -714,7 +729,7 @@ export default function NovaAnalisePage() {
               <ShieldAlert size={40} className="text-amber-600" />
             </div>
             <h1 className="text-2xl font-extrabold text-gray-800 mb-3">Saldo Insuficiente</h1>
-            <p className="text-gray-600 mb-8 max-w-md mx-auto">Para continuar utilizando o AgroLex e processar matrículas, adquira créditos ou assine um plano.</p>
+            <p className="text-gray-600 mb-8 max-w-md mx-auto">Para continuar utilizando o AgrolexI e processar matrículas, adquira créditos ou assine um plano.</p>
             <Link
               href="/dashboard/planos"
               onClick={async () => {
@@ -1027,7 +1042,7 @@ export default function NovaAnalisePage() {
                       🎁 Primeira Auditoria 100% Gratuita
                     </p>
                     <p className="text-sm text-gray-600 mt-2 font-medium">
-                      O AgroLex processará o documento enviado sem custo algum. Nenhuma cobrança ou cartão de crédito será solicitado.
+                      O AgrolexI processará o documento enviado sem custo algum. Nenhuma cobrança ou cartão de crédito será solicitado.
                     </p>
                   </>
                 ) : (

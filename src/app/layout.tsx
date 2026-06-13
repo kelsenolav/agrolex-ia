@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgroLex | Inteligência Artificial para o Agronegócio",
+  title: "AgrolexI | Inteligência Artificial para o Agronegócio",
   description: "Análise fundiária e documental com Inteligência Artificial.",
 };
 

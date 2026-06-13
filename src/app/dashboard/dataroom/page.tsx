@@ -4,8 +4,8 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { 
-  ShieldCheck, 
-  ArrowLeft, 
+  ShieldCheck,
+  ArrowLeft,
   UploadCloud, 
   FileText, 
   Lock, 
@@ -20,6 +20,7 @@ import {
   History
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import Logo from '@/components/Logo';
 import DocumentFolderCard from '@/components/dataroom/DocumentFolderCard';
 import AlertsPanel, { ExpirationAlert } from '@/components/dataroom/AlertsPanel';
 import { Bell } from 'lucide-react';
@@ -234,8 +235,7 @@ export default function DataRoomPage() {
       <nav className="bg-brand-green text-white shadow-md">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
-            <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">AgroLex</span>
+            <Logo size="sm" className="text-white" />
           </Link>
           <div className="flex gap-4 items-center">
             <span className="text-sm font-medium">Olá, {userName}</span>
@@ -402,7 +402,7 @@ export default function DataRoomPage() {
           <div>
             <h4 className="text-sm font-bold text-gray-800 mb-1">Governança e Criptografia do Data Room Forense</h4>
             <p className="text-xs text-gray-600 leading-relaxed">
-              Todos os documentos armazenados no AgroLex são processados por meio de canais de criptografia de ponta a ponta (AES-256) e armazenados com redundância sistêmica. As informações de risco extraídas das peças ambientais e certidões auxiliam na consolidação jurídica do seu imóvel para fins de herança, garantias bancárias ou diligência de compra e venda.
+              Todos os documentos armazenados no AgrolexI são processados por meio de canais de criptografia de ponta a ponta (AES-256) e armazenados com redundância sistêmica. As informações de risco extraídas das peças ambientais e certidões auxiliam na consolidação jurídica do seu imóvel para fins de herança, garantias bancárias ou diligência de compra e venda.
             </p>
           </div>
         </div>

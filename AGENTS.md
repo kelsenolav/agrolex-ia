@@ -3,25 +3,45 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 13/06/2026
-- **Bloco**: Deploy em produção — commit `e71a1c38` + vercel prod
+- **Bloco**: Rebrand AgroLex → AgrolexI + motor ISF v2.2 + módulo matricula_individual
+- **Arquivos criados**:
+  - `src/components/Logo.tsx` — componente reutilizável com logo + texto "AgrolexI"
+  - `src/lib/isf/matriculaRules.ts` — 7 regras automáticas para módulo matricula_individual
+  - `public/agrolexi-logo.png` — logo AgrolexI sem fundo
+  - `public/Logo fundo branco.png` — logo AgrolexI com fundo branco
 - **Arquivos alterados**:
-  - `src/app/api/analyze/route.ts` — +32/−18 linhas (travamento forceRetry, correção mapeamento faixas v2.2, remoção import fantasma)
-  - `src/components/isf/ISFExplainer.tsx` — +14/−7 linhas (expansão keywords client-side, normalização NFD, inversão prioridade isfAchados)
+  - Todos os navbars, títulos e textos visíveis: "AgroLex" → "AgrolexI"
+  - `src/app/layout.tsx` — título da aba do browser
+  - `src/app/page.tsx` — landing page (navbar, footer, textos de marketing)
+  - `src/app/(auth)/login/page.tsx`, `cadastro/page.tsx` — logos nas telas de auth
+  - `src/app/dashboard/*.tsx`, `src/app/admin/leads/page.tsx` — navbars dos dashboards
+  - `src/app/dashboard/resultado/page.tsx` — capa PDF, rodapé e textos do laudo
+  - `src/lib/isf/isfEngine.ts` — usucapião multi-eixo (DOM+LIT+POS)
+  - `src/lib/isf/isfEngineV2_2.ts` — strip trailing punctuation na criticidade
+  - `src/lib/auditPromptBuilder.ts` — instrução anti-INCRA sem documento probatório
+  - `src/types/analise.ts` — matricula_rules no tipo AnalysisFindings
+  - `src/app/api/analyze/route.ts` — integração MatriculaRules + normalizeFindingSeverity
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (✓), `npm test` (592/592 — 22 suítes, ✓), `npm run build` (32 rotas, ✓)
+- **Deploy em produção**: **PENDENTE** — aguardando autorização do usuário
+
+---
+
+- **Data**: 13/06/2026
+- **Bloco**: Deploy em produção — commit `f8daaab9` + vercel prod (correção ISF v2.2 — score 42 fixo)
+- **Arquivos alterados**:
+  - `src/app/api/analyze/route.ts` — +143/−96 linhas (mapeamento faixas v2.2, DEFAULT_NEUTRO 40, sincronização criticidade, trava global)
+  - `src/lib/isf/isfEngineV2_2.ts` — +143/−96 linhas (mesmo conjunto de alterações)
+- **Motivação**: Análises novas retornavam score fixo 42 — o commit `e71a1c38` que corrigiu o mapeamento de faixas v2.2 e o `DEFAULT_NEUTRO` não havia sido deployado em produção.
 - **Rotas afetadas**: `/api/analyze`, `/dashboard/resultado`
 - **Alterações implementadas**:
-  1. Commit `e71a1c38` — "fix(ISF v2.2): travamento forceRetry, keywords client-side expandidas e inversao prioridade isfAchados"
+  1. Commit `f8daaab9` — "fix(ISF v2.2): mapeamento de faixas e ajustes locais" (inclui alterações do `fc1c81b9` + ajustes locais não commitados)
   2. Push para `origin/stable/rebuild-beta-01-laudo-compartilhavel`
-  3. Nova trava anti-reprocessamento: `retryExhausted` sem `forceRetry` → HTTP 400
-  4. Correção do `retryStartState`: reset correto no forceRetry (antes ignorava)
-  5. Adicionado `muito_seguro` ao mapeamento de faixas v2.2 → coluna CHECK constraint
-  6. Correção de ternário no `isf_faixa` (branches duplicadas de `isfResultV2_2`)
-  7. Keywords client-side (`classificarEixoCliente`) expandidas massivamente e alinhadas com server-side (`classificarEixo` em isfEngine.ts)
-  8. Normalização NFD + diacríticos + ç→c para matching robusto de keywords
-  9. Inversão de prioridade: `isfAchados` (server-classified) agora é fonte primária; `problemasFallback` virou fallback real
-- **Validações**: `npm run build` (32 rotas, ✓), `npm run lint` (0 erros, ✓), `npm test` (582/582 — 22 suítes, ✓)
+  3. Sincronização da criticidade inferida dos achados com o score ISF via backpropagation
+  4. DEFAULT_NEUTRO alterado para 40 (Alto Risco — sem presunção de segurança)
+  5. Trava global por quantidade de críticos (≥3 críticos → teto 39, ≥5 críticos → teto 24)
+- **Validações**: `npm run build` (32 rotas, ✓), `npm run lint` (0 erros, ✓), `npm test` (584/584 — 22 suítes, ✓)
 - **Deploy em produção**: **EFETUADO** com `vercel --prod --yes` em 1m
-- **URL validada**: https://agrolex-ia-qx32.vercel.app
-- **Problemas restantes**: Nenhum.
+- **URL validada**: https://agrolex-ia-qx32.vercel.app (HTTP 200)
 
 ---
 

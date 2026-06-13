@@ -672,7 +672,7 @@ export function inferirPontuacoesDeAchados(
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[ç]/g, 'c');
 
-    const criticidade = (problema.criticidade || 'medio').toLowerCase().trim();
+    const criticidade = (problema.criticidade || 'medio').toLowerCase().trim().replace(/[.!?,;]+$/, '');
     // Usar o impacto original (negativo) para o mapa reverso, o valor absoluto para dedução
     const impactoOriginal = IMPACTO_POR_CRITICIDADE[criticidade] ?? -15;
     const impacto = Math.abs(impactoOriginal);
@@ -755,4 +755,53 @@ export function inferirPontuacoesDeAchados(
   }
 
   return { pontuacoes: resultado, criticidadeInferida };
+}
+
+// ─── NORMALIZAÇÃO DE SEVERIDADE — REGRA DE USUCAPIÃO ─────────────────
+
+/** Códigos que forçam criticidade CRÍTICA independente do que a IA retornar */
+const USUCAPIAO_CRITICAL_TRIGGERS = new Set([
+  'JUDICIAL_USUCAPIAO_AVERBADA',
+  'ACAO_USUCAPIAO_AVERBADA',
+  'USUCAPIAO_ATIVA',
+]);
+
+const USUCAPIAO_REGEX = /usucapi[aã]o/i;
+
+interface FindingLike {
+  code?: string;
+  titulo?: string;
+  title?: string;
+  label?: string;
+  descricao?: string;
+  description?: string;
+  evidence?: string;
+  criticidade?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Força criticidade = "Crítico" para achados que mencionam ação de usucapião
+ * averbada/ativa sobre o imóvel. Aplicar após cálculo ISF e antes da persistência/UI.
+ *
+ * Regra de negócio: usucapião de terceiro sobre o imóvel é risco máximo.
+ * A criticidade exibida deve ser CRÍTICO, não ALTO ou MÉDIO.
+ */
+export function normalizeFindingSeverity<T extends FindingLike>(finding: T): T {
+  const code = String(finding.code ?? '').trim().toUpperCase();
+  const titulo = String(finding.titulo ?? finding.title ?? finding.label ?? '').trim();
+  const descricao = String(finding.descricao ?? finding.description ?? finding.evidence ?? '').trim();
+
+  const isUsucapiao =
+    USUCAPIAO_CRITICAL_TRIGGERS.has(code) ||
+    USUCAPIAO_REGEX.test(code) ||
+    USUCAPIAO_REGEX.test(titulo) ||
+    USUCAPIAO_REGEX.test(descricao);
+
+  if (!isUsucapiao) return finding;
+
+  return {
+    ...finding,
+    criticidade: 'Crítico',
+  };
 }

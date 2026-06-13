@@ -282,6 +282,15 @@ export function extrairImpacto(problema: ProblemaEntrada): number {
   return IMPACTO_POR_CRITICIDADE[criticidade] ?? -15; // médio como fallback
 }
 
+/** Eixos que um achado de usucapião afeta simultaneamente */
+const USUCAPIAO_EIXOS: Eixo[] = ['DOM', 'LIT', 'POS'];
+const USUCAPIAO_RE = /usucapi[aã]o/i;
+
+function isUsucapiaoAchado(problema: ProblemaEntrada): boolean {
+  const texto = [problema.titulo || '', problema.descricao || ''].join(' ');
+  return USUCAPIAO_RE.test(texto);
+}
+
 export function calcularEixo(
   problemas: ProblemaEntrada[],
   eixo: Eixo
@@ -290,9 +299,14 @@ export function calcularEixo(
   let achados = 0;
 
   for (const problema of problemas) {
-    const eixoClassificado = classificarEixo(problema);
-    if (eixoClassificado === eixo) {
-      const impacto = Math.abs(extrairImpacto(problema));
+    const impacto = Math.abs(extrairImpacto(problema));
+    // Usucapião afeta DOM + LIT + POS simultaneamente (não só o eixo vencedor)
+    if (isUsucapiaoAchado(problema)) {
+      if (USUCAPIAO_EIXOS.includes(eixo)) {
+        somaImpactos += impacto;
+        achados++;
+      }
+    } else if (classificarEixo(problema) === eixo) {
       somaImpactos += impacto;
       achados++;
     }

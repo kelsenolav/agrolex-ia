@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldAlert, ArrowLeft, Search, Filter, ShieldCheck, Download, RefreshCw, Layers } from 'lucide-react';
+import { ShieldAlert, ArrowLeft, Search, Filter, Download, RefreshCw, Layers } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { supabase } from '@/lib/supabase';
 import MetricsGrid from '@/components/admin/MetricsGrid';
 
@@ -197,8 +198,8 @@ export default function AdminDashboardPage() {
       <nav className="bg-brand-green text-white shadow-md">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold hover:scale-105 transition-transform">
-            <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">AgroLex Admin</span>
+            <Logo size="sm" className="text-white" />
+            <span className="text-xl font-bold text-white ml-1">Admin</span>
           </Link>
           <div className="flex gap-4 items-center">
             <span className="text-sm font-medium">Olá, {userName}</span>

@@ -21,7 +21,25 @@ function countMatriculas(documents: AuditPromptDocument[]): number {
 const MODULE_INSTRUCTIONS: Record<string, string> = {
   matricula_individual: `
 MÓDULO: MATRÍCULA INDIVIDUAL
-Realize a auditoria de uma única matrícula imobiliária. Identifique: dados do imóvel, proprietário atual, cadeia de transmissões (se houver), ônus, restrições e inconsistências internas.
+Realize a auditoria de uma única matrícula imobiliária rural.
+
+EXTRAÇÃO OBRIGATÓRIA (extraia e registre SEPARADAMENTE cada campo):
+- Número da matrícula e cartório (nome completo com comarca e UF)
+- Área NUMÉRICA (ex: "122,54 ha") e área POR EXTENSO (ex: "cento e vinte e dois hectares e cinquenta e quatro centiares") — extrair em campos distintos
+- Datum geodésico (SIRGAS 2000 ou SAD-69 — informe expressamente qual consta)
+- CCIR: número e EXERCÍCIO (ex: "2003/2004/2005")
+- Data de emissão desta certidão e há quantos anos foi emitida
+- Natureza REAL do instrumento registrado (permuta, compra e venda, doação, dação, etc.) — verifique se coincide com o tipo do ato (R-1 Compra e Venda vs. escritura de permuta)
+- Todos os atos registrais (R-N e AV-N): tipo, instrumento, data, partes
+- Proprietário atual + cônjuge + regime de bens
+
+VERIFICAÇÕES OBRIGATÓRIAS:
+- Verifique se o tipo do ato registral (ex: R-1 Compra e Venda) é coerente com o instrumento descrito (ex: escritura de permuta, doação). Se houver divergência, registre como achado de vício registral.
+- Verifique se o CCIR apresentado está atualizado para o exercício do ano corrente. Se não estiver, registre como achado.
+- Informe a data de emissão desta certidão e calcule há quantos anos foi emitida. Se superior a 1 ano, registre como recomendação de atualização.
+- NUNCA infira origem INCRA sem documento probatório. Se o título originário não foi apresentado, registre como achado: "título originário não apresentado — existência de cláusulas resolutivas não verificável".
+
+Identifique: dados do imóvel, proprietário atual, cadeia de transmissões (se houver), ônus, restrições e inconsistências internas.
 Verifique: CNM, cartório, área, continuidade registral, regime de bens, atos de registro/averbação e validade aparente.
 Apresente: identificação, dados extraídos, linha do tempo resumida, achados, documentos faltantes e recomendações.
 Diferencie fato de indício. Use prudência jurídica.`,
@@ -239,3 +257,4 @@ Somente inclua, na última linha, o marcador COORDS: lat, lng se coordenadas exa
 
 AGORA, GERE O PARECER TÉCNICO FORENSE.`;
 }
+

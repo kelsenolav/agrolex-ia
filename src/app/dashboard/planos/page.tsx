@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, ArrowLeft, CheckCircle2, Crown, Lock } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Crown, Lock } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { supabase } from '@/lib/supabase';
 import { PLANS, listPlans, type Plan, type PlanType, EXTRA_PACKS, toBillingPlanKey } from '@/lib/commercial/plans';
 import { createCommercialEvent, buildMetadataWithEvent } from '@/lib/commercial/scoring';
@@ -81,25 +82,45 @@ export default function PlanosPage() {
         return;
       }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('plan_type')
-        .eq('id', session.user.id)
-        .single();
-
-      if (profile) {
-        if (profile.plan_type && profile.plan_type in PLANS) {
-          setCurrentPlan(profile.plan_type as PlanType);
+      // Perfil: fallback seguro se coluna plan_type não existir
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('plan_type')
+          .eq('id', session.user.id)
+          .single();
+        if (profile) {
+          if (profile.plan_type && profile.plan_type in PLANS) {
+            setCurrentPlan(profile.plan_type as PlanType);
+          }
         }
+      } catch {
+        // Colunas comerciais podem não existir — manter default trial
       }
 
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('id')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
-      if (lead) {
-        setLeadId(lead.id);
+      // Lead: PK real = lead_id (não id). Fallback para marketing_leads se leads não existir.
+      try {
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('lead_id')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        if (lead?.lead_id) {
+          setLeadId(lead.lead_id);
+        }
+      } catch {
+        try {
+          const { data: mLead } = await supabase
+            .from('marketing_leads')
+            .select('id')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+          if (mLead?.id) {
+            setLeadId(mLead.id);
+          }
+        } catch {
+          // Nenhuma tabela de leads existe
+        }
       }
 
       setLoading(false);
@@ -139,8 +160,7 @@ export default function PlanosPage() {
       <nav className="bg-brand-green text-white shadow-md">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold">
-            <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">AgroLex</span>
+            <Logo size="sm" className="text-white" />
           </Link>
         </div>
       </nav>

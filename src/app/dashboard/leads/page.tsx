@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  ShieldCheck,
   ArrowLeft,
   Users,
   TrendingUp,
@@ -17,6 +16,7 @@ import {
   Filter,
   Flame,
 } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { supabase } from '@/lib/supabase';
 import { calculateInterestScore, getCommercialScoreBadge } from '@/lib/commercial/scoring';
 
@@ -355,8 +355,7 @@ export default function DashboardLeadsPage() {
             href="/dashboard"
             className="flex items-center gap-2 text-brand-gold"
           >
-            <ShieldCheck size={28} />
-            <span className="text-xl font-bold text-white">AgroLex</span>
+            <Logo size="sm" className="text-white" />
           </Link>
           <span className="text-xs bg-brand-gold/20 text-brand-gold px-3 py-1 rounded-full font-bold uppercase tracking-wider">
             Admin

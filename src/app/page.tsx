@@ -2,29 +2,30 @@
 
 import Link from 'next/link';
 import { ShieldCheck, FileText, TrendingUp, ArrowRight, CheckCircle2, ChevronRight, Lock, AlertTriangle, MapPin, Clock, Users, BarChart3, Search, Scale, Landmark, ChevronDown, Upload, Eye, FileSearch, HelpCircle, Star, Target, XCircle, Zap, Layers, BookOpen, GitBranch, Globe, Award, UserPlus, Send, BarChart2 } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { motion, Variants } from 'framer-motion';
 import { useState } from 'react';
 
 const faqData = [
   {
-    q: "O AgroLex garante que a propriedade não tem risco?",
-    a: "Não. Nenhuma análise documental pode garantir 100% de segurança. O AgroLex organiza os documentos enviados, aplica critérios técnicos e ajuda a identificar sinais de risco. A decisão final é sempre sua — e, quando houver indícios relevantes, recomendamos consultar um profissional especializado."
+    q: "O AgrolexI garante que a propriedade não tem risco?",
+    a: "Não. Nenhuma análise documental pode garantir 100% de segurança. O AgrolexI organiza os documentos enviados, aplica critérios técnicos e ajuda a identificar sinais de risco. A decisão final é sempre sua — e, quando houver indícios relevantes, recomendamos consultar um profissional especializado."
   },
   {
     q: "Posso confiar no resultado da análise?",
-    a: "O AgroLex segue uma metodologia documental estruturada em camadas, aplicando critérios técnicos sobre as informações presentes nos arquivos enviados. O resultado ajuda a direcionar sua atenção para pontos sensíveis, mas não substitui uma auditoria presencial ou a análise de um advogado quando o risco for relevante."
+    a: "O AgrolexI segue uma metodologia documental estruturada em camadas, aplicando critérios técnicos sobre as informações presentes nos arquivos enviados. O resultado ajuda a direcionar sua atenção para pontos sensíveis, mas não substitui uma auditoria presencial ou a análise de um advogado quando o risco for relevante."
   },
   {
-    q: "Que tipos de risco o AgroLex pode indicar?",
+    q: "Que tipos de risco o AgrolexI pode indicar?",
     a: "A análise pode indicar inconsistências em matrículas, lacunas na cadeia dominial, divergências entre documentos, sinais de ônus ou restrições, e ausência de documentos importantes. Cada sinal de alerta é contextualizado para você entender o que pode significar no seu caso."
   },
   {
     q: "A análise considera dados de órgãos oficiais?",
-    a: "O AgroLex analisa exclusivamente os documentos que você envia. Com base nas informações presentes nesses arquivos, o sistema cruza dados entre matrículas, títulos, CCIR, CAR e outros documentos para apontar divergências ou inconsistências. Não há consulta automática a bases externas governamentais."
+    a: "O AgrolexI analisa exclusivamente os documentos que você envia. Com base nas informações presentes nesses arquivos, o sistema cruza dados entre matrículas, títulos, CCIR, CAR e outros documentos para apontar divergências ou inconsistências. Não há consulta automática a bases externas governamentais."
   },
   {
     q: "O que fazer se a análise apontar um risco?",
-    a: "Se o relatório indicar sinais de alerta, recomendamos consultar um advogado ou profissional especializado em direito imobiliário rural para uma avaliação aprofundada. O AgroLex é uma ferramenta de análise documental inicial — o parecer definitivo cabe a um especialista."
+    a: "Se o relatório indicar sinais de alerta, recomendamos consultar um advogado ou profissional especializado em direito imobiliário rural para uma avaliação aprofundada. O AgrolexI é uma ferramenta de análise documental inicial — o parecer definitivo cabe a um especialista."
   },
   {
     q: "Preciso de um advogado para usar a plataforma?",
@@ -145,8 +146,7 @@ export default function Home() {
       >
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <div className="text-2xl font-black flex items-center gap-2 text-white">
-            <ShieldCheck size={32} className="text-brand-gold" />
-            <span className="tracking-tight">AgroLex</span>
+            <Logo size="md" className="text-white" />
           </div>
           <nav className="hidden md:flex gap-8">
             <Link href="#riscos" className="text-gray-300 hover:text-brand-gold transition-colors font-medium text-sm tracking-wide">RISCOS</Link>
@@ -189,7 +189,7 @@ export default function Home() {
                 descubra o que os documentos podem estar escondendo
               </motion.h1>
               <motion.p variants={itemVariants} className="text-lg md:text-xl mb-6 text-gray-300 font-light max-w-2xl leading-relaxed">
-                Em poucos minutos, o AgroLex organiza matrículas, títulos, cadeia de proprietários e documentos enviados para apontar sinais de risco, inconsistências e pontos que merecem atenção antes da decisão.
+                Em poucos minutos, o AgrolexI organiza matrículas, títulos, cadeia de proprietários e documentos enviados para apontar sinais de risco, inconsistências e pontos que merecem atenção antes da decisão.
               </motion.p>
 
               {/* Micro-benefícios */}
@@ -226,7 +226,7 @@ export default function Home() {
                 <div className="flex flex-col gap-1 text-center sm:text-left">
                   <span className="inline-flex items-center justify-center sm:justify-start gap-1.5 text-emerald-400/90 text-xs font-semibold">
                     <CheckCircle2 size={13} className="flex-shrink-0" />
-                    Teste o AgroLex com 1 matrícula simples. Sem compromisso.
+                    Teste o AgrolexI com 1 matrícula simples. Sem compromisso.
                   </span>
                   <span className="inline-flex items-center justify-center sm:justify-start gap-1.5 text-brand-gold/80 text-[10px] font-black uppercase tracking-widest">
                     <Clock size={11} /> Resultado em até 5 min · Prévia inteligente grátis
@@ -266,7 +266,7 @@ export default function Home() {
                     </svg>
                   </div>
                   <div>
-                    <p className="text-white font-bold text-lg">Score AgroLex</p>
+                    <p className="text-white font-bold text-lg">Score AgrolexI</p>
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-yellow-900/30 border border-yellow-500/30 rounded-full text-yellow-300 text-xs font-bold">
                       <AlertTriangle size={12} /> Risco Médio
                     </span>
@@ -423,7 +423,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ===== 8 CARDS — O QUE O AGROLEX ANALISA ===== */}
+      {/* ===== 8 CARDS — O QUE O AgrolexI ANALISA ===== */}
       <section className="py-24 px-4 relative z-10 bg-gradient-to-b from-[#051F15] to-[#03150D]">
         <div className="container mx-auto max-w-7xl">
           <div className="text-center mb-16">
@@ -432,9 +432,9 @@ export default function Home() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
             >
-              <h2 className="text-3xl md:text-5xl font-bold mb-4">O que o AgroLex analisa</h2>
+              <h2 className="text-3xl md:text-5xl font-bold mb-4">O que o AgrolexI analisa</h2>
               <p className="text-gray-400 text-lg max-w-4xl mx-auto">
-                Cada documento pode esconder detalhes que mudam o rumo de uma negociação. O AgroLex ajuda você a enxergar esses sinais antes de decidir.
+                Cada documento pode esconder detalhes que mudam o rumo de uma negociação. O AgrolexI ajuda você a enxergar esses sinais antes de decidir.
               </p>
             </motion.div>
           </div>
@@ -460,7 +460,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ===== SCORE AGROLEX (P0) ===== */}
+      {/* ===== SCORE AgrolexI (P0) ===== */}
       <section id="score" className="py-24 px-4 relative z-10 bg-gradient-to-b from-[#03150D] to-[#051F15]">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-16">
@@ -563,7 +563,7 @@ export default function Home() {
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-5xl font-bold text-brand-dark mb-4">O problema quase nunca aparece na primeira leitura</h2>
             <p className="text-gray-500 text-lg max-w-3xl mx-auto">
-              Uma matrícula aparentemente regular pode esconder lacunas, divergências e sinais de alerta. O AgroLex organiza essas informações para você decidir com mais segurança.
+              Uma matrícula aparentemente regular pode esconder lacunas, divergências e sinais de alerta. O AgrolexI organiza essas informações para você decidir com mais segurança.
             </p>
           </div>
 
@@ -658,7 +658,7 @@ export default function Home() {
             
             {[
               { num: "1", icon: <Upload className="text-brand-gold" size={28} />, title: "Envie os documentos", desc: "Você envia matrículas, títulos e documentos do imóvel.", result: "Upload em segundos" },
-              { num: "2", icon: <Layers className="text-brand-gold" size={28} />, title: "O AgroLex organiza os sinais de risco", desc: "O sistema analisa as informações em camadas e destaca inconsistências relevantes.", result: "Análise em camadas" },
+              { num: "2", icon: <Layers className="text-brand-gold" size={28} />, title: "O AgrolexI organiza os sinais de risco", desc: "O sistema analisa as informações em camadas e destaca inconsistências relevantes.", result: "Análise em camadas" },
               { num: "3", icon: <FileText className="text-brand-gold" size={28} />, title: "Você decide com mais clareza", desc: "Receba uma visão objetiva para comprar, vender, regularizar ou aprofundar a análise.", result: "Relatório objetivo" }
             ].map((step, i) => (
               <motion.div
@@ -691,12 +691,12 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Comparativo: Tradicional vs AgroLex */}
+          {/* Comparativo: Tradicional vs AgrolexI */}
           <div className="mb-20">
             <div className="text-center mb-10">
-              <h2 className="text-3xl md:text-4xl font-bold text-brand-dark mb-3">Por que o AgroLex é diferente</h2>
+              <h2 className="text-3xl md:text-4xl font-bold text-brand-dark mb-3">Por que o AgrolexI é diferente</h2>
               <p className="text-gray-500 text-lg max-w-3xl mx-auto">
-                Enquanto o método tradicional depende de horas de trabalho manual, o AgroLex entrega resultados em minutos.
+                Enquanto o método tradicional depende de horas de trabalho manual, o AgrolexI entrega resultados em minutos.
               </p>
             </div>
 
@@ -732,7 +732,7 @@ export default function Home() {
                 </ul>
               </motion.div>
 
-              {/* AgroLex */}
+              {/* AgrolexI */}
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 whileInView={{ opacity: 1, x: 0 }}
@@ -744,7 +744,7 @@ export default function Home() {
                     <Award size={22} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-white">AgroLex</h3>
+                    <h3 className="text-lg font-bold text-white">AgrolexI</h3>
                     <p className="text-gray-400 text-xs">Inteligência Fundiária</p>
                   </div>
                 </div>
@@ -867,8 +867,7 @@ export default function Home() {
           <div className="grid md:grid-cols-3 gap-10 mb-12">
             <div>
               <div className="text-2xl font-black flex items-center gap-2 text-white mb-4">
-                <ShieldCheck size={28} className="text-brand-gold" />
-                <span className="tracking-tight">AgroLex</span>
+                <Logo size="sm" className="text-white" />
               </div>
               <p className="text-gray-400 text-sm leading-relaxed">
                 Inteligência Artificial especializada em segurança fundiária. Auditoria automatizada de imóveis rurais para proteger seu patrimônio.
@@ -886,7 +885,7 @@ export default function Home() {
             <div>
               <h4 className="text-sm font-bold text-gray-300 uppercase tracking-wider mb-4">Contato</h4>
               <ul className="space-y-2 text-gray-500 text-sm">
-                <li>contato@agrolex.com.br</li>
+                <li>contato@AgrolexI.com.br</li>
                 <li className="pt-4">
                   <span className="inline-flex items-center gap-1.5 text-gray-500 text-xs">
                     <Lock size={12} /> Criptografado TLS 1.3 · LGPD
@@ -896,7 +895,7 @@ export default function Home() {
             </div>
           </div>
           <div className="border-t border-white/10 pt-8 text-center">
-            <p className="text-sm text-gray-500 font-medium">© {new Date().getFullYear()} AgroLex Inteligência Fundiária. Todos os direitos reservados.</p>
+            <p className="text-sm text-gray-500 font-medium">© {new Date().getFullYear()} AgrolexI Inteligência Fundiária. Todos os direitos reservados.</p>
           </div>
         </div>
       </footer>
