@@ -47,7 +47,7 @@ export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [riskFilter, setRiskFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 5;
+  const ITEMS_PER_PAGE = 10;
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // FASE 5 — Proteção contra loop infinito no encadeamento automático
@@ -739,309 +739,170 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* BLOCO 5 — KPIs (Cards Executivos Premium) */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-10">
-          {/* Card 1 — Auditorias Realizadas */}
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Auditorias Realizadas</span>
-              <div className="p-2 bg-brand-green/10 rounded-lg">
-                <ShieldCheck size={18} className="text-brand-green" />
-              </div>
+        {/* ─── PAINEL DE INTELIGÊNCIA COMPACTO ───────────────────────────── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+
+          {/* Card 1 — Análises */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Análises</span>
+              <ShieldCheck size={15} className="text-brand-green" />
             </div>
-            <p className="text-3xl font-black text-gray-800">{analisesConcluidas}</p>
-            <div className="flex items-center gap-1 text-xs text-gray-400">
-              <span className={`inline-block w-1.5 h-1.5 rounded-full ${analisesEmAndamento > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
-              {analisesEmAndamento > 0 ? `${analisesEmAndamento} em andamento` : 'Todas concluídas'}
+            <p className="text-2xl font-black text-gray-800">{analisesConcluidas}</p>
+            <span className="text-[10px]">
+              {analisesEmAndamento > 0
+                ? <span className="text-amber-500 font-bold">{analisesEmAndamento} em andamento</span>
+                : <span className="text-gray-400">Todas concluídas</span>}
+            </span>
+          </div>
+
+          {/* Card 2 — Riscos */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Riscos</span>
+              <AlertTriangle size={15} className={totalRiscos > 0 ? 'text-red-500' : 'text-green-500'} />
+            </div>
+            <p className="text-2xl font-black text-gray-800">{totalRiscos}</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {riscosCriticos > 0 && <span className="text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">{riscosCriticos} crítico</span>}
+              {riscosAltos > 0 && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">{riscosAltos} alto</span>}
+              {riscosCriticos === 0 && riscosAltos === 0 && <span className="text-[10px] text-green-600">Sem riscos críticos</span>}
             </div>
           </div>
 
-          {/* Card 2 — Riscos Identificados */}
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Riscos Identificados</span>
-              <div className={`p-2 ${totalRiscos > 0 ? 'bg-red-100' : 'bg-green-100'} rounded-lg`}>
-                <AlertTriangle size={18} className={totalRiscos > 0 ? 'text-red-600' : 'text-green-600'} />
-              </div>
+          {/* Card 3 — Saldo */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Saldo</span>
+              <Layers size={15} className={dynamicBalance !== null && dynamicBalance < 0 ? 'text-red-500' : 'text-blue-500'} />
             </div>
-            <p className="text-3xl font-black text-gray-800">{totalRiscos}</p>
-            <div className="flex items-center gap-1 text-xs text-gray-400">
-              <span className="text-red-600 font-bold">{riscosAltos} alto</span>
-              {riscosCriticos > 0 && <span className="text-red-700 font-bold ml-1">/ {riscosCriticos} crítico</span>}
-            </div>
-          </div>
-
-          {/* Card 3 — Consumo Mensal */}
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Saldo de Páginas</span>
-              <div className={`p-2 ${dynamicBalance !== null && dynamicBalance < 0 ? 'bg-red-100' : 'bg-blue-100'} rounded-lg`}>
-                <Layers size={18} className={dynamicBalance !== null && dynamicBalance < 0 ? 'text-red-600' : 'text-blue-600'} />
-              </div>
-            </div>
-            {dynamicBalance === null ? (
-              <p className="text-xl font-bold text-gray-500">
-                {subError ? 'Não foi possível carregar' : 'Carregando...'}
-              </p>
-            ) : (
-              <p className={`text-2xl font-black font-sans ${dynamicBalance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                {dynamicBalance} pág(s) {dynamicBalance < 0 ? 'de déficit' : 'restando'}
-              </p>
-            )}
-            <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mt-1">
-              <div 
-                className={`${dynamicBalance !== null && dynamicBalance < 0 ? 'bg-red-500 animate-pulse' : 'bg-brand-green'} h-full rounded-full transition-all duration-500`} 
+            <p className={`text-2xl font-black ${dynamicBalance !== null && dynamicBalance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+              {dynamicBalance === null ? '—' : dynamicBalance}
+              <span className="text-xs font-normal text-gray-400 ml-1">pág.</span>
+            </p>
+            <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${dynamicBalance !== null && dynamicBalance < 0 ? 'bg-red-500 animate-pulse' : 'bg-brand-green'}`}
                 style={{ width: `${Math.min(100, (Math.max(0, dynamicBalance ?? 0) / (planLimits[planType] || 10)) * 100)}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">
-              <span>Plano: {planType === 'internal_test' ? 'INTERNO DE TESTES' : planType.toUpperCase()}</span>
-              <Link href="/dashboard/planos" className="text-brand-gold hover:underline font-bold">Comprar páginas</Link>
-            </div>
+            <Link href="/dashboard/planos" className="text-[10px] text-brand-gold hover:underline font-bold">
+              {planType === 'internal_test' ? 'INTERNO' : planType.toUpperCase()} · Comprar páginas →
+            </Link>
           </div>
 
-          {/* Card 4 — Segurança Fundiária (ISF v2) */}
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-2 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">SEGURANÇA FUNDIÁRIA</span>
-              <div className={`p-2 rounded-lg ${scoreMedioBgTint}`}>
-                <BarChart3 size={18} className={scoreMedioTextTint} />
-              </div>
+          {/* Card 4 — ISF Médio + distribuição */}
+          <div className={`p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5 ${scoreMedioBgTint}`}>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider opacity-60">ISF Médio</span>
+              <BarChart3 size={15} className={scoreMedioTextTint} />
             </div>
-            <p className={`text-3xl font-black ${scoreMedioTextTint}`}>
-              {scoreMedio !== null ? `${scoreMedio}/100` : '--'}
+            <p className={`text-2xl font-black ${scoreMedioTextTint}`}>
+              {scoreMedio !== null ? scoreMedio : '—'}
+              <span className="text-xs font-normal opacity-50 ml-1">/100</span>
             </p>
-            <div className="flex items-center gap-1 text-xs text-gray-400">
-              <span title="ISF (Índice de Segurança Fundiária): quanto maior o valor, maior a segurança fundiária estimada.">
-                {scoreMedioDesc}
-              </span>
+            {/* Barra de distribuição por criticidade */}
+            {analises.length > 0 && (
+              <div className="flex rounded-full overflow-hidden h-1.5 mt-0.5" title="Distribuição: vermelho=crítico, âmbar=alto, amarelo=médio, verde=baixo">
+                <div className="bg-red-500 h-full" style={{ width: `${(riscosCriticos / analises.length) * 100}%` }} />
+                <div className="bg-amber-400 h-full" style={{ width: `${(riscosAltos / analises.length) * 100}%` }} />
+                <div className="bg-yellow-300 h-full" style={{ width: `${(riscosMedios / analises.length) * 100}%` }} />
+                <div className="bg-green-400 h-full" style={{ width: `${(riscosBaixos / analises.length) * 100}%` }} />
+              </div>
+            )}
+            <span className="text-[10px] opacity-60">{scoreMedioDesc}</span>
+          </div>
+        </div>
+
+        {/* ─── FILTROS + BUSCA ─────────────────────────────────────────────── */}
+        <div className="flex flex-col gap-3 mb-4">
+          {/* Linha 1: título + search */}
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">Suas Auditorias</h2>
+              <p className="text-gray-500 text-sm">
+                {analisesFiltradas.length} registro(s){analisesFiltradas.length > 0 && ` — pág. ${paginaAtual}/${totalPaginas}`}
+              </p>
             </div>
-          </div>
-        </div>
-
-        {/* BLOCO 1 — Resumo Executivo por Risco */}
-        <div className="mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-          <div className="flex items-center gap-2 mb-4">
-            <Layers size={18} className="text-brand-green" />
-            <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">Filtrar por Risco</span>
-            <span className="text-[10px] text-gray-400 font-normal ml-1">Clique para filtrar a tabela abaixo</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            {/* Críticos */}
-            <button
-              onClick={() => { setRiskFilter('critico'); setCurrentPage(1); }}
-              className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
-                riskFilter === 'critico'
-                  ? 'border-red-500 bg-red-50 shadow-md'
-                  : 'border-red-200 bg-red-50/50 hover:border-red-400'
-              }`}
-            >
-              <span className="text-2xl font-black text-red-700">{riscosCriticos}</span>
-              <span className="text-xs font-bold text-red-600 uppercase mt-1">Críticos</span>
-              <span className="text-[10px] text-red-400 mt-0.5">{riscosCriticos === 1 ? 'análise' : 'análises'}</span>
-            </button>
-            {/* Altos */}
-            <button
-              onClick={() => { setRiskFilter('alto'); setCurrentPage(1); }}
-              className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
-                riskFilter === 'alto'
-                  ? 'border-amber-500 bg-amber-50 shadow-md'
-                  : 'border-amber-200 bg-amber-50/50 hover:border-amber-400'
-              }`}
-            >
-              <span className="text-2xl font-black text-amber-700">{riscosAltos}</span>
-              <span className="text-xs font-bold text-amber-600 uppercase mt-1">Altos</span>
-              <span className="text-[10px] text-amber-400 mt-0.5">{riscosAltos === 1 ? 'análise' : 'análises'}</span>
-            </button>
-            {/* Médios */}
-            <button
-              onClick={() => { setRiskFilter('medio'); setCurrentPage(1); }}
-              className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
-                riskFilter === 'medio'
-                  ? 'border-blue-500 bg-blue-50 shadow-md'
-                  : 'border-blue-200 bg-blue-50/50 hover:border-blue-400'
-              }`}
-            >
-              <span className="text-2xl font-black text-blue-700">{riscosMedios}</span>
-              <span className="text-xs font-bold text-blue-600 uppercase mt-1">Médios</span>
-              <span className="text-[10px] text-blue-400 mt-0.5">{riscosMedios === 1 ? 'análise' : 'análises'}</span>
-            </button>
-            {/* Baixos */}
-            <button
-              onClick={() => { setRiskFilter('baixo'); setCurrentPage(1); }}
-              className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
-                riskFilter === 'baixo'
-                  ? 'border-green-500 bg-green-50 shadow-md'
-                  : 'border-green-200 bg-green-50/50 hover:border-green-400'
-              }`}
-            >
-              <span className="text-2xl font-black text-green-700">{riscosBaixos}</span>
-              <span className="text-xs font-bold text-green-600 uppercase mt-1">Baixos</span>
-              <span className="text-[10px] text-green-400 mt-0.5">{riscosBaixos === 1 ? 'análise' : 'análises'}</span>
-            </button>
-            {/* Sem risco */}
-            <button
-              onClick={() => { setRiskFilter('sem_risco'); setCurrentPage(1); }}
-              className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md ${
-                riskFilter === 'sem_risco'
-                  ? 'border-gray-500 bg-gray-50 shadow-md'
-                  : 'border-gray-200 bg-gray-50/50 hover:border-gray-400'
-              }`}
-            >
-              <span className="text-2xl font-black text-gray-700">{semRisco}</span>
-              <span className="text-xs font-bold text-gray-600 uppercase mt-1">Sem risco</span>
-              <span className="text-[10px] text-gray-400 mt-0.5">{semRisco === 1 ? 'análise' : 'análises'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* BLOCO 2 — Semáforo Executivo (ISF v2) */}
-        <div className="mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-2xl">
-              {riscosCriticos > 0 ? '🔴' : riscosAltos > 0 ? '🟠' : riscosMedios > 0 ? '🟡' : '🟢'}
-            </span>
-            <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">Status Geral da Carteira</span>
-          </div>
-          <p className="text-sm text-gray-700">
-            {riscosCriticos > 0
-              ? '🔴 Existem análises críticas que exigem atenção imediata.'
-              : riscosAltos > 0
-                ? '🟠 Existem análises de alto risco que merecem atenção prioritária.'
-                : riscosMedios > 0
-                  ? '🟡 Existem análises com pontos relevantes de atenção.'
-                  : riscosBaixos > 0
-                    ? '🟢 Carteira com boa segurança fundiária.'
-                    : '🟢 Nenhum risco elevado identificado no momento.'}
-          </p>
-        </div>
-
-        {/* SPRINT 5 — ISF Analytics Card (bloco discreto) */}
-        {isfData && isfData.totalAnalyses > 0 && (
-          <div className="mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 size={18} className="text-brand-green" />
-              <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">ISF — Comparativo de Métricas</span>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-              <div>
-                <span className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">Análises</span>
-                <p className="text-xl font-black text-gray-800">{isfData.totalAnalyses}</p>
-              </div>
-              <div>
-                <span className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">Média ISF</span>
-                <p className="text-xl font-black text-brand-green">{isfData.averageISF}</p>
-              </div>
-              <div>
-                <span className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">Média Legado</span>
-                <p className="text-xl font-black text-gray-600">{isfData.averageLegacyScore}</p>
-              </div>
-              <div>
-                <span className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">Diferença</span>
-                <p className={`text-xl font-black ${isfData.averageDifference >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {isfData.averageDifference >= 0 ? '+' : ''}{isfData.averageDifference}
-                </p>
-              </div>
-              <div className="col-span-2 md:col-span-1">
-                <span className="text-gray-400 text-[10px] uppercase tracking-wider font-bold">Distribuição</span>
-                <div className="flex gap-2 mt-1">
-                  <span className="text-[11px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">{isfData.distribution.seguro}%</span>
-                  <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">{isfData.distribution.atencao}%</span>
-                  <span className="text-[11px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">{isfData.distribution.critico}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* BLOCO 4 — Ação Recomendada (ISF v2) */}
-        <div className="mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle size={18} className={
-              riscosCriticos > 0 ? 'text-red-600' :
-              riscosAltos > 0 ? 'text-amber-600' :
-              riscosMedios > 0 ? 'text-yellow-600' : 'text-green-600'
-            } />
-            <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">Ação Recomendada</span>
-          </div>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <p className="text-sm text-gray-700">
-              {riscosCriticos > 0
-                ? 'Existem análises críticas que exigem atuação imediata.'
-                : riscosAltos > 0
-                  ? 'Existem análises de alto risco que merecem atenção prioritária.'
-                  : riscosMedios > 0
-                    ? 'Existem análises com pontos relevantes de atenção.'
-                    : riscosBaixos > 0
-                      ? 'Carteira com boa segurança fundiária.'
-                      : 'Carteira com excelente segurança fundiária.'}
-            </p>
-            <a
-              href="#tabela-auditorias"
-              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm whitespace-nowrap ${
-                riscosCriticos > 0
-                  ? 'bg-red-600 text-white hover:brightness-110'
-                  : riscosAltos > 0
-                    ? 'bg-amber-600 text-white hover:brightness-110'
-                    : riscosMedios > 0
-                      ? 'bg-yellow-600 text-white hover:brightness-110'
-                      : 'bg-brand-green text-white hover:brightness-110'
-              }`}
-            >
-              {riscosCriticos > 0
-                ? 'Ver auditorias críticas'
-                : riscosAltos > 0
-                  ? 'Ver auditorias de alto risco'
-                  : riscosMedios > 0
-                    ? 'Ver auditorias com atenção'
-                    : 'Ver todas as auditorias'}
-              <ArrowUpRight size={14} />
-            </a>
-          </div>
-        </div>
-
-        {/* Filtros e Busca */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">Suas Auditorias</h2>
-            <p className="text-gray-500 text-sm">{analisesFiltradas.length} registro(s) encontrado(s){analisesFiltradas.length > 0 && ` — Página ${paginaAtual} de ${totalPaginas}`}</p>
-          </div>
-          <div className="flex gap-3 w-full md:w-auto">
-            <div className="relative flex-1 md:flex-none">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Buscar por propriedade..."
                 value={searchTerm}
                 onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-brand-gold"
+                className="pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-brand-gold"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold"
-            >
-              <option value="">Todos os Status</option>
-              <option value="completed">Concluído</option>
-              <option value="processing">Analisando</option>
-              <option value="pending">Pendente</option>
-              <option value="error">Falha</option>
-            </select>
-            <select
-              value={riskFilter}
-              onChange={e => { setRiskFilter(e.target.value); setCurrentPage(1); }}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-gold"
-            >
-              <option value="">Todos os Riscos</option>
-              <option value="critico">Crítico</option>
-              <option value="alto">Alto</option>
-              <option value="medio">Médio</option>
-              <option value="baixo">Baixo</option>
-              <option value="sem_risco">Sem risco</option>
-            </select>
+          </div>
+
+          {/* Linha 2: chips de risco */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Risco:</span>
+            {[
+              { value: '', label: 'Todos', count: analises.length, base: 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200', active: 'bg-gray-800 text-white border-gray-800' },
+              { value: 'critico', label: 'Crítico', count: riscosCriticos, base: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100', active: 'bg-red-600 text-white border-red-600' },
+              { value: 'alto', label: 'Alto', count: riscosAltos, base: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100', active: 'bg-amber-500 text-white border-amber-500' },
+              { value: 'medio', label: 'Médio', count: riscosMedios, base: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100', active: 'bg-yellow-500 text-white border-yellow-500' },
+              { value: 'baixo', label: 'Baixo', count: riscosBaixos, base: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100', active: 'bg-green-600 text-white border-green-600' },
+            ].map(chip => (
+              <button
+                key={chip.value}
+                onClick={() => { setRiskFilter(chip.value); setCurrentPage(1); }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all ${riskFilter === chip.value ? chip.active : chip.base}`}
+              >
+                {chip.label}
+                <span className={`text-[10px] font-black px-1 py-0.5 rounded-full min-w-[18px] text-center ${riskFilter === chip.value ? 'bg-white/25' : 'bg-black/8'}`}>
+                  {chip.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Linha 3: chips de status */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Status:</span>
+            {[
+              { value: '', label: 'Todos' },
+              { value: 'completed', label: '✓ Concluído' },
+              { value: 'processing', label: '⏳ Analisando' },
+              { value: 'pending', label: '⏸ Pendente' },
+              { value: 'error', label: '✗ Falha' },
+            ].map(chip => (
+              <button
+                key={chip.value}
+                onClick={() => { setStatusFilter(chip.value); setCurrentPage(1); }}
+                className={`px-3 py-1 rounded-full text-xs font-bold border transition-all ${statusFilter === chip.value ? 'bg-brand-green text-white border-brand-green' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+              >
+                {chip.label}
+              </button>
+            ))}
           </div>
         </div>
+
+        {/* ─── AÇÃO RECOMENDADA — inline compacta (ISF v2) ────────────────── */}
+        {analises.length > 0 && (
+          <div className={`mb-4 px-4 py-3 rounded-xl border-l-4 flex items-center justify-between gap-4 text-sm ${
+            riscosCriticos > 0 ? 'bg-red-50 border-red-500 text-red-800' :
+            riscosAltos > 0 ? 'bg-amber-50 border-amber-500 text-amber-800' :
+            riscosMedios > 0 ? 'bg-yellow-50 border-yellow-400 text-yellow-800' :
+            'bg-green-50 border-green-500 text-green-800'
+          }`}>
+            <span className="font-medium">
+              {riscosCriticos > 0 ? '🔴 Atenção: análises críticas exigem atuação imediata.'
+                : riscosAltos > 0 ? '🟠 Análises de alto risco merecem atenção prioritária.'
+                : riscosMedios > 0 ? '🟡 Existem pontos de atenção relevantes na carteira.'
+                : '🟢 Carteira com boa segurança fundiária.'}
+            </span>
+            {riscosCriticos > 0 && (
+              <button onClick={() => { setRiskFilter('critico'); setCurrentPage(1); document.getElementById('tabela-auditorias')?.scrollIntoView({ behavior: 'smooth' }); }}
+                className="whitespace-nowrap text-xs font-bold underline hover:no-underline flex-shrink-0">
+                Ver críticos →
+              </button>
+            )}
+          </div>
+        )}
+
 
         {/* Tabela de Auditorias */}
         <div id="tabela-auditorias" className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
