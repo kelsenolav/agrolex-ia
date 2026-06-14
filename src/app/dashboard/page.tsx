@@ -716,7 +716,7 @@ export default function DashboardPage() {
                         : 'Planos'}
                 </span>
                 {dynamicBalance !== null && dynamicBalance !== 0 && (
-                  <span className={`text-[9px] font-normal ${dynamicBalance < 0 ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
+                  <span className={`text-xs font-normal ${dynamicBalance < 0 ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
                     {dynamicBalance < 0 ? 'Regularize seu saldo' : 'Saldo de páginas disponível'}
                   </span>
                 )}
@@ -749,11 +749,11 @@ export default function DashboardPage() {
           {/* Card 1 — Análises */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5">
             <div className="flex items-center justify-between mb-0.5">
-              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Análises</span>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Análises</span>
               <ShieldCheck size={15} className="text-brand-green" />
             </div>
             <p className="text-2xl font-black text-gray-800">{analisesConcluidas}</p>
-            <span className="text-[10px]">
+            <span className="text-xs">
               {analisesEmAndamento > 0
                 ? <span className="text-amber-500 font-bold">{analisesEmAndamento} em andamento</span>
                 : <span className="text-gray-400">Todas concluídas</span>}
@@ -763,21 +763,21 @@ export default function DashboardPage() {
           {/* Card 2 — Riscos */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5">
             <div className="flex items-center justify-between mb-0.5">
-              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Riscos</span>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Riscos</span>
               <AlertTriangle size={15} className={totalRiscos > 0 ? 'text-red-500' : 'text-green-500'} />
             </div>
             <p className="text-2xl font-black text-gray-800">{totalRiscos}</p>
             <div className="flex gap-1.5 flex-wrap">
-              {riscosCriticos > 0 && <span className="text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">{riscosCriticos} crítico</span>}
-              {riscosAltos > 0 && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">{riscosAltos} alto</span>}
-              {riscosCriticos === 0 && riscosAltos === 0 && <span className="text-[10px] text-green-600">Sem riscos críticos</span>}
+              {riscosCriticos > 0 && <span className="text-xs font-bold text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">{riscosCriticos} crítico</span>}
+              {riscosAltos > 0 && <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">{riscosAltos} alto</span>}
+              {riscosCriticos === 0 && riscosAltos === 0 && <span className="text-xs text-green-600">Sem riscos críticos</span>}
             </div>
           </div>
 
           {/* Card 3 — Saldo */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5">
             <div className="flex items-center justify-between mb-0.5">
-              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Saldo</span>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Saldo</span>
               <Layers size={15} className={dynamicBalance !== null && dynamicBalance < 0 ? 'text-red-500' : 'text-blue-500'} />
             </div>
             <p className={`text-2xl font-black ${dynamicBalance !== null && dynamicBalance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
@@ -790,7 +790,7 @@ export default function DashboardPage() {
                 style={{ width: `${Math.min(100, (Math.max(0, dynamicBalance ?? 0) / (planLimits[planType] || 10)) * 100)}%` }}
               />
             </div>
-            <Link href="/dashboard/planos" className="text-[10px] text-brand-gold hover:underline font-bold">
+            <Link href="/dashboard/planos" className="text-xs text-brand-gold hover:underline font-bold">
               {planType === 'internal_test' ? 'INTERNO' : planType.toUpperCase()} · Comprar páginas →
             </Link>
           </div>
@@ -798,7 +798,7 @@ export default function DashboardPage() {
           {/* Card 4 — ISF Médio + distribuição */}
           <div className={`p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5 ${scoreMedioBgTint}`}>
             <div className="flex items-center justify-between mb-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider opacity-60">ISF Médio</span>
+              <span className="text-xs font-bold uppercase tracking-wider opacity-70">ISF Médio</span>
               <BarChart3 size={15} className={scoreMedioTextTint} />
             </div>
             <p className={`text-2xl font-black ${scoreMedioTextTint}`}>
@@ -814,7 +814,7 @@ export default function DashboardPage() {
                 <div className="bg-green-400 h-full" style={{ width: `${(riscosBaixos / analises.length) * 100}%` }} />
               </div>
             )}
-            <span className="text-[10px] opacity-60">{scoreMedioDesc}</span>
+            <span className="text-xs opacity-70">{scoreMedioDesc}</span>
           </div>
         </div>
 
@@ -867,7 +867,7 @@ export default function DashboardPage() {
 
           {/* Linha 2: chips de risco */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Risco:</span>
+            <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Risco:</span>
             {[
               { value: '', label: 'Todos', count: analises.length, base: 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200', active: 'bg-gray-800 text-white border-gray-800' },
               { value: 'critico', label: 'Crítico', count: riscosCriticos, base: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100', active: 'bg-red-600 text-white border-red-600' },
@@ -881,7 +881,7 @@ export default function DashboardPage() {
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all ${riskFilter === chip.value ? chip.active : chip.base}`}
               >
                 {chip.label}
-                <span className={`text-[10px] font-black px-1 py-0.5 rounded-full min-w-[18px] text-center ${riskFilter === chip.value ? 'bg-white/25' : 'bg-black/8'}`}>
+                <span className={`text-xs font-black px-1 py-0.5 rounded-full min-w-[18px] text-center ${riskFilter === chip.value ? 'bg-white/25' : 'bg-black/8'}`}>
                   {chip.count}
                 </span>
               </button>
@@ -890,7 +890,7 @@ export default function DashboardPage() {
 
           {/* Linha 3: chips de status */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Status:</span>
+            <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Status:</span>
             {[
               { value: '', label: 'Todos' },
               { value: 'completed', label: '✓ Concluído' },
@@ -1001,7 +1001,7 @@ export default function DashboardPage() {
                       {displayScore !== null ? (
                         <>
                           <span className={`text-2xl font-black leading-none ${getISFTextTint(displayLevel)}`}>{displayScore}</span>
-                          <span className={`text-[8px] font-bold uppercase tracking-wider mt-0.5 ${getISFTextTint(displayLevel)} opacity-70`}>
+                          <span className={`text-xs font-bold uppercase tracking-wider mt-0.5 ${getISFTextTint(displayLevel)} opacity-70`}>
                             {getISFLabel(displayLevel) || 'ISF'}
                           </span>
                         </>
@@ -1021,12 +1021,12 @@ export default function DashboardPage() {
                           <div className="flex items-center gap-2 flex-wrap mb-0.5">
                             <h3 className="font-bold text-gray-900 text-base leading-tight">{analise.properties?.name}</h3>
                             {depthLabel && (
-                              <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
+                              <span className="px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
                                 {depthLabel}
                               </span>
                             )}
                             {complementaryChildren && complementaryChildren.length > 0 && (
-                              <span className="text-[9px] text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-bold">
+                              <span className="text-xs text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-bold">
                                 +{complementaryChildren.length} complementar
                               </span>
                             )}
@@ -1043,7 +1043,7 @@ export default function DashboardPage() {
 
                         {/* Status + Ações */}
                         <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusColorClass}`}>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusColorClass}`}>
                             {statusText}
                           </span>
 
@@ -1115,21 +1115,21 @@ export default function DashboardPage() {
                       {/* ── Linha inferior: risco + módulos sugeridos + retry_exhausted ── */}
                       <div className="mt-2.5 flex flex-wrap items-center gap-2">
                         {riskLabel && statusType === 'completed' && (
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getISFStyle(riskLabel)}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${getISFStyle(riskLabel)}`}>
                             {riskLabel}
                           </span>
                         )}
                         {recommended.length > 0 && statusType === 'completed' && (
                           <button
                             onClick={() => setRecommendModal({ analysisId: analise.id, propertyName: analise.properties?.name || 'Propriedade', modules: recommended })}
-                            className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-colors"
+                            className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 px-2.5 py-0.5 rounded-full text-xs font-bold transition-colors"
                           >
                             + {recommended.length} módulo{recommended.length > 1 ? 's' : ''} sugerido{recommended.length > 1 ? 's' : ''}
                           </button>
                         )}
                         {statusType === 'error' && analise.findings?.retry_exhausted === true && (
                           <div className="w-full mt-1 space-y-1.5">
-                            <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide">
+                            <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
                               ⚠ Exige processamento em etapas
                             </span>
                             <div className="flex flex-col gap-1 pl-1">
@@ -1145,17 +1145,17 @@ export default function DashboardPage() {
                                   <div key={etapa.id} className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-1.5 max-w-md">
                                     <div className="flex items-center gap-2 min-w-0">
                                       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${alreadyHasModule ? 'bg-green-500' : 'bg-amber-400'}`} />
-                                      <span className={`text-[10px] leading-tight ${alreadyHasModule ? 'text-gray-400 line-through' : 'text-gray-700 font-medium'}`}>{etapa.name}</span>
+                                      <span className={`text-xs leading-tight ${alreadyHasModule ? 'text-gray-400 line-through' : 'text-gray-700 font-medium'}`}>{etapa.name}</span>
                                     </div>
                                     <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
                                       {alreadyHasModule ? (
-                                        <span className="text-[9px] text-green-600 font-bold uppercase">Contratado</span>
+                                        <span className="text-xs text-green-600 font-bold uppercase">Contratado</span>
                                       ) : (
                                         <>
-                                          <span className="text-[10px] font-bold text-brand-green">R$ {etapa.price.toFixed(2)}</span>
+                                          <span className="text-xs font-bold text-brand-green">R$ {etapa.price.toFixed(2)}</span>
                                           <button
                                             onClick={() => setRecommendModal({ analysisId: analise.id, propertyName: analise.properties?.name || 'Propriedade', modules: [{ module_id: etapa.id, title: etapa.name, price: etapa.price }] })}
-                                            className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold hover:brightness-110"
+                                            className="text-xs bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold hover:brightness-110"
                                           >
                                             Comprar
                                           </button>
@@ -1250,7 +1250,7 @@ export default function DashboardPage() {
                         isProcessed ? 'text-gray-400 line-through' : 'text-gray-800'
                       }`}>{mod.title}</span>
                       {isProcessed && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-green-200 text-green-800 border border-green-300">
+                        <span className="px-1.5 py-0.5 rounded text-xs font-bold uppercase bg-green-200 text-green-800 border border-green-300">
                           Já processado
                         </span>
                       )}

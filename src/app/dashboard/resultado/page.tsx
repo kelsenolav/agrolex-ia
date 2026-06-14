@@ -657,7 +657,7 @@ function ResultadoContent() {
               <ShieldCheck size={20} />
               <span className="font-bold text-lg">Análise Principal</span>
             </div>
-            <span className="px-3 py-1 bg-white/20 text-white text-[10px] font-bold uppercase rounded-full">
+            <span className="px-3 py-1 bg-white/20 text-white text-xs font-bold uppercase rounded-full">
               Camada 1
             </span>
           </div>
@@ -737,7 +737,7 @@ function ResultadoContent() {
                   <FileCheck size={20} />
                   <span className="font-bold text-lg">Análise Complementar {idx + 1}</span>
                 </div>
-                <span className="px-3 py-1 bg-white/20 text-white text-[10px] font-bold uppercase rounded-full">
+                <span className="px-3 py-1 bg-white/20 text-white text-xs font-bold uppercase rounded-full">
                   Camada {(findings?.analysis_depth || 1) + idx + 1}
                 </span>
               </div>
@@ -793,7 +793,7 @@ function ResultadoContent() {
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm font-medium text-gray-800">{prob.titulo || prob.descricao}</span>
                                   {prob.criticidade && (
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${badgeColor}`}>
+                                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${badgeColor}`}>
                                       {prob.criticidade}
                                     </span>
                                   )}
@@ -945,7 +945,7 @@ function ResultadoContent() {
         <div className="mt-8 flex items-center gap-8">
           <ScoreAgroLex findings={findings} riskLevel={analise.risk_level} overriddenScore={isfV2ScoreForScore} isfVersion={isfVersion} size="md" />
           <div className={`${styles.bg} px-6 py-4 rounded-xl border ${styles.border} min-w-[140px] text-center`}>
-            <p className={`text-[10px] font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
+            <p className={`text-xs font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
             <div className={`flex items-center gap-2 ${styles.text} justify-center`}>
               <AlertTriangle size={22} />
               <span className="text-2xl font-black">{risco?.toUpperCase()}</span>
@@ -1019,7 +1019,7 @@ function ResultadoContent() {
                   className="flex items-center gap-2 text-sm text-left w-full hover:opacity-80 transition-opacity"
                 >
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-red-500 text-[10px] font-bold">🔒</span>
+                    <span className="text-red-500 text-xs font-bold">🔒</span>
                   </div>
                   <span className="text-red-500 font-medium underline decoration-dotted">🔒 Relatório completo bloqueado</span>
                 </button>
@@ -1032,7 +1032,7 @@ function ResultadoContent() {
                   className="flex items-center gap-2 text-sm text-left w-full hover:opacity-80 transition-opacity"
                 >
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-red-500 text-[10px] font-bold">🔒</span>
+                    <span className="text-red-500 text-xs font-bold">🔒</span>
                   </div>
                   <span className="text-red-500 font-medium underline decoration-dotted">🔒 Exportação PDF bloqueada</span>
                 </button>
@@ -1045,13 +1045,13 @@ function ResultadoContent() {
                   className="flex items-center gap-2 text-sm text-left w-full hover:opacity-80 transition-opacity"
                 >
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-red-500 text-[10px] font-bold">🔒</span>
+                    <span className="text-red-500 text-xs font-bold">🔒</span>
                   </div>
                   <span className="text-red-500 font-medium underline decoration-dotted">🔒 Cadeia dominial bloqueada</span>
                 </button>
                 <div className="flex items-center gap-2 text-sm">
                   <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center">
-                    <span className="text-red-500 text-[10px] font-bold">🔒</span>
+                    <span className="text-red-500 text-xs font-bold">🔒</span>
                   </div>
                   <span className="text-red-500 font-medium">🔒 Módulos avançados bloqueados</span>
                 </div>
@@ -1087,7 +1087,7 @@ function ResultadoContent() {
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <h1 className="text-2xl md:text-3xl font-extrabold text-gray-800">Dossiê Técnico de Auditoria Fundiária</h1>
-                <span className="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-sm print:shadow-none flex items-center gap-1">
+                <span className="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm print:shadow-none flex items-center gap-1">
                   <CheckCircle2 size={12} /> Parecer Final
                 </span>
               </div>
@@ -1098,7 +1098,7 @@ function ResultadoContent() {
               </div>
             </div>
             <div className={`text-center ${styles.bg} p-4 rounded-xl border ${styles.border} shadow-sm print:shadow-none print:border min-w-[130px]`}>
-              <p className={`text-[10px] font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
+              <p className={`text-xs font-bold ${styles.labelText} uppercase tracking-widest mb-1`}>Grau de Risco</p>
               <div className={`flex items-center gap-2 ${styles.text} justify-center`}>
                 <AlertTriangle size={22} />
                 <span className="text-2xl font-black">{risco?.toUpperCase()}</span>
@@ -1171,7 +1171,7 @@ function ResultadoContent() {
                       <div key={i} className={`matriz-risco-cell risco-${cell.risco}`} title={`${cell.risco.charAt(0).toUpperCase() + cell.risco.slice(1)} — Probabilidade ${cell.col + 1}, Impacto ${cell.row + 1}`} />
                     ))}
                   </div>
-                  <div className="flex gap-4 mt-3 text-[10px] text-gray-500 font-medium">
+                  <div className="flex gap-4 mt-3 text-xs text-gray-500 font-medium">
                     <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-200 inline-block" /> Baixo</span>
                     <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-yellow-200 inline-block" /> Médio</span>
                     <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-200 inline-block" /> Alto</span>
@@ -1252,10 +1252,10 @@ function ResultadoContent() {
                           <Icon size={14} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-[10px] font-extrabold uppercase tracking-widest mb-0.5 ${achadoLabelColor}`}>Achado Identificado:</p>
+                          <p className={`text-xs font-extrabold uppercase tracking-widest mb-0.5 ${achadoLabelColor}`}>Achado Identificado:</p>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-bold text-gray-900 leading-tight">{titulo}</span>
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${badgeBg}`}>
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold ${badgeBg}`}>
                               <span className={`w-1 h-1 rounded-full ${semaforo}`} />
                               {prob.criticidade}
                             </span>
@@ -1545,7 +1545,7 @@ function ResultadoContent() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-gray-50 rounded-xl p-4 border border-gray-200">
                         {fichaRows.map(([label, value], i) => (
                           <div key={i} className="flex flex-col">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</span>
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{label}</span>
                             <span className="text-sm text-gray-800 font-medium">{value}</span>
                           </div>
                         ))}
@@ -1563,7 +1563,7 @@ function ResultadoContent() {
                             <div className="flex items-center gap-2 font-bold text-sm">
                               <span className={'w-2.5 h-2.5 rounded-full flex-shrink-0 ' + (sDot[op.status] || 'bg-gray-400')} />
                               <span>{op.operacao}</span>
-                              <span className="ml-auto text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-white/60">
+                              <span className="ml-auto text-xs font-bold uppercase px-2 py-0.5 rounded-full bg-white/60">
                                 {sLabel[op.status] || op.status.toUpperCase()}
                               </span>
                             </div>
@@ -1588,7 +1588,7 @@ function ResultadoContent() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-sm font-medium text-gray-800">{doc.documento}</span>
                                 {doc.critico && !doc.apresentado && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">CRITICO</span>
+                                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700 border border-red-200">CRITICO</span>
                                 )}
                               </div>
                               {!doc.apresentado && doc.motivo_ausencia && (

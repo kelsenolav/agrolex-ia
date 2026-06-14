@@ -177,8 +177,8 @@ export default function PlanosPage() {
           </p>
         </div>
 
-        {/* Grid de Planos */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 max-w-7xl mx-auto">
+        {/* Grid de Planos — 3 colunas em md, 5 em telas muito largas */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 max-w-7xl mx-auto">
           {plans.map((plan) => {
             const isCurrent = plan.id === currentPlan;
             const features = PLAN_FEATURES[plan.id] || [];
@@ -199,48 +199,48 @@ export default function PlanosPage() {
                 }`}
               >
                 {/* Header */}
-                <div className={`p-5 pb-3 text-center rounded-t-2xl ${isPremium ? 'bg-gradient-to-b from-gray-900 to-gray-800 text-white' : ''}`}>
+                <div className={`p-6 pb-4 text-center rounded-t-2xl ${isPremium ? 'bg-gradient-to-b from-gray-900 to-gray-800 text-white' : ''}`}>
                   {isCurrent && (
-                    <span className="inline-block px-3 py-1 bg-brand-green text-white text-[10px] font-bold uppercase rounded-full mb-3">
+                    <span className="inline-block px-3 py-1 bg-brand-green text-white text-xs font-bold uppercase rounded-full mb-3">
                       Plano Atual
                     </span>
                   )}
                   {isPremium && (
-                    <div className="flex items-center justify-center gap-1 mb-2">
+                    <div className="flex items-center justify-center gap-1.5 mb-2">
                       <Crown size={16} className="text-brand-gold" />
-                      <span className="text-brand-gold text-[10px] font-bold uppercase tracking-widest">Premium</span>
+                      <span className="text-brand-gold text-xs font-bold uppercase tracking-widest">Premium</span>
                     </div>
                   )}
-                  <h3 className={`text-lg font-extrabold ${isPremium ? 'text-white' : 'text-gray-800'}`}>{plan.label}</h3>
-                  <p className={`text-xs mt-1 h-10 ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>{plan.description}</p>
+                  <h3 className={`text-xl font-extrabold ${isPremium ? 'text-white' : 'text-gray-800'}`}>{plan.label}</h3>
+                  <p className={`text-sm mt-2 min-h-[2.5rem] ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>{plan.description}</p>
                 </div>
 
                 {/* Preço */}
-                <div className={`px-5 py-4 text-center border-b ${isPremium ? 'border-gray-700' : 'border-gray-100'}`}>
+                <div className={`px-6 py-5 text-center border-b ${isPremium ? 'border-gray-700' : 'border-gray-100'}`}>
                   {isTrial ? (
                     <div>
-                      <span className={`text-3xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>Grátis</span>
-                      <p className={`text-xs mt-1 ${isPremium ? 'text-gray-400' : 'text-gray-400'}`}>10 páginas inclusas</p>
+                      <span className={`text-4xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>Grátis</span>
+                      <p className={`text-sm mt-1.5 ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>10 páginas inclusas</p>
                     </div>
                   ) : isEnterprise ? (
                     <div>
                       <span className={`text-2xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>Sob Consulta</span>
-                      <p className={`text-[10px] mt-1 ${isPremium ? 'text-gray-400' : 'text-gray-400'}`}>Fale com especialista</p>
+                      <p className={`text-sm mt-1.5 ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>Fale com especialista</p>
                     </div>
                   ) : (
                     <div>
-                      <span className={`text-3xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>
+                      <span className={`text-4xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>
                         R$ {plan.price?.toFixed(2).replace('.', ',')}
                       </span>
-                      <p className={`text-xs mt-1 ${isPremium ? 'text-gray-400' : 'text-gray-400'}`}>/mês</p>
+                      <p className={`text-sm mt-1.5 ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>/mês</p>
                     </div>
                   )}
                 </div>
 
                 {/* Highlights */}
-                <div className="px-5 py-2 flex flex-wrap gap-1 justify-center">
+                <div className="px-5 py-3 flex flex-wrap gap-1.5 justify-center">
                   {highlights.map((h, i) => (
-                    <span key={i} className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                    <span key={i} className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
                       isPremium ? 'bg-brand-gold/20 text-brand-gold border border-brand-gold/30' : 'bg-brand-green/10 text-brand-green'
                     }`}>
                       {h}
@@ -249,18 +249,18 @@ export default function PlanosPage() {
                 </div>
 
                 {/* Features */}
-                <div className="p-5 flex-grow">
-                  <ul className="space-y-2">
+                <div className="px-6 py-2 pb-4 flex-grow">
+                  <ul className="space-y-2.5">
                     {features.map((feature, i) => {
                       const isLocked = feature.toLowerCase().includes('bloquead');
                       return (
-                        <li key={i} className="flex items-start gap-1.5">
+                        <li key={i} className="flex items-start gap-2">
                           {isLocked ? (
-                            <Lock size={12} className="text-red-400 mt-0.5 flex-shrink-0" />
+                            <Lock size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
                           ) : (
-                            <CheckCircle2 size={12} className={`mt-0.5 flex-shrink-0 ${isPremium ? 'text-brand-gold' : 'text-brand-green'}`} />
+                            <CheckCircle2 size={14} className={`mt-0.5 flex-shrink-0 ${isPremium ? 'text-brand-gold' : 'text-brand-green'}`} />
                           )}
-                          <span className={`text-[11px] leading-tight ${isLocked ? 'text-red-500' : isPremium ? 'text-gray-200' : 'text-gray-700'}`}>
+                          <span className={`text-sm leading-snug ${isLocked ? 'text-red-500' : isPremium ? 'text-gray-200' : 'text-gray-700'}`}>
                             {feature}
                           </span>
                         </li>
@@ -270,17 +270,17 @@ export default function PlanosPage() {
                 </div>
 
                 {/* CTA */}
-                <div className="p-5 pt-0">
+                <div className="px-6 pb-6 pt-2">
                   {isCurrent ? (
-                    <div className="w-full py-2.5 rounded-xl text-center font-bold text-xs bg-green-50 text-brand-green border border-brand-green/20">
-                      Seu plano atual
+                    <div className="w-full py-3 rounded-xl text-center font-bold text-sm bg-green-50 text-brand-green border border-brand-green/20">
+                      ✓ Seu plano atual
                     </div>
                   ) : isEnterprise ? (
                     <button
                       onClick={() => {
                         window.open('https://wa.me/5563999999999?text=Gostaria%20de%20saber%20mais%20sobre%20o%20plano%20Enterprise', '_blank');
                       }}
-                      className="w-full py-2.5 rounded-xl font-bold text-xs bg-brand-gold text-brand-green hover:brightness-110 shadow-lg transition-all"
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-brand-gold text-brand-green hover:brightness-110 shadow-lg transition-all"
                     >
                       Falar com especialista
                     </button>
@@ -288,7 +288,7 @@ export default function PlanosPage() {
                     <button
                       onClick={() => {
                         registrarPlanClicked(plan.id);
-                        
+
                         const iniciarCheckout = async (pId: string) => {
                           try {
                             const { data: { session } } = await supabase.auth.getSession();
@@ -296,7 +296,7 @@ export default function PlanosPage() {
                               router.push('/login');
                               return;
                             }
-                            
+
                             const res = await fetch('/api/checkout', {
                               method: 'POST',
                               headers: {
@@ -323,7 +323,7 @@ export default function PlanosPage() {
                             alert('Falha na requisição de pagamento');
                           }
                         };
-                        
+
                         let planKey = toBillingPlanKey(plan.id);
                         if (planKey === 'trial') {
                           router.push('/dashboard/nova-analise');
@@ -332,12 +332,10 @@ export default function PlanosPage() {
 
                         iniciarCheckout(planKey);
                       }}
-                      className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all ${
+                      className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${
                         isPremium
                           ? 'bg-brand-gold text-brand-green hover:brightness-110 shadow-lg'
-                          : isTrial
-                            ? 'bg-brand-green text-white hover:brightness-110 shadow'
-                            : 'bg-brand-green text-white hover:brightness-110 shadow'
+                          : 'bg-brand-green text-white hover:brightness-110 shadow'
                       }`}
                     >
                       {isTrial ? 'Começar Grátis' : 'Escolher Plano'}
@@ -350,44 +348,44 @@ export default function PlanosPage() {
         </div>
 
         {/* ─── SEÇÃO RADAR ─────────────────────────────────────────────────── */}
-        <div className="max-w-4xl mx-auto mt-12 rounded-3xl overflow-hidden shadow-xl border border-emerald-900">
-          <div className="bg-[#0a0d14] px-8 py-6 flex flex-col md:flex-row items-start md:items-center gap-6 justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-emerald-950 border border-emerald-800 flex items-center justify-center flex-shrink-0">
-                <span className="text-2xl">🛡️</span>
+        <div className="max-w-4xl mx-auto mt-14 rounded-3xl overflow-hidden shadow-xl border border-emerald-700/60">
+          <div className="bg-gradient-to-r from-[#0d1117] to-[#0a1a12] px-8 py-7 flex flex-col md:flex-row items-start md:items-center gap-6 justify-between">
+            <div className="flex items-center gap-5">
+              <div className="w-14 h-14 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0">
+                <span className="text-3xl">🛡️</span>
               </div>
               <div>
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-emerald-400 text-[10px] font-bold uppercase tracking-widest font-mono">Assinatura Recorrente</span>
+                  <span className="text-emerald-400 text-xs font-bold uppercase tracking-widest">Assinatura Recorrente</span>
                 </div>
-                <h2 className="text-xl font-extrabold text-white">Radar de Monitoramento Fundiário</h2>
-                <p className="text-gray-400 text-sm mt-0.5">Vigilância contínua da situação jurídica de cada propriedade — alertas de gravames, queda do ISF, certidões vencidas e achados críticos.</p>
+                <h2 className="text-2xl font-extrabold text-white">Radar de Monitoramento Fundiário</h2>
+                <p className="text-gray-300 text-sm mt-1 max-w-lg leading-relaxed">Vigilância contínua da situação jurídica de cada propriedade — alertas de gravames, queda do ISF, certidões vencidas e achados críticos.</p>
               </div>
             </div>
             <div className="flex-shrink-0 text-right">
-              <div className="text-3xl font-black text-white">R$ 49<span className="text-lg font-bold text-gray-400">,90</span></div>
-              <div className="text-xs text-gray-500">por propriedade / mês</div>
+              <div className="text-4xl font-black text-white">R$ 49<span className="text-xl font-bold text-gray-300">,90</span></div>
+              <div className="text-sm text-gray-400 mt-1">por propriedade / mês</div>
             </div>
           </div>
-          <div className="bg-[#0f1520] px-8 py-5 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-gray-800">
+          <div className="bg-[#0f1520] px-8 py-5 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-gray-700/50">
             {[
               { icon: '🔍', label: 'Varredura quinzenal automática' },
               { icon: '⚡', label: 'Alerta imediato de gravames' },
               { icon: '📉', label: 'Detecção de queda do ISF' },
               { icon: '📧', label: 'Relatório mensal de delta' },
             ].map(({ icon, label }) => (
-              <div key={label} className="flex items-center gap-2">
-                <span className="text-lg">{icon}</span>
-                <span className="text-xs text-gray-400 leading-tight">{label}</span>
+              <div key={label} className="flex items-center gap-2.5">
+                <span className="text-xl">{icon}</span>
+                <span className="text-sm text-gray-300 leading-tight">{label}</span>
               </div>
             ))}
           </div>
-          <div className="bg-[#0f1520] px-8 pb-6 flex flex-col md:flex-row items-center justify-between gap-4 border-t border-gray-800">
-            <p className="text-xs text-gray-500">Cancele a qualquer momento. Por propriedade monitorada.</p>
+          <div className="bg-[#0f1520] px-8 pb-7 pt-4 flex flex-col md:flex-row items-center justify-between gap-4 border-t border-gray-700/50">
+            <p className="text-sm text-gray-400">Cancele a qualquer momento. Cobrado por propriedade monitorada.</p>
             <Link
               href="/dashboard/radar"
-              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-emerald-900/50 text-sm"
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-6 py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-900/50 text-base whitespace-nowrap"
             >
               <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
               Ativar Radar para minhas propriedades →
@@ -398,11 +396,11 @@ export default function PlanosPage() {
         {/* Seção Páginas Extras */}
         <div className="max-w-4xl mx-auto mt-12 bg-white rounded-3xl p-8 shadow-md border border-gray-100">
           <div className="text-center mb-8">
-            <span className="inline-block px-3 py-1 bg-brand-gold/10 text-brand-green text-[10px] font-bold uppercase tracking-wider rounded-full mb-3">
+            <span className="inline-block px-3 py-1 bg-brand-gold/10 text-brand-green text-xs font-bold uppercase tracking-wider rounded-full mb-3">
               Demanda adicional?
             </span>
             <h2 className="text-2xl font-extrabold text-gray-800">Créditos Extras de Páginas</h2>
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-base text-gray-500 mt-2">
               Adquira pacotes avulsos de páginas para processar documentos excedentes no seu plano atual.
             </p>
           </div>
