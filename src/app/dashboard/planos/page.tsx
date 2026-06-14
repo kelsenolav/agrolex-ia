@@ -190,7 +190,9 @@ export default function PlanosPage() {
             return (
               <div
                 key={plan.id}
-                className={`bg-white rounded-2xl shadow-lg border-2 transition-all flex flex-col ${
+                className={`rounded-2xl shadow-lg border-2 transition-all flex flex-col ${
+                  isPremium ? 'bg-gray-900' : 'bg-white'
+                } ${
                   isCurrent
                     ? 'border-brand-green ring-2 ring-brand-green/20'
                     : isPremium
@@ -199,7 +201,7 @@ export default function PlanosPage() {
                 }`}
               >
                 {/* Header */}
-                <div className={`p-6 pb-4 text-center rounded-t-2xl ${isPremium ? 'bg-gradient-to-b from-gray-900 to-gray-800 text-white' : ''}`}>
+                <div className={`p-6 pb-4 text-center rounded-t-2xl ${isPremium ? 'border-b border-gray-700' : ''}`}>
                   {isCurrent && (
                     <span className="inline-block px-3 py-1 bg-brand-green text-white text-xs font-bold uppercase rounded-full mb-3">
                       Plano Atual
@@ -212,36 +214,36 @@ export default function PlanosPage() {
                     </div>
                   )}
                   <h3 className={`text-xl font-extrabold ${isPremium ? 'text-white' : 'text-gray-800'}`}>{plan.label}</h3>
-                  <p className={`text-sm mt-2 min-h-[2.5rem] ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>{plan.description}</p>
+                  <p className={`text-sm mt-2 min-h-[2.5rem] ${isPremium ? 'text-gray-400' : 'text-gray-500'}`}>{plan.description}</p>
                 </div>
 
                 {/* Preço */}
-                <div className={`px-6 py-5 text-center border-b ${isPremium ? 'bg-gray-800 border-gray-700' : 'border-gray-100'}`}>
+                <div className={`px-6 py-5 text-center border-b ${isPremium ? 'border-gray-700' : 'border-gray-100'}`}>
                   {isTrial ? (
                     <div>
                       <span className={`text-4xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>Grátis</span>
-                      <p className={`text-sm mt-1.5 ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>10 páginas inclusas</p>
+                      <p className={`text-sm mt-1.5 ${isPremium ? 'text-gray-400' : 'text-gray-500'}`}>10 páginas inclusas</p>
                     </div>
                   ) : isEnterprise ? (
                     <div>
                       <span className={`text-2xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>Sob Consulta</span>
-                      <p className={`text-sm mt-1.5 ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>Fale com especialista</p>
+                      <p className={`text-sm mt-1.5 ${isPremium ? 'text-gray-400' : 'text-gray-500'}`}>Fale com especialista</p>
                     </div>
                   ) : (
                     <div>
                       <span className={`text-4xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>
                         R$ {plan.price?.toFixed(2).replace('.', ',')}
                       </span>
-                      <p className={`text-sm mt-1.5 ${isPremium ? 'text-gray-300' : 'text-gray-500'}`}>/mês</p>
+                      <p className={`text-sm mt-1.5 ${isPremium ? 'text-gray-400' : 'text-gray-500'}`}>/mês</p>
                     </div>
                   )}
                 </div>
 
                 {/* Highlights */}
-                <div className="px-5 py-3 flex flex-wrap gap-1.5 justify-center">
+                <div className={`px-5 py-3 flex flex-wrap gap-1.5 justify-center border-b ${isPremium ? 'border-gray-700' : 'border-gray-100'}`}>
                   {highlights.map((h, i) => (
                     <span key={i} className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
-                      isPremium ? 'bg-brand-gold/20 text-brand-gold border border-brand-gold/30' : 'bg-brand-green/10 text-brand-green'
+                      isPremium ? 'bg-brand-gold/20 text-brand-gold border border-brand-gold/40' : 'bg-brand-green/10 text-brand-green'
                     }`}>
                       {h}
                     </span>
@@ -249,7 +251,7 @@ export default function PlanosPage() {
                 </div>
 
                 {/* Features */}
-                <div className="px-6 py-2 pb-4 flex-grow">
+                <div className="px-6 py-4 pb-4 flex-grow">
                   <ul className="space-y-2.5">
                     {features.map((feature, i) => {
                       const isLocked = feature.toLowerCase().includes('bloquead');
@@ -260,7 +262,7 @@ export default function PlanosPage() {
                           ) : (
                             <CheckCircle2 size={14} className={`mt-0.5 flex-shrink-0 ${isPremium ? 'text-brand-gold' : 'text-brand-green'}`} />
                           )}
-                          <span className={`text-sm leading-snug ${isLocked ? 'text-red-500' : isPremium ? 'text-gray-200' : 'text-gray-700'}`}>
+                          <span className={`text-sm leading-snug ${isLocked ? 'text-red-400' : isPremium ? 'text-gray-200' : 'text-gray-700'}`}>
                             {feature}
                           </span>
                         </li>
@@ -270,9 +272,9 @@ export default function PlanosPage() {
                 </div>
 
                 {/* CTA */}
-                <div className="px-6 pb-6 pt-2">
+                <div className={`px-6 pb-6 pt-3 border-t ${isPremium ? 'border-gray-700' : 'border-gray-100'}`}>
                   {isCurrent ? (
-                    <div className="w-full py-3 rounded-xl text-center font-bold text-sm bg-green-50 text-brand-green border border-brand-green/20">
+                    <div className={`w-full py-3 rounded-xl text-center font-bold text-sm border ${isPremium ? 'bg-gray-800 text-brand-gold border-brand-gold/30' : 'bg-green-50 text-brand-green border-brand-green/20'}`}>
                       ✓ Seu plano atual
                     </div>
                   ) : isEnterprise ? (
@@ -280,7 +282,7 @@ export default function PlanosPage() {
                       onClick={() => {
                         window.open('https://wa.me/5563999999999?text=Gostaria%20de%20saber%20mais%20sobre%20o%20plano%20Enterprise', '_blank');
                       }}
-                      className="w-full py-3 rounded-xl font-bold text-sm bg-brand-gold text-brand-green hover:brightness-110 shadow-lg transition-all"
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-brand-gold text-gray-900 hover:brightness-110 shadow-lg transition-all"
                     >
                       Falar com especialista
                     </button>
