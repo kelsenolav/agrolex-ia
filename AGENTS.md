@@ -2,6 +2,24 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 14/06/2026
+- **Bloco**: Radar de Monitoramento Fundiário — UI dark ops + engine + API
+- **Arquivos criados**:
+  - `src/lib/monitoring/monitoringEngine.ts` — motor puro TypeScript: `runPropertyCheck()` (6 tipos de alerta), `getStatusConfig()`, `getSeverityConfig()`
+  - `src/app/api/monitoring/check/route.ts` — POST: executa varredura, persiste alertas (deduplicação diária por tipo), atualiza `last_radar_check_at` / `last_radar_isf_score`
+  - `src/app/api/monitoring/subscribe/route.ts` — POST: ativa/desativa `is_monitoring` por propriedade
+  - `src/app/api/monitoring/alerts/route.ts` — GET: lista alertas com join de propriedade (limit 50) | PATCH: marca lido (individual ou todos)
+  - `supabase/migrations/20260613_monitoring_radar.sql` — tabela `monitoring_alerts`, 3 colunas em `properties` (`last_radar_check_at`, `last_radar_isf_score`, `last_radar_analysis_id`), índices, RLS
+- **Arquivos alterados**:
+  - `src/app/dashboard/radar/page.tsx` — redesign completo: dark ops center (bg #0a0d14), navbar com pulsing SISTEMA ATIVO, 4 KPIs, banner crítico, layout 2 colunas (propriedades + feed de alertas), botão por propriedade "Executar varredura", ativar/desativar monitoramento inline, mark-as-read, upsell card monitoramento automático
+- **Rotas afetadas**: `/dashboard/radar`, `/api/monitoring/check`, `/api/monitoring/subscribe`, `/api/monitoring/alerts`
+- **Validações**: `npx tsc --noEmit` (✓), `npm run lint` (0 erros novos), `npm test` (590/590 — 22 suítes, ✓), `npm run build` (35 rotas, ✓)
+- **Migration aplicada**: `supabase db query --linked -f` executado com sucesso
+- **Deploy em produção**: **EFETUADO** com `vercel --prod --yes`
+- **URL validada**: https://agrolex-ia-qx32.vercel.app/dashboard/radar (HTTP 307 → login ✓)
+
+---
+
 - **Data**: 13/06/2026
 - **Bloco**: Rebrand AgroLex → AgrolexI + motor ISF v2.2 + módulo matricula_individual
 - **Arquivos criados**:
