@@ -456,28 +456,45 @@ function RadarContent() {
             )}
 
             {/* Upsell card — monitoramento automático */}
-            <div className="mt-6 rounded-xl border border-amber-900/60 bg-gradient-to-br from-amber-950/40 to-[#0f1520] p-5">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-900/60 flex items-center justify-center flex-shrink-0">
-                  <Zap size={16} className="text-amber-400" />
+            <div className="mt-6 rounded-xl border border-emerald-800 bg-[#0a1a12] overflow-hidden">
+              <div className="px-5 py-4 flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-emerald-900/60 border border-emerald-800 flex items-center justify-center flex-shrink-0">
+                  <Zap size={16} className="text-emerald-400" />
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-amber-300 mb-1">Monitoramento Automático — em breve</h3>
-                  <p className="text-xs text-gray-400 leading-relaxed mb-3">
-                    Varreduras automáticas quinzenais + alertas por e-mail + relatório mensal de delta fundiário por propriedade. Seja notificado antes que qualquer gravame afete sua decisão.
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-emerald-400 text-[10px] font-bold uppercase tracking-widest font-mono">Assinatura Recorrente</span>
+                  </div>
+                  <h3 className="text-sm font-bold text-white mb-1">Ative o monitoramento automático</h3>
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    Varreduras quinzenais automáticas, alertas por e-mail e relatório mensal de delta fundiário por propriedade. Saiba de qualquer gravame antes que ele afete sua operação.
                   </p>
-                  <div className="flex gap-3 flex-wrap">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <CheckCircle2 size={11} className="text-emerald-600" /> Alertas em 24h
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <CheckCircle2 size={11} className="text-emerald-600" /> Delta report mensal
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <CheckCircle2 size={11} className="text-emerald-600" /> R$ 49–89/propriedade/mês
-                    </div>
+                  <div className="flex gap-4 flex-wrap mt-3">
+                    {[
+                      'Varredura quinzenal automática',
+                      'Alertas em até 24h',
+                      'Delta report mensal',
+                    ].map(f => (
+                      <div key={f} className="flex items-center gap-1.5 text-xs text-gray-400">
+                        <CheckCircle2 size={11} className="text-emerald-500 flex-shrink-0" /> {f}
+                      </div>
+                    ))}
                   </div>
                 </div>
+                <div className="flex-shrink-0 text-right hidden md:block">
+                  <div className="text-2xl font-black text-white">R$ 49<span className="text-sm font-bold text-gray-400">,90</span></div>
+                  <div className="text-[10px] text-gray-500">/propriedade/mês</div>
+                </div>
+              </div>
+              <div className="border-t border-emerald-900/60 px-5 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <p className="text-[11px] text-gray-600">R$ 49,90/propriedade/mês · Cancele quando quiser</p>
+                <Link
+                  href="/dashboard/planos"
+                  className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-5 py-2 rounded-lg transition-all text-xs shadow-lg shadow-emerald-900/50 whitespace-nowrap"
+                >
+                  Ver planos e assinar →
+                </Link>
               </div>
             </div>
 

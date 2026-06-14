@@ -349,6 +349,52 @@ export default function PlanosPage() {
           })}
         </div>
 
+        {/* ─── SEÇÃO RADAR ─────────────────────────────────────────────────── */}
+        <div className="max-w-4xl mx-auto mt-12 rounded-3xl overflow-hidden shadow-xl border border-emerald-900">
+          <div className="bg-[#0a0d14] px-8 py-6 flex flex-col md:flex-row items-start md:items-center gap-6 justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-emerald-950 border border-emerald-800 flex items-center justify-center flex-shrink-0">
+                <span className="text-2xl">🛡️</span>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-emerald-400 text-[10px] font-bold uppercase tracking-widest font-mono">Assinatura Recorrente</span>
+                </div>
+                <h2 className="text-xl font-extrabold text-white">Radar de Monitoramento Fundiário</h2>
+                <p className="text-gray-400 text-sm mt-0.5">Vigilância contínua da situação jurídica de cada propriedade — alertas de gravames, queda do ISF, certidões vencidas e achados críticos.</p>
+              </div>
+            </div>
+            <div className="flex-shrink-0 text-right">
+              <div className="text-3xl font-black text-white">R$ 49<span className="text-lg font-bold text-gray-400">,90</span></div>
+              <div className="text-xs text-gray-500">por propriedade / mês</div>
+            </div>
+          </div>
+          <div className="bg-[#0f1520] px-8 py-5 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-gray-800">
+            {[
+              { icon: '🔍', label: 'Varredura quinzenal automática' },
+              { icon: '⚡', label: 'Alerta imediato de gravames' },
+              { icon: '📉', label: 'Detecção de queda do ISF' },
+              { icon: '📧', label: 'Relatório mensal de delta' },
+            ].map(({ icon, label }) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className="text-lg">{icon}</span>
+                <span className="text-xs text-gray-400 leading-tight">{label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="bg-[#0f1520] px-8 pb-6 flex flex-col md:flex-row items-center justify-between gap-4 border-t border-gray-800">
+            <p className="text-xs text-gray-500">Cancele a qualquer momento. Por propriedade monitorada.</p>
+            <Link
+              href="/dashboard/radar"
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-emerald-900/50 text-sm"
+            >
+              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              Ativar Radar para minhas propriedades →
+            </Link>
+          </div>
+        </div>
+
         {/* Seção Páginas Extras */}
         <div className="max-w-4xl mx-auto mt-12 bg-white rounded-3xl p-8 shadow-md border border-gray-100">
           <div className="text-center mb-8">
