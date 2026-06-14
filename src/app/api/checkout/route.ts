@@ -125,7 +125,7 @@ export async function POST(req: Request) {
     } catch (mpError: any) {
       console.error('Erro ao criar preferência de plano no Mercado Pago:', mpError);
       
-      const mpConfigured = !!process.env.MERCADOPAGO_ACCESS_TOKEN;
+      const mpConfigured = !!(process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN);
       if (!mpConfigured) {
         console.warn('Mercado Pago não configurado — usando modo simulado (dev) para planos/créditos');
         

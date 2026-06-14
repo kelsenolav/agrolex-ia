@@ -8,7 +8,7 @@
  * - Consultar status de pagamento
  */
 
-const MP_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || '';
+const MP_ACCESS_TOKEN = process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
 const MP_SANDBOX = process.env.MERCADOPAGO_SANDBOX === 'true' || !process.env.MERCADOPAGO_PRODUCTION;
 const MP_BASE_URL = 'https://api.mercadopago.com';
 
