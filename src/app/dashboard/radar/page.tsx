@@ -87,18 +87,27 @@ function RadarContent() {
   const [editingProp, setEditingProp] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<PropertyRow>>({});
   const [savingProp, setSavingProp] = useState(false);
+  const [radarStatus, setRadarStatus] = useState<{
+    has_active_subscription: boolean;
+    trial_used: boolean;
+    trial_available: boolean;
+  } | null>(null);
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
 
   const fetchData = useCallback(async (sessionToken: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { router.push('/login'); return; }
 
-    const [propsRes, alertsRes] = await Promise.all([
+    const [propsRes, alertsRes, statusRes] = await Promise.all([
       supabase.from('properties').select('id, name, city, state, area, is_monitoring, last_radar_check_at, last_radar_isf_score, car_code, ccir, sigef_code, cpf_cnpj, matricula_number, registry_office').eq('user_id', session.user.id).order('name'),
       fetch('/api/monitoring/alerts', { headers: { Authorization: `Bearer ${sessionToken}` } }).then(r => r.json()),
+      fetch('/api/monitoring/status', { headers: { Authorization: `Bearer ${sessionToken}` } }).then(r => r.json()).catch(() => null),
     ]);
 
     setProperties(propsRes.data || []);
     setAlerts(alertsRes.alerts || []);
+    if (statusRes && !statusRes.error) setRadarStatus(statusRes);
     setLoading(false);
   }, [router]);
 
@@ -120,6 +129,10 @@ function RadarContent() {
         body: JSON.stringify({ propertyId }),
       });
       const data = await res.json();
+      if (data.scan_blocked) {
+        setShowSubscribeModal(true);
+        return;
+      }
       if (data.result) {
         setCheckResults(r => ({ ...r, [propertyId]: data.result }));
       }
@@ -200,6 +213,30 @@ function RadarContent() {
       setSavingProp(false);
     }
   }, [editForm]);
+
+  const handleSubscribeRadar = useCallback(async () => {
+    if (!token) return;
+    setSubscribing(true);
+    try {
+      const count = Math.max(1, properties.filter(p => p.is_monitoring).length);
+      const res = await fetch('/api/monitoring/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ propertyCount: count }),
+      });
+      const data = await res.json();
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else if (data.mode === 'simulated_dev') {
+        setShowSubscribeModal(false);
+        await fetchData(token);
+      }
+    } catch {
+      // silent
+    } finally {
+      setSubscribing(false);
+    }
+  }, [token, properties, fetchData]);
 
   const monitoredProperties = properties.filter(p => p.is_monitoring);
   const unmonitoredProperties = properties.filter(p => !p.is_monitoring);
@@ -637,7 +674,85 @@ function RadarContent() {
             </div>
           </div>
         </div>
+
+        {/* Status do Radar */}
+        {radarStatus && (
+          <div className="mt-6 flex items-center justify-center gap-3 text-xs">
+            {radarStatus.has_active_subscription ? (
+              <span className="flex items-center gap-1.5 bg-emerald-950/60 border border-emerald-800 text-emerald-300 px-3 py-1.5 rounded-full font-medium">
+                <CheckCircle2 size={12} /> Assinatura Radar ativa
+              </span>
+            ) : radarStatus.trial_available ? (
+              <span className="flex items-center gap-1.5 bg-blue-950/60 border border-blue-800 text-blue-300 px-3 py-1.5 rounded-full font-medium">
+                <Zap size={12} /> 1 varredura gratuita disponível
+              </span>
+            ) : (
+              <button
+                onClick={() => setShowSubscribeModal(true)}
+                className="flex items-center gap-1.5 bg-amber-950/60 border border-amber-800 text-amber-300 px-3 py-1.5 rounded-full font-medium hover:bg-amber-900/60 transition-colors"
+              >
+                <Shield size={12} /> Varredura gratuita utilizada — Assinar Radar
+              </button>
+            )}
+          </div>
+        )}
       </main>
+
+      {/* Modal de Assinatura */}
+      {showSubscribeModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-[#0f1520] border border-gray-700 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-emerald-900/60 border border-emerald-700 flex items-center justify-center">
+                <Shield size={20} className="text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Assinar Radar Fundiário</h3>
+                <p className="text-xs text-gray-400">Monitoramento contínuo das suas propriedades</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-5">
+              {[
+                'Varredura quinzenal automática',
+                'Consulta a SIGEF, CAR, Tribunais',
+                'Alertas por e-mail em tempo real',
+                'Relatório mensal de delta fundiário',
+                'Detecção de gravames, penhoras e litígios',
+              ].map(f => (
+                <div key={f} className="flex items-center gap-2 text-sm text-gray-300">
+                  <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
+                  {f}
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-gray-900 rounded-xl p-4 mb-5 text-center">
+              <div className="text-3xl font-black text-white">
+                R$ 49<span className="text-lg text-gray-400">,90</span>
+              </div>
+              <div className="text-xs text-gray-500 mt-1">por propriedade / mês</div>
+              <div className="text-xs text-gray-600 mt-2">Cancele a qualquer momento</div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSubscribeModal(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 transition-colors"
+              >
+                Agora não
+              </button>
+              <button
+                onClick={handleSubscribeRadar}
+                disabled={subscribing}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-emerald-500 text-white hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-900/50 disabled:opacity-50"
+              >
+                {subscribing ? 'Processando...' : 'Assinar Radar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

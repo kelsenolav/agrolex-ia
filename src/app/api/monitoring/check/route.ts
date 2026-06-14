@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { runPropertyCheck } from '@/lib/monitoring/monitoringEngine';
 import { runExternalChecks, type PropertyParams, type AnalysisFindings } from '@/lib/monitoring/externalDataProviders';
+import { canRunScan, consumeRadarTrial } from '@/lib/monitoring/radarSubscription';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -38,6 +39,26 @@ export async function POST(req: Request) {
 
     if (propError || !property) return NextResponse.json({ error: 'Propriedade não encontrada' }, { status: 404 });
     if (property.user_id !== user.id) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+
+    const scanPermission = await canRunScan(user.id, propertyId, adminClient);
+    if (!scanPermission.allowed) {
+      return NextResponse.json({
+        error: scanPermission.message,
+        scan_blocked: true,
+        reason: scanPermission.reason,
+      }, { status: 403 });
+    }
+
+    if (scanPermission.reason === 'trial') {
+      const trialResult = await consumeRadarTrial(user.id, propertyId, adminClient);
+      if (!trialResult.consumed) {
+        return NextResponse.json({
+          error: trialResult.error,
+          scan_blocked: true,
+          reason: 'trial_exhausted',
+        }, { status: 403 });
+      }
+    }
 
     const { data: analyses } = await adminClient
       .from('analyses')

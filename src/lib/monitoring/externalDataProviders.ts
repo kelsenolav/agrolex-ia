@@ -170,14 +170,21 @@ export async function consultarSIGEF(params: PropertyParams): Promise<SIGEFResul
 
     const contentType = res.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
-      // SIGEF pode retornar HTML em vez de JSON para consultas públicas
+      const html = await res.text();
+      const areaMatch = html.match(/[Áá]rea[:\s]*<[^>]*>?\s*([\d.,]+)\s*ha/i);
+      const statusMatch = html.match(/[Ss]itua[çc][ãa]o[:\s]*<[^>]*>?\s*([^<\n]+)/i);
+      const certMatch = html.match(/[Cc]ertifica[çc][ãa]o[:\s]*<[^>]*>?\s*(\d{2}\/\d{2}\/\d{4})/i);
+      const sobreposicaoMatch = /sobreposi[çc][ãa]o/i.test(html);
       return {
         found: true,
         parcela_id: params.sigef_code,
+        area_ha: areaMatch ? parseFloat(areaMatch[1].replace('.', '').replace(',', '.')) : undefined,
+        status_certificacao: statusMatch ? statusMatch[1].trim() : undefined,
+        data_certificacao: certMatch ? certMatch[1] : undefined,
         municipio: params.city,
         uf: params.state,
         geojson_url: `https://sigef.incra.gov.br/geo/parcela/geojson/${encodeURIComponent(params.sigef_code)}/`,
-        erro: 'Resposta SIGEF não é JSON — dados parciais extraídos da URL',
+        sobreposicao_detectada: sobreposicaoMatch,
       };
     }
 
@@ -374,13 +381,19 @@ export async function consultarTribunais(params: PropertyParams): Promise<Tribun
 
     result.consultas_realizadas.push('DataJud API Pública — TRF1');
 
+    const datajudKey = process.env.DATAJUD_API_KEY;
+    if (!datajudKey) {
+      result.erro = 'DATAJUD_API_KEY não configurada — consulta a tribunais desabilitada';
+      return result;
+    }
+
     const res = await withTimeout(
       fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'AgrolexI-Radar/1.0',
+          'Authorization': `APIKey ${datajudKey}`,
         },
         body: JSON.stringify(query),
       }),
