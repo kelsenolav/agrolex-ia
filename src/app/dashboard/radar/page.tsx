@@ -1,163 +1,491 @@
 "use client";
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { ShieldCheck, ArrowLeft, Radar, AlertTriangle, Bell, CheckCircle2, Clock } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  Shield, ArrowLeft, AlertTriangle, CheckCircle2, Clock,
+  RefreshCw, Bell, BellOff, Eye, Zap, Radio, Activity,
+  ChevronRight, XCircle, Info,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { getStatusConfig, getSeverityConfig } from '@/lib/monitoring/monitoringEngine';
+import type { PropertyCheckResult } from '@/lib/monitoring/monitoringEngine';
+
+type AlertSeverity = 'info' | 'warning' | 'critical';
+
+interface AlertRow {
+  id: string;
+  alert_type: string;
+  severity: AlertSeverity;
+  title: string;
+  description: string;
+  is_read: boolean;
+  created_at: string;
+  property_id: string;
+  properties?: { name: string; city?: string; state?: string };
+}
+
+interface PropertyRow {
+  id: string;
+  name: string;
+  city?: string;
+  state?: string;
+  area?: number;
+  is_monitoring?: boolean;
+  last_radar_check_at?: string;
+  last_radar_isf_score?: number;
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'agora mesmo';
+  if (mins < 60) return `${mins} min atrás`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h atrás`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d atrás`;
+}
+
+function ISFBadge({ score }: { score: number | null | undefined }) {
+  if (score == null) return <span className="text-gray-500 text-xs">—</span>;
+  const color = score >= 70 ? 'text-emerald-400' : score >= 55 ? 'text-amber-400' : score >= 40 ? 'text-orange-400' : 'text-red-400';
+  return <span className={`font-bold tabular-nums ${color}`}>{score}<span className="text-gray-500 font-normal text-xs">/100</span></span>;
+}
 
 function RadarContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [properties, setProperties] = useState<any[]>([]);
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [properties, setProperties] = useState<PropertyRow[]>([]);
+  const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const [checkResults, setCheckResults] = useState<Record<string, PropertyCheckResult>>({});
   const [loading, setLoading] = useState(true);
-  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [scanning, setScanning] = useState<Record<string, boolean>>({});
+  const [lastGlobalScan, setLastGlobalScan] = useState<Date | null>(null);
+  const [token, setToken] = useState<string>('');
+
+  const fetchData = useCallback(async (sessionToken: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push('/login'); return; }
+
+    const [propsRes, alertsRes] = await Promise.all([
+      supabase.from('properties').select('id, name, city, state, area, is_monitoring, last_radar_check_at, last_radar_isf_score').eq('user_id', session.user.id).order('name'),
+      fetch('/api/monitoring/alerts', { headers: { Authorization: `Bearer ${sessionToken}` } }).then(r => r.json()),
+    ]);
+
+    setProperties(propsRes.data || []);
+    setAlerts(alertsRes.alerts || []);
+    setLoading(false);
+  }, [router]);
 
   useEffect(() => {
-    const fetchRadarData = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-        return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { router.push('/login'); return; }
+      setToken(session.access_token);
+      fetchData(session.access_token);
+    });
+  }, [router, fetchData]);
+
+  const runCheck = useCallback(async (propertyId: string) => {
+    if (!token) return;
+    setScanning(s => ({ ...s, [propertyId]: true }));
+    try {
+      const res = await fetch('/api/monitoring/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ propertyId }),
+      });
+      const data = await res.json();
+      if (data.result) {
+        setCheckResults(r => ({ ...r, [propertyId]: data.result }));
       }
+      await fetchData(token);
+    } finally {
+      setScanning(s => ({ ...s, [propertyId]: false }));
+    }
+  }, [token, fetchData]);
 
-      const propIdToActivate = searchParams.get('property_id');
-      
-      // Se veio da URL para ativar o radar
-      if (propIdToActivate) {
-        // Buscar a propriedade para calcular o preço baseado na área
-        const { data: propToAct } = await supabase.from('properties').select('name, area').eq('id', propIdToActivate).single();
-        if (propToAct) {
-          const area = propToAct.area || 50; // default 50ha se não houver
-          // Lógica de Preço V4.1: R$ 99 básico (até 300ha). Acima disso R$ 0,50/ha. Teto Máximo R$ 5000.
-          let price = 99;
-          if (area > 300) {
-            price = 99 + ((area - 300) * 0.50);
-          }
-          if (price > 5000) price = 5000;
-          
-          const confirmMessage = `Confirmar assinatura B2B do Radar Contínuo para a propriedade "${propToAct.name}"?\n\nTamanho: ${area} hectares\nValor Mensal: R$ ${price.toFixed(2).replace('.', ',')}`;
-          
-          if (window.confirm(confirmMessage)) {
-            setActivatingId(propIdToActivate);
-            await supabase.from('properties').update({ is_monitoring: true }).eq('id', propIdToActivate);
-            alert("Radar ativado com sucesso!");
-          }
-        }
-        router.replace('/dashboard/radar'); // limpa a URL
-        setActivatingId(null);
-      }
+  const runAllChecks = useCallback(async () => {
+    const monitored = properties.filter(p => p.is_monitoring);
+    for (const p of monitored) {
+      await runCheck(p.id);
+    }
+    setLastGlobalScan(new Date());
+  }, [properties, runCheck]);
 
-      // Busca propriedades monitoradas
-      const { data: props } = await supabase
-        .from('properties')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .eq('is_monitoring', true);
-      
-      if (props) setProperties(props);
+  const toggleMonitoring = useCallback(async (propertyId: string, activate: boolean) => {
+    if (!token) return;
+    await fetch('/api/monitoring/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ propertyId, activate }),
+    });
+    setProperties(ps => ps.map(p => p.id === propertyId ? { ...p, is_monitoring: activate } : p));
+    if (activate) runCheck(propertyId);
+  }, [token, runCheck]);
 
-      // Busca alertas recentes
-      const { data: radarAlerts } = await supabase
-        .from('radar_alerts')
-        .select('*, properties(name)')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false })
-        .limit(20);
-        
-      if (radarAlerts) setAlerts(radarAlerts);
+  const markRead = useCallback(async (alertId: string) => {
+    if (!token) return;
+    await fetch('/api/monitoring/alerts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ alertId }),
+    });
+    setAlerts(as => as.map(a => a.id === alertId ? { ...a, is_read: true } : a));
+  }, [token]);
 
-      setLoading(false);
-    };
+  const markAllRead = useCallback(async () => {
+    if (!token) return;
+    await fetch('/api/monitoring/alerts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ markAllRead: true }),
+    });
+    setAlerts(as => as.map(a => ({ ...a, is_read: true })));
+  }, [token]);
 
-    fetchRadarData();
-  }, [searchParams, router]);
+  const monitoredProperties = properties.filter(p => p.is_monitoring);
+  const unmonitoredProperties = properties.filter(p => !p.is_monitoring);
+  const unreadAlerts = alerts.filter(a => !a.is_read);
+  const criticalAlerts = alerts.filter(a => a.severity === 'critical' && !a.is_read);
+  const warningAlerts = alerts.filter(a => a.severity === 'warning' && !a.is_read);
+
+  const getPropertyStatus = (prop: PropertyRow): PropertyCheckResult['overallStatus'] => {
+    const result = checkResults[prop.id];
+    if (result) return result.overallStatus;
+    if (!prop.is_monitoring) return 'sem_analise';
+    if (alerts.some(a => a.property_id === prop.id && a.severity === 'critical' && !a.is_read)) return 'critico';
+    if (alerts.some(a => a.property_id === prop.id && a.severity === 'warning' && !a.is_read)) return 'atencao';
+    if (prop.last_radar_check_at) return 'seguro';
+    return 'sem_analise';
+  };
+
+  const getPropertyAlertCount = (propertyId: string) =>
+    alerts.filter(a => a.property_id === propertyId && !a.is_read).length;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0a0d14] flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative w-20 h-20 mx-auto mb-6">
+            <div className="absolute inset-0 rounded-full border-2 border-emerald-500/30 animate-ping" />
+            <div className="absolute inset-2 rounded-full border-2 border-emerald-500/50 animate-pulse" />
+            <Radio className="absolute inset-0 m-auto text-emerald-400" size={28} />
+          </div>
+          <p className="text-emerald-400 text-sm font-mono tracking-widest animate-pulse">INICIALIZANDO RADAR...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
-      <nav className="bg-gray-900 text-white shadow-md">
-        <div className="container mx-auto max-w-7xl px-6 py-4 flex justify-between items-center">
-          <Link href="/dashboard" className="flex items-center gap-2 text-brand-gold">
-            <Radar size={28} className="animate-pulse" />
-            <span className="text-xl font-bold text-white">Radar Contínuo</span>
-          </Link>
-          <div className="text-sm bg-gray-800 px-4 py-2 rounded-full font-bold flex items-center gap-2 text-green-400">
-            <span className="w-2 h-2 rounded-full bg-green-400 animate-ping"></span>
-            Monitoramento Ativo
+    <div className="min-h-screen bg-[#0a0d14] text-gray-100">
+
+      {/* Navbar */}
+      <nav className="bg-[#0f1520] border-b border-gray-800 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/dashboard" className="text-gray-400 hover:text-white transition-colors">
+              <ArrowLeft size={20} />
+            </Link>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Shield size={24} className="text-emerald-400" />
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
+              </div>
+              <div>
+                <span className="text-white font-bold text-lg tracking-tight">Radar AgrolexI</span>
+                <span className="ml-2 text-xs text-gray-500 font-mono">Monitoramento Fundiário</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            {lastGlobalScan && (
+              <span className="text-xs text-gray-500 font-mono hidden sm:block">
+                Última varredura: {timeAgo(lastGlobalScan.toISOString())}
+              </span>
+            )}
+            <div className="flex items-center gap-2 bg-emerald-950/60 border border-emerald-800 px-3 py-1.5 rounded-full">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-bold text-emerald-300 font-mono">SISTEMA ATIVO</span>
+            </div>
+            {monitoredProperties.length > 0 && (
+              <button
+                onClick={runAllChecks}
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+              >
+                <RefreshCw size={13} />
+                Varrer tudo
+              </button>
+            )}
           </div>
         </div>
       </nav>
 
-      <main className="container mx-auto max-w-7xl px-6 py-8">
-        <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors w-fit font-medium">
-          <ArrowLeft size={20} /> Voltar ao painel principal
-        </Link>
+      {/* Banner crítico */}
+      {criticalAlerts.length > 0 && (
+        <div className="bg-red-950 border-b border-red-800">
+          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping flex-shrink-0" />
+              <AlertTriangle size={16} className="text-red-400 flex-shrink-0" />
+              <span className="text-red-300 text-sm font-semibold">
+                {criticalAlerts.length} alerta{criticalAlerts.length > 1 ? 's' : ''} crítico{criticalAlerts.length > 1 ? 's' : ''} detectado{criticalAlerts.length > 1 ? 's' : ''} — ação imediata recomendada
+              </span>
+            </div>
+            <button onClick={markAllRead} className="text-xs text-red-400 hover:text-red-300 whitespace-nowrap border border-red-800 px-3 py-1 rounded-md transition-colors">
+              Marcar como lidos
+            </button>
+          </div>
+        </div>
+      )}
 
-        {loading ? (
-          <div className="text-center py-20 text-gray-500">Buscando varreduras...</div>
-        ) : (
-          <div className="grid md:grid-cols-3 gap-8">
-            
-            {/* Coluna Esquerda: Propriedades Monitoradas */}
-            <div className="md:col-span-1 space-y-6">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2 border-b pb-2">
-                <ShieldCheck className="text-brand-green" /> Suas Áreas Vigiadas
+      <main className="max-w-7xl mx-auto px-6 py-8">
+
+        {/* KPIs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+          {[
+            { label: 'Monitoradas', value: monitoredProperties.length, icon: <Shield size={18} />, color: 'text-emerald-400', bg: 'bg-emerald-950/40 border-emerald-800' },
+            { label: 'Alertas Críticos', value: criticalAlerts.length, icon: <AlertTriangle size={18} />, color: 'text-red-400', bg: criticalAlerts.length > 0 ? 'bg-red-950/60 border-red-700' : 'bg-gray-900 border-gray-800' },
+            { label: 'Em Atenção', value: warningAlerts.length, icon: <Zap size={18} />, color: 'text-amber-400', bg: warningAlerts.length > 0 ? 'bg-amber-950/40 border-amber-800' : 'bg-gray-900 border-gray-800' },
+            { label: 'Não lidos', value: unreadAlerts.length, icon: <Bell size={18} />, color: 'text-blue-400', bg: 'bg-gray-900 border-gray-800' },
+          ].map(({ label, value, icon, color, bg }) => (
+            <div key={label} className={`rounded-xl border p-4 ${bg}`}>
+              <div className={`flex items-center gap-2 ${color} mb-2`}>{icon}<span className="text-xs font-medium text-gray-400">{label}</span></div>
+              <div className={`text-3xl font-bold tabular-nums ${color}`}>{value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid lg:grid-cols-5 gap-6">
+
+          {/* Coluna esquerda: Propriedades */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest font-mono flex items-center gap-2">
+                <Activity size={14} /> Áreas Vigiadas
               </h2>
-              
-              {properties.length === 0 ? (
-                <div className="bg-white p-6 rounded-xl border text-center text-gray-500 text-sm">
-                  Você não possui propriedades no radar.<br/><br/> Vá ao painel e clique em "Ativar Radar".
-                </div>
-              ) : (
-                properties.map(p => (
-                  <div key={p.id} className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-brand-green hover:shadow-md transition-all">
-                    <h3 className="font-bold text-gray-900 truncate">{p.name}</h3>
-                    <p className="text-xs text-gray-500 mt-1 mb-3">CPF/CNPJ: {p.cpf_cnpj || 'Não informado'}</p>
-                    <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-green-700 bg-green-50 px-2 py-1 rounded w-fit">
-                      <CheckCircle2 size={12} /> Seguro
+              <span className="text-xs text-gray-600">{monitoredProperties.length} ativas</span>
+            </div>
+
+            {monitoredProperties.length === 0 && (
+              <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center">
+                <Radio size={32} className="mx-auto text-gray-700 mb-3" />
+                <p className="text-gray-500 text-sm">Nenhuma propriedade no radar.</p>
+                <p className="text-gray-600 text-xs mt-1">Ative o monitoramento abaixo.</p>
+              </div>
+            )}
+
+            {monitoredProperties.map(prop => {
+              const status = getPropertyStatus(prop);
+              const cfg = getStatusConfig(status);
+              const alertCount = getPropertyAlertCount(prop.id);
+              const isScanning = scanning[prop.id];
+              const result = checkResults[prop.id];
+
+              return (
+                <div key={prop.id} className={`rounded-xl border bg-[#0f1520] p-4 transition-all ${cfg.border} hover:shadow-lg hover:shadow-black/30`}>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot} ${status === 'critico' ? 'animate-pulse' : ''}`} />
+                        <h3 className="font-semibold text-white text-sm truncate">{prop.name}</h3>
+                      </div>
+                      {(prop.city || prop.state) && (
+                        <p className="text-xs text-gray-500 mt-0.5 ml-4">{[prop.city, prop.state].filter(Boolean).join(' / ')}</p>
+                      )}
                     </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${cfg.badgeBg}`}>
+                      {cfg.label}
+                    </span>
                   </div>
-                ))
+
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-0.5">ISF atual</div>
+                      <ISFBadge score={result?.latestIsfScore ?? prop.last_radar_isf_score} />
+                    </div>
+                    {alertCount > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                        <span className="text-xs text-red-400 font-medium">{alertCount} alerta{alertCount > 1 ? 's' : ''}</span>
+                      </div>
+                    )}
+                    {alertCount === 0 && prop.last_radar_check_at && (
+                      <div className="flex items-center gap-1 text-emerald-600 text-xs">
+                        <CheckCircle2 size={12} />
+                        <span>OK</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {prop.last_radar_check_at && (
+                    <p className="text-[11px] text-gray-600 flex items-center gap-1 mb-3">
+                      <Clock size={10} /> Varredura {timeAgo(prop.last_radar_check_at)}
+                    </p>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => runCheck(prop.id)}
+                      disabled={isScanning}
+                      className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw size={11} className={isScanning ? 'animate-spin' : ''} />
+                      {isScanning ? 'Varrendo...' : 'Executar varredura'}
+                    </button>
+                    <Link
+                      href="/dashboard"
+                      className="flex items-center gap-1 text-xs py-1.5 px-2 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors"
+                    >
+                      <Eye size={11} />
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Propriedades não monitoradas */}
+            {unmonitoredProperties.length > 0 && (
+              <>
+                <div className="flex items-center gap-2 pt-2">
+                  <div className="flex-1 h-px bg-gray-800" />
+                  <span className="text-[10px] text-gray-600 font-mono uppercase tracking-wider">Sem monitoramento</span>
+                  <div className="flex-1 h-px bg-gray-800" />
+                </div>
+                {unmonitoredProperties.map(prop => (
+                  <div key={prop.id} className="rounded-xl border border-gray-800 bg-gray-900/30 p-4 opacity-60 hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-gray-600 flex-shrink-0" />
+                          <h3 className="font-medium text-gray-400 text-sm truncate">{prop.name}</h3>
+                        </div>
+                        {(prop.city || prop.state) && (
+                          <p className="text-xs text-gray-600 mt-0.5 ml-4">{[prop.city, prop.state].filter(Boolean).join(' / ')}</p>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-gray-600 border border-gray-700 px-2 py-0.5 rounded-full">Inativo</span>
+                    </div>
+                    <button
+                      onClick={() => toggleMonitoring(prop.id, true)}
+                      className="w-full text-xs py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-800 text-emerald-400 font-medium transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <Shield size={11} />
+                      Ativar monitoramento
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* Coluna direita: Feed de alertas */}
+          <div className="lg:col-span-3">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest font-mono flex items-center gap-2">
+                <Bell size={14} /> Central de Alertas
+              </h2>
+              {unreadAlerts.length > 0 && (
+                <button onClick={markAllRead} className="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1">
+                  <BellOff size={12} /> Marcar todos como lidos
+                </button>
               )}
             </div>
 
-            {/* Coluna Direita: Linha do Tempo de Alertas */}
-            <div className="md:col-span-2 space-y-6">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2 border-b pb-2">
-                <Bell className="text-brand-gold" /> Central de Alertas Governamentais
-              </h2>
+            {alerts.length === 0 ? (
+              <div className="rounded-xl border border-gray-800 bg-[#0f1520] p-12 text-center">
+                <div className="relative w-16 h-16 mx-auto mb-4">
+                  <div className="absolute inset-0 rounded-full border border-emerald-800 animate-ping opacity-30" />
+                  <div className="absolute inset-2 rounded-full border border-emerald-800 opacity-20" />
+                  <Shield className="absolute inset-0 m-auto text-emerald-700" size={24} />
+                </div>
+                <p className="text-emerald-600 font-medium mb-1">Nenhuma anomalia detectada</p>
+                <p className="text-gray-600 text-sm">Execute uma varredura para iniciar o monitoramento.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {alerts.map(alert => {
+                  const cfg = getSeverityConfig(alert.severity);
+                  const propName = alert.properties?.name || 'Propriedade';
 
-              <div className="bg-white p-6 rounded-2xl shadow-sm border min-h-[400px]">
-                {alerts.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-400 py-10">
-                    <Radar size={48} className="mb-4 opacity-20" />
-                    <p>Nenhuma anomalia detectada.</p>
-                    <p className="text-sm mt-2">Dormindo tranquilo, o sistema vigia por você.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {alerts.map(alert => (
-                      <div key={alert.id} className="flex gap-4 p-4 rounded-lg bg-red-50 border border-red-100">
-                        <div className="flex-shrink-0 mt-1">
-                          <AlertTriangle className="text-red-600" size={24} />
+                  return (
+                    <div
+                      key={alert.id}
+                      className={`rounded-xl p-4 transition-all ${alert.is_read ? 'opacity-40 hover:opacity-70' : cfg.bg}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 mt-0.5">
+                          <span className={`w-2 h-2 rounded-full block mt-1 ${cfg.dot}`} />
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-red-800">{alert.properties?.name}</span>
-                            <span className="text-xs text-gray-500 flex items-center gap-1"><Clock size={12}/> {new Date(alert.created_at).toLocaleDateString()}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className={`text-xs font-bold uppercase tracking-wide ${cfg.color}`}>
+                              {cfg.label}
+                            </span>
+                            <span className="text-gray-500 text-xs">·</span>
+                            <span className="text-gray-300 text-xs font-medium">{propName}</span>
+                            <span className="text-gray-600 text-xs ml-auto flex-shrink-0">{timeAgo(alert.created_at)}</span>
                           </div>
-                          <p className="text-sm text-red-900 leading-relaxed">{alert.message}</p>
+                          <p className={`text-sm font-semibold mb-1 ${cfg.color}`}>{alert.title}</p>
+                          <p className="text-xs text-gray-400 leading-relaxed">{alert.description}</p>
+                          <div className="flex gap-3 mt-2">
+                            <Link
+                              href="/dashboard"
+                              className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1 transition-colors"
+                            >
+                              <ChevronRight size={11} /> Ver análises
+                            </Link>
+                            {!alert.is_read && (
+                              <button
+                                onClick={() => markRead(alert.id)}
+                                className="text-xs text-gray-600 hover:text-gray-400 flex items-center gap-1 transition-colors"
+                              >
+                                <XCircle size={11} /> Dispensar
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Upsell card — monitoramento automático */}
+            <div className="mt-6 rounded-xl border border-amber-900/60 bg-gradient-to-br from-amber-950/40 to-[#0f1520] p-5">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-900/60 flex items-center justify-center flex-shrink-0">
+                  <Zap size={16} className="text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-amber-300 mb-1">Monitoramento Automático — em breve</h3>
+                  <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                    Varreduras automáticas quinzenais + alertas por e-mail + relatório mensal de delta fundiário por propriedade. Seja notificado antes que qualquer gravame afete sua decisão.
+                  </p>
+                  <div className="flex gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <CheckCircle2 size={11} className="text-emerald-600" /> Alertas em 24h
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <CheckCircle2 size={11} className="text-emerald-600" /> Delta report mensal
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <CheckCircle2 size={11} className="text-emerald-600" /> R$ 49–89/propriedade/mês
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
+            {/* Info footer */}
+            <div className="mt-4 flex items-start gap-2 text-xs text-gray-600">
+              <Info size={13} className="flex-shrink-0 mt-0.5" />
+              <p>O radar analisa os dados das suas análises existentes. Para detectar novos ônus registrados após a data da análise, atualize os documentos e execute nova auditoria completa.</p>
+            </div>
           </div>
-        )}
+        </div>
       </main>
     </div>
   );
@@ -165,10 +493,12 @@ function RadarContent() {
 
 export default function RadarPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-500">Carregando Radar...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#0a0d14] flex items-center justify-center">
+        <div className="text-emerald-400 text-sm font-mono animate-pulse tracking-widest">INICIALIZANDO RADAR...</div>
+      </div>
+    }>
       <RadarContent />
     </Suspense>
   );
 }
-
-
