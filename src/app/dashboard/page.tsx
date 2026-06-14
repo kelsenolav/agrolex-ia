@@ -819,26 +819,26 @@ export default function DashboardPage() {
         </div>
 
         {/* ─── BANNER RADAR ────────────────────────────────────────────────── */}
-        <div className="mb-6 rounded-2xl bg-[#0a0d14] border border-emerald-900 overflow-hidden">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 px-6 py-4">
+        <div className="mb-6 rounded-2xl bg-gradient-to-r from-[#0d1117] to-[#0a1a12] border border-emerald-700/60 overflow-hidden shadow-md">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 px-6 py-5">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg bg-emerald-950 border border-emerald-800 flex items-center justify-center flex-shrink-0">
-                <span className="text-xl">🛡️</span>
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0">
+                <span className="text-2xl">🛡️</span>
               </div>
               <div>
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-emerald-400 text-[10px] font-bold uppercase tracking-widest font-mono">Radar Fundiário</span>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-emerald-400 text-xs font-bold uppercase tracking-widest">Radar Fundiário</span>
                 </div>
-                <p className="text-white text-sm font-semibold">Monitore a segurança jurídica das suas propriedades em tempo real</p>
-                <p className="text-gray-500 text-xs mt-0.5">Alertas de gravames, queda do ISF e certidões vencidas — R$ 49,90/propriedade/mês</p>
+                <p className="text-white text-base font-bold leading-snug">Sua propriedade pode ter um alerta agora mesmo</p>
+                <p className="text-gray-300 text-sm mt-0.5">Gravames novos, queda de ISF, certidões vencidas — detectamos antes que vire problema.</p>
               </div>
             </div>
             <Link
               href="/dashboard/radar"
-              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-emerald-900/40 text-sm whitespace-nowrap flex-shrink-0"
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-emerald-900/50 text-sm whitespace-nowrap flex-shrink-0"
             >
-              Acessar Radar →
+              Verificar minhas propriedades →
             </Link>
           </div>
         </div>
