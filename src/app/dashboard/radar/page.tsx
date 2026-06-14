@@ -11,6 +11,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { getStatusConfig, getSeverityConfig } from '@/lib/monitoring/monitoringEngine';
 import type { PropertyCheckResult } from '@/lib/monitoring/monitoringEngine';
+import Logo from '@/components/Logo';
 
 type AlertSeverity = 'info' | 'warning' | 'critical';
 
@@ -189,13 +190,14 @@ function RadarContent() {
               <ArrowLeft size={20} />
             </Link>
             <div className="flex items-center gap-3">
-              <div className="relative">
-                <Shield size={24} className="text-emerald-400" />
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
-              </div>
-              <div>
-                <span className="text-white font-bold text-lg tracking-tight">Radar AgrolexI</span>
-                <span className="ml-2 text-xs text-gray-500 font-mono">Monitoramento Fundiário</span>
+              <Logo size="sm" className="text-white" />
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-mono text-sm">·</span>
+                <div className="relative flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 relative" />
+                  <span className="text-emerald-300 font-bold text-sm tracking-tight">Radar Fundiário</span>
+                </div>
               </div>
             </div>
           </div>
