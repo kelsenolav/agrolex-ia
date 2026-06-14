@@ -216,7 +216,7 @@ export default function PlanosPage() {
                 </div>
 
                 {/* Preço */}
-                <div className={`px-6 py-5 text-center border-b ${isPremium ? 'border-gray-700' : 'border-gray-100'}`}>
+                <div className={`px-6 py-5 text-center border-b ${isPremium ? 'bg-gray-800 border-gray-700' : 'border-gray-100'}`}>
                   {isTrial ? (
                     <div>
                       <span className={`text-4xl font-black ${isPremium ? 'text-white' : 'text-gray-800'}`}>Grátis</span>
