@@ -609,7 +609,8 @@ export function inferirPontuacoesDeAchados(
       'registro de hipoteca', 'registro de alienacao',
       'averba premonitoria', 'acao pessoal reipersecutoria',
       'registro de bloqueio', 'registro de indisponibilidade',
-      'matricula limpa', 'certidao vencida',
+      'matricula limpa',
+      // NOTA: "certidao vencida" removida de D3 — observação procedimental, pertence a D4
     ],
     D4: [
       'car', 'sicar', 'ambiental', 'ccir', 'itr',
@@ -624,8 +625,12 @@ export function inferirPontuacoesDeAchados(
       'cadastro ambiental rural', 'licenca ambiental',
       'termo de compromisso', 'embargo', 'multa ambiental',
       'debito de itr', 'certidao negativa de debito',
-      'imovel rural', 'car ativo', 'car cancelado',
-      'car pendente',
+      'imovel rural', 'car ativo', 'car cancelado', 'car pendente',
+      // Certidão vencida = observação procedimental cadastral — pertence aqui, não em D3
+      'certidao vencida', 'certidao inteiro teor vencida',
+      'certidao de inteiro teor vencida', 'vencimento certidao',
+      'prazo certidao', 'certidao desatualizada', 'certidao expirada',
+      'validade certidao', 'certidao com prazo vencido',
     ],
     D5: [
       'litigio', 'processo', 'judicial', 'acao',
@@ -656,10 +661,10 @@ export function inferirPontuacoesDeAchados(
     ],
   };
 
-  // PADRÃO NEUTRO para dimensões sem achados: 65 (Atenção).
+  // PADRÃO NEUTRO para dimensões sem achados: 75 (Regular — levemente positivo).
   // Silêncio da IA sobre uma dimensão = nenhum problema encontrado lá, não ausência de análise.
   // Dimensões com achados partem de 80 e são deduzidas pelo impacto dos problemas.
-  const DEFAULT_NEUTRO = 65;
+  const DEFAULT_NEUTRO = 75;
 
   const scores: Record<string, number> = {};
   const touched: Record<string, boolean> = {};
@@ -708,8 +713,13 @@ export function inferirPontuacoesDeAchados(
     if (melhorDim) {
       if (scores[melhorDim] === undefined) scores[melhorDim] = 80;
       // Penalização cumulativa: cada achado adicional na mesma dimensão deduz 3 pts extras
-      hitsPorDimensao[melhorDim] = (hitsPorDimensao[melhorDim] || 0) + 1;
-      const multAchado = hitsPorDimensao[melhorDim] > 1 ? (hitsPorDimensao[melhorDim] - 1) * 3 : 0;
+      // Penalização cumulativa: apenas achados de impacto >= 15 (médio+) incrementam o contador.
+      // Achados "baixo" (imp=5) aplicam seu impacto mas não aceleram a penalização cumulativa,
+      // evitando que observações menores disparem travas destinadas a gravames sérios.
+      if (impacto >= 15) {
+        hitsPorDimensao[melhorDim] = (hitsPorDimensao[melhorDim] || 0) + 1;
+      }
+      const multAchado = (hitsPorDimensao[melhorDim] || 0) > 1 ? ((hitsPorDimensao[melhorDim] || 0) - 1) * 3 : 0;
       scores[melhorDim] = Math.max(0, scores[melhorDim] - Math.round(impacto) - multAchado);
       touched[melhorDim] = true;
 

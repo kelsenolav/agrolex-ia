@@ -410,24 +410,24 @@ describe('Classificação de faixas (classificarFaixaV2_2)', () => {
 // ─── CENÁRIO 9: INFERÊNCIA DE PONTUAÇÕES ────────────────────────────────
 
 describe('Inferência de pontuações a partir de achados', () => {
-  test('Lista vazia deve retornar 6 dimensões com score neutro 65 e criticidadeInferida vazia', () => {
+  test('Lista vazia deve retornar 6 dimensões com score neutro 75 e criticidadeInferida vazia', () => {
     const { pontuacoes, criticidadeInferida } = inferirPontuacoesDeAchados([]);
     expect(pontuacoes).toHaveLength(6);
     expect(criticidadeInferida.size).toBe(0);
-    // Todas as 6 dimensões devem ter score neutro 65 (Atenção — nenhum problema encontrado)
+    // Todas as 6 dimensões devem ter score neutro 75 (Regular — nenhum problema encontrado)
     for (const p of pontuacoes) {
-      expect(p.pontuacao).toBe(65);
+      expect(p.pontuacao).toBe(75);
       expect(p.itemSelecionado).toMatch(/^\[Inferido\]/);
     }
-    // ISF resultante com 6×65: todas as dims fornecidas → ISF=65 (Atenção), sem travas
+    // ISF resultante com 6×75: todas as dims fornecidas → ISF=75 (Regular), sem travas
     const resultado = calcularISFV2_2(pontuacoes);
-    expect(resultado.isf_score).toBe(65);
-    expect(resultado.faixa).toBe('atencao');
+    expect(resultado.isf_score).toBe(75);
+    expect(resultado.faixa).toBe('regular');
     expect(resultado.incompleto).toBe(false);
     expect(resultado.travas_aplicadas).toHaveLength(0);
   });
 
-  test('Achado de penhora deve reduzir D3, demais dimensões ficam com score neutro 65', () => {
+  test('Achado de penhora deve reduzir D3, demais dimensões ficam com score neutro 75', () => {
     const problemas = [
       { titulo: 'Penhora registrada na matrícula', criticidade: 'alta', descricao: 'Penhora de R$ 500 mil.' },
     ];
@@ -438,10 +438,10 @@ describe('Inferência de pontuações a partir de achados', () => {
     expect(D3).toBeDefined();
     // impacto alta = 30 integral → 80 - 30 = 50
     expect(D3!.pontuacao).toBe(50);
-    // Dimensões não afetadas devem ter score neutro 65
+    // Dimensões não afetadas devem ter score neutro 75
     const outras = pontuacoes.filter(p => p.dimensaoId !== 'D3');
     for (const p of outras) {
-      expect(p.pontuacao).toBe(65);
+      expect(p.pontuacao).toBe(75);
       expect(p.itemSelecionado).toMatch(/^\[Inferido\]/);
     }
   });

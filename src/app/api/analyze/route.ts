@@ -1846,27 +1846,55 @@ export async function POST(req: Request) {
           if (!hasInheritedIsf) {
             try {
               // ── v2.2 (6 dimensões, sem Muito Seguro, com Inválido/Regular) ──
-              const { pontuacoes: pontuacoesV2_2, criticidadeInferida } = inferirPontuacoesDeAchados(parsedProblemas);
-              
-              // Sincronizar criticidade dos problemas com a inferida pelo motor ISF.
-              for (const p of parsedProblemas) {
-                const chave = (p.titulo || '').trim();
-                if (!chave) continue;
-                const inferida = criticidadeInferida.get(chave);
-                if (inferida) {
-                  const atual = (p.criticidade || '').toLowerCase().trim();
-                  const isDefault = !atual || atual === 'medio' || atual === 'médio';
-                  const isLessSevere = (
-                    (atual.replace(/[.!?,;]+$/, '') === 'baixo' && (inferida === 'Crítico' || inferida === 'Alto')) ||
-                    (atual.replace(/[.!?,;]+$/, '') === 'alto' && inferida === 'Crítico')
-                  );
-                  if (isDefault || isLessSevere) {
-                    p.criticidade = inferida;
+              // Preferir pontuações explícitas fornecidas pela IA (matricula_individual.isf_dimensoes)
+              // para eliminar não-determinismo causado por inferência via keywords.
+              let pontuacoesV2_2: import('@/lib/isf/isfEngineV2_2').PontuacaoEntradaV2_2[];
+              const isfDimensoesFromAI = matriculaIndividualJsonParsed?.isf_dimensoes as Record<string, { pontuacao: number; justificativa?: string }> | undefined;
+              if (isfDimensoesFromAI && typeof isfDimensoesFromAI === 'object') {
+                // Usar scores explícitos da IA — determinísticos, rastreáveis por documento
+                pontuacoesV2_2 = ['D1','D2','D3','D4','D5','D6']
+                  .filter(d => isfDimensoesFromAI[d] && typeof isfDimensoesFromAI[d].pontuacao === 'number')
+                  .map(d => ({
+                    dimensaoId: d,
+                    pontuacao: Math.max(0, Math.min(100, Number(isfDimensoesFromAI[d].pontuacao))),
+                    itemSelecionado: isfDimensoesFromAI[d].justificativa,
+                  }));
+                // Quando cadeia_dominial não foi analisada, remover D2 para activar TRAVA_D2_AUSENTE
+                if (!normalizedModules.includes('cadeia_dominial')) {
+                  pontuacoesV2_2 = pontuacoesV2_2.filter(p => p.dimensaoId !== 'D2');
+                }
+              } else {
+                // Fallback: inferência via keywords (não-determinístico — manter para módulos sem JSON)
+                const inferred = inferirPontuacoesDeAchados(parsedProblemas);
+                pontuacoesV2_2 = inferred.pontuacoes;
+                // Sincronizar criticidade com a inferida
+                for (const p of parsedProblemas) {
+                  const chave = (p.titulo || '').trim();
+                  if (!chave) continue;
+                  const inferida = inferred.criticidadeInferida.get(chave);
+                  if (inferida) {
+                    const atual = (p.criticidade || '').toLowerCase().trim();
+                    const isDefault = !atual || atual === 'medio' || atual === 'médio';
+                    const isLessSevere = (
+                      (atual.replace(/[.!?,;]+$/, '') === 'baixo' && (inferida === 'Crítico' || inferida === 'Alto')) ||
+                      (atual.replace(/[.!?,;]+$/, '') === 'alto' && inferida === 'Crítico')
+                    );
+                    if (isDefault || isLessSevere) {
+                      p.criticidade = inferida;
+                    }
                   }
+                }
+                // Quando cadeia_dominial não foi analisada, remover D2 para activar TRAVA_D2_AUSENTE
+                if (!normalizedModules.includes('cadeia_dominial')) {
+                  pontuacoesV2_2 = pontuacoesV2_2.filter(p => p.dimensaoId !== 'D2');
                 }
               }
 
               isfResultV2_2 = calcularISFV2_2(pontuacoesV2_2);
+              // Guardrail: risk_level Crítico nunca deve produzir ISF > 54 (alto_risco)
+              if (riskLevel === 'Crítico' && isfResultV2_2.isf_score > 54) {
+                isfResultV2_2 = { ...isfResultV2_2, isf_score: 39, faixa: 'critico', faixa_label: 'Crítico', travas_aplicadas: [...(isfResultV2_2.travas_aplicadas || []), 'TRAVA_RISK_LEVEL_CRITICO'] };
+              }
               const payloadV2_2 = prepararPayloadV2_2(isfResultV2_2);
 
               // ── v2.1 (compatibilidade — mantido para análises antigas e comparação) ──

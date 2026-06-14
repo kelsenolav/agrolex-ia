@@ -198,11 +198,30 @@ CONTRATO JSON — responda EXATAMENTE esta estrutura:
       "motivo": "por que este documento é relevante para a análise"
     }
   ],
-  "parecer_markdown": "parecer técnico completo em formato narrativo, em português. Use \\n para separar parágrafos. Inclua: identificação da matrícula, proprietário e regime de bens, CCIR e exercício, atos registrais relevantes, ônus vigentes, achados principais e recomendações. Este campo será exibido como o laudo principal."
+  "parecer_markdown": "parecer técnico completo em formato narrativo, em português. Use \\n para separar parágrafos. Inclua: identificação da matrícula, proprietário e regime de bens, CCIR e exercício, atos registrais relevantes, ônus vigentes, achados principais e recomendações. Este campo será exibido como o laudo principal.",
+  "isf_dimensoes": {
+    "D1": { "pontuacao": 70, "justificativa": "base em fato documental concreto da matrícula — ex: título originário presente e cadeia íntegra desde 1980" },
+    "D2": { "pontuacao": 85, "justificativa": "base em fato documental concreto" },
+    "D3": { "pontuacao": 70, "justificativa": "base em fato documental concreto" },
+    "D4": { "pontuacao": 65, "justificativa": "base em fato documental concreto" },
+    "D5": { "pontuacao": 100, "justificativa": "base em fato documental concreto" },
+    "D6": { "pontuacao": 100, "justificativa": "base em fato documental concreto" }
+  }
 }
 
 CAMPOS OBRIGATÓRIOS: todos os campos no nível raiz DEVEM estar presentes. Arrays podem ser vazios [] se não houver dados.
 VALORES DE RISCO: use apenas "baixo", "medio", "alto" ou "critico" (minúsculas, sem acento em "medio").
+
+REGRAS PARA isf_dimensoes (OBRIGATÓRIO):
+- Preencha TODAS as 6 dimensões (D1 a D6) com pontuação baseada EXCLUSIVAMENTE nos documentos anexados.
+- D1 (Origem do título): avalia a legitimidade da origem (ex: 100=sesmaria confirmada; 90=título INCRA definitivo; 75=título INCRA com cláusula cumprida; 70=compra com cadeia completa; 55=regularização fundiária; 30=título provisório não quitado; 10=apenas posse).
+- D2 (Cadeia dominial): avalia continuidade das transmissões (ex: 100=cadeia completa sem lacunas; 85=cadeia completa variação ≤5% com justificativa; 70=variação ≤5% sem justificativa; 50=uma lacuna isolada; 25=transmitente sem legitimidade; 5=cadeia não reconstituível).
+- D3 (Integridade registral): avalia estado da matrícula (ex: 100=limpa+georreferenciada INCRA; 90=limpa+SIGEF; 70=limpa sem certificação; 55=hipoteca vigente; 35=penhora; 30=indisponibilidade; 20=ação reipersecutória).
+- D4 (Conformidade ambiental/administrativa): avalia CAR, CCIR, ITR (ex: 100=CAR ativo+ITR em dia+CCIR atualizado; 65=CAR com pequenas inconsistências; 45=CAR em análise; 25=débito ITR; 15=CAR cancelado).
+- D5 (Litigiosidade): avalia processos e conflitos (ex: 100=sem litígios; 75=ação possessória sem averbação; 45=ação real averbada; 20=disputa possessória em área do imóvel).
+- D6 (Contexto geopolítico): avalia localização e pressões externas (ex: 100=área consolidada sem pressão; 75=fronteira agrícola estável; 45=pressão de posseiros ou conflito fundiário regional).
+- Use valores da escala: 5, 10, 15, 20, 25, 30, 35, 45, 50, 55, 60, 65, 70, 75, 85, 90, 100.
+- Cada justificativa deve citar o fato documental que fundamenta a pontuação (nunca genérica).
 
 AGORA, RESPONDA EXCLUSIVAMENTE COM O OBJETO JSON.`;
   }
