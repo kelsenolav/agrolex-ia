@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { runPropertyCheck } from '@/lib/monitoring/monitoringEngine';
+import { runExternalChecks, type PropertyParams, type AnalysisFindings } from '@/lib/monitoring/externalDataProviders';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -28,17 +30,15 @@ export async function POST(req: Request) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Buscar propriedade
     const { data: property, error: propError } = await adminClient
       .from('properties')
-      .select('id, name, city, state, user_id, last_radar_isf_score, is_monitoring')
+      .select('id, name, city, state, user_id, last_radar_isf_score, is_monitoring, car_code, ccir, sigef_code, cpf_cnpj, matricula_number, registry_office')
       .eq('id', propertyId)
       .single();
 
     if (propError || !property) return NextResponse.json({ error: 'Propriedade não encontrada' }, { status: 404 });
     if (property.user_id !== user.id) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
-    // Buscar análises da propriedade
     const { data: analyses } = await adminClient
       .from('analyses')
       .select('id, status, completed_at, isf_score, findings, created_at')
@@ -46,9 +46,36 @@ export async function POST(req: Request) {
       .order('created_at', { ascending: false })
       .limit(10);
 
-    const result = runPropertyCheck(property, analyses || [], property.last_radar_isf_score ?? null);
+    const internalResult = runPropertyCheck(property, analyses || [], property.last_radar_isf_score ?? null);
 
-    // Persistir novos alertas (evitar duplicatas por tipo no mesmo dia)
+    const latestCompleted = (analyses || []).find(a => a.status === 'completed');
+    const findings: AnalysisFindings = latestCompleted?.findings || {};
+
+    const propertyParams: PropertyParams = {
+      name: property.name,
+      city: property.city,
+      state: property.state,
+      car_code: property.car_code,
+      ccir: property.ccir,
+      sigef_code: property.sigef_code,
+      cpf_cnpj: property.cpf_cnpj,
+      matricula_number: property.matricula_number,
+      registry_office: property.registry_office,
+    };
+
+    const externalResult = await runExternalChecks(propertyParams, findings);
+
+    const allAlerts = [
+      ...internalResult.alerts.map(a => ({
+        alert_type: a.alert_type,
+        severity: a.severity as 'info' | 'warning' | 'critical',
+        title: a.title,
+        description: a.description,
+        metadata: a.metadata as Record<string, unknown>,
+      })),
+      ...externalResult.new_alerts,
+    ];
+
     const today = new Date().toISOString().slice(0, 10);
     const { data: existingAlerts } = await adminClient
       .from('monitoring_alerts')
@@ -57,8 +84,8 @@ export async function POST(req: Request) {
       .eq('user_id', user.id)
       .gte('created_at', `${today}T00:00:00Z`);
 
-    const existingTypes = new Set((existingAlerts || []).map((a: any) => a.alert_type));
-    const newAlerts = result.alerts.filter(a => !existingTypes.has(a.alert_type));
+    const existingTypes = new Set((existingAlerts || []).map((a: { alert_type: string }) => a.alert_type));
+    const newAlerts = allAlerts.filter(a => !existingTypes.has(a.alert_type));
 
     if (newAlerts.length > 0) {
       await adminClient.from('monitoring_alerts').insert(
@@ -69,26 +96,52 @@ export async function POST(req: Request) {
           severity: a.severity,
           title: a.title,
           description: a.description,
-          metadata: a.metadata,
+          metadata: {
+            ...a.metadata,
+            external_check: externalResult.timestamp,
+            sources_consulted: externalResult.sources_consulted,
+            sources_success: externalResult.sources_success,
+          },
         }))
       );
     }
 
-    // Atualizar last_radar_check_at e last_radar_isf_score na propriedade
     await adminClient.from('properties').update({
       is_monitoring: true,
       last_radar_check_at: new Date().toISOString(),
-      last_radar_isf_score: result.latestIsfScore ?? property.last_radar_isf_score,
-      last_radar_analysis_id: result.latestAnalysisId,
+      last_radar_isf_score: internalResult.latestIsfScore ?? property.last_radar_isf_score,
+      last_radar_analysis_id: internalResult.latestAnalysisId,
     }).eq('id', propertyId);
 
     return NextResponse.json({
       success: true,
-      result,
+      result: {
+        ...internalResult,
+        alerts: allAlerts.map(a => ({
+          alert_type: a.alert_type,
+          severity: a.severity,
+          title: a.title,
+          description: a.description,
+          metadata: a.metadata,
+        })),
+      },
+      external_check: {
+        timestamp: externalResult.timestamp,
+        sources_consulted: externalResult.sources_consulted,
+        sources_success: externalResult.sources_success,
+        sources_failed: externalResult.sources_failed,
+        sigef: externalResult.sigef,
+        car: externalResult.car,
+        cnir: externalResult.cnir,
+        tribunais_processos: externalResult.tribunais?.processos_encontrados ?? 0,
+        tribunais_alerta: externalResult.tribunais?.alerta_litigio ?? false,
+        certidoes: externalResult.certidoes,
+      },
       newAlertsCount: newAlerts.length,
     });
-  } catch (err: any) {
-    console.error('[Monitoring Check]', err);
-    return NextResponse.json({ error: err.message || 'Erro interno' }, { status: 500 });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[Monitoring Check]', msg);
+    return NextResponse.json({ error: msg || 'Erro interno' }, { status: 500 });
   }
 }

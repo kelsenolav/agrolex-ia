@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   Shield, ArrowLeft, AlertTriangle, CheckCircle2, Clock,
   RefreshCw, Bell, BellOff, Eye, Zap, Radio, Activity,
-  ChevronRight, XCircle, Info,
+  ChevronRight, XCircle, Info, Edit3, Save, Database, Globe,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getStatusConfig, getSeverityConfig } from '@/lib/monitoring/monitoringEngine';
@@ -36,6 +36,25 @@ interface PropertyRow {
   is_monitoring?: boolean;
   last_radar_check_at?: string;
   last_radar_isf_score?: number;
+  car_code?: string;
+  ccir?: string;
+  sigef_code?: string;
+  cpf_cnpj?: string;
+  matricula_number?: string;
+  registry_office?: string;
+}
+
+interface ExternalCheckSummary {
+  timestamp: string;
+  sources_consulted: string[];
+  sources_success: string[];
+  sources_failed: string[];
+  sigef: { found: boolean; status_certificacao?: string; sobreposicao_detectada?: boolean; erro?: string } | null;
+  car: { found: boolean; status?: string; erro?: string } | null;
+  cnir: { found: boolean; situacao_ccir?: string; divergencia_area?: boolean; divergencia_percentual?: number; erro?: string } | null;
+  tribunais_processos: number;
+  tribunais_alerta: boolean;
+  certidoes: { certidao_inteiro_teor: { valida: boolean }; certidao_negativa_onus: { valida: boolean; onus_detectados: string[] }; certidao_acoes_reipersecutorias: { valida: boolean; acoes_encontradas: number } } | null;
 }
 
 function timeAgo(dateStr: string): string {
@@ -64,13 +83,17 @@ function RadarContent() {
   const [scanning, setScanning] = useState<Record<string, boolean>>({});
   const [lastGlobalScan, setLastGlobalScan] = useState<Date | null>(null);
   const [token, setToken] = useState<string>('');
+  const [externalResults, setExternalResults] = useState<Record<string, ExternalCheckSummary>>({});
+  const [editingProp, setEditingProp] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<PropertyRow>>({});
+  const [savingProp, setSavingProp] = useState(false);
 
   const fetchData = useCallback(async (sessionToken: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { router.push('/login'); return; }
 
     const [propsRes, alertsRes] = await Promise.all([
-      supabase.from('properties').select('id, name, city, state, area, is_monitoring, last_radar_check_at, last_radar_isf_score').eq('user_id', session.user.id).order('name'),
+      supabase.from('properties').select('id, name, city, state, area, is_monitoring, last_radar_check_at, last_radar_isf_score, car_code, ccir, sigef_code, cpf_cnpj, matricula_number, registry_office').eq('user_id', session.user.id).order('name'),
       fetch('/api/monitoring/alerts', { headers: { Authorization: `Bearer ${sessionToken}` } }).then(r => r.json()),
     ]);
 
@@ -99,6 +122,9 @@ function RadarContent() {
       const data = await res.json();
       if (data.result) {
         setCheckResults(r => ({ ...r, [propertyId]: data.result }));
+      }
+      if (data.external_check) {
+        setExternalResults(r => ({ ...r, [propertyId]: data.external_check }));
       }
       await fetchData(token);
     } finally {
@@ -144,6 +170,36 @@ function RadarContent() {
     });
     setAlerts(as => as.map(a => ({ ...a, is_read: true })));
   }, [token]);
+
+  const startEditProp = useCallback((prop: PropertyRow) => {
+    setEditingProp(prop.id);
+    setEditForm({
+      car_code: prop.car_code || '',
+      ccir: prop.ccir || '',
+      sigef_code: prop.sigef_code || '',
+      cpf_cnpj: prop.cpf_cnpj || '',
+      matricula_number: prop.matricula_number || '',
+      registry_office: prop.registry_office || '',
+    });
+  }, []);
+
+  const saveEditProp = useCallback(async (propId: string) => {
+    setSavingProp(true);
+    try {
+      await supabase.from('properties').update({
+        car_code: editForm.car_code || null,
+        ccir: editForm.ccir || null,
+        sigef_code: editForm.sigef_code || null,
+        cpf_cnpj: editForm.cpf_cnpj || null,
+        matricula_number: editForm.matricula_number || null,
+        registry_office: editForm.registry_office || null,
+      }).eq('id', propId);
+      setProperties(ps => ps.map(p => p.id === propId ? { ...p, ...editForm } : p));
+      setEditingProp(null);
+    } finally {
+      setSavingProp(false);
+    }
+  }, [editForm]);
 
   const monitoredProperties = properties.filter(p => p.is_monitoring);
   const unmonitoredProperties = properties.filter(p => !p.is_monitoring);
@@ -322,9 +378,85 @@ function RadarContent() {
                   </div>
 
                   {prop.last_radar_check_at && (
-                    <p className="text-[11px] text-gray-600 flex items-center gap-1 mb-3">
+                    <p className="text-xs text-gray-600 flex items-center gap-1 mb-3">
                       <Clock size={10} /> Varredura {timeAgo(prop.last_radar_check_at)}
                     </p>
+                  )}
+
+                  {/* Dados cadastrais inline */}
+                  {editingProp === prop.id ? (
+                    <div className="mb-3 p-3 rounded-lg bg-gray-900 border border-gray-700 space-y-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-gray-400 flex items-center gap-1"><Database size={10} /> Dados Cadastrais</span>
+                        <button onClick={() => saveEditProp(prop.id)} disabled={savingProp} className="text-xs bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded flex items-center gap-1">
+                          <Save size={10} /> {savingProp ? 'Salvando...' : 'Salvar'}
+                        </button>
+                      </div>
+                      {([
+                        { key: 'car_code', label: 'Código CAR', placeholder: 'XX-XXXXXXX-XXXX' },
+                        { key: 'ccir', label: 'CCIR', placeholder: 'Exercício (ex: 2025)' },
+                        { key: 'sigef_code', label: 'Código SIGEF', placeholder: 'UUID da parcela' },
+                        { key: 'cpf_cnpj', label: 'CPF/CNPJ Proprietário', placeholder: '000.000.000-00' },
+                        { key: 'matricula_number', label: 'Nº Matrícula', placeholder: '12.345' },
+                        { key: 'registry_office', label: 'Cartório', placeholder: 'CRI de ...' },
+                      ] as const).map(({ key, label, placeholder }) => (
+                        <div key={key}>
+                          <label className="text-xs text-gray-500 block mb-0.5">{label}</label>
+                          <input
+                            type="text"
+                            value={(editForm as Record<string, string>)[key] || ''}
+                            onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))}
+                            placeholder={placeholder}
+                            className="w-full text-xs bg-gray-800 border border-gray-700 text-gray-200 rounded px-2 py-1 focus:border-emerald-500 focus:outline-none"
+                          />
+                        </div>
+                      ))}
+                      <button onClick={() => setEditingProp(null)} className="text-xs text-gray-500 hover:text-gray-300 mt-1">Cancelar</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => startEditProp(prop)}
+                      className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-300 mb-3 transition-colors"
+                    >
+                      <Edit3 size={10} />
+                      {prop.car_code || prop.sigef_code || prop.cpf_cnpj ? 'Editar dados cadastrais' : 'Adicionar dados cadastrais (CAR, SIGEF, CPF...)'}
+                    </button>
+                  )}
+
+                  {/* Resultado consultas externas */}
+                  {externalResults[prop.id] && (
+                    <div className="mb-3 p-2.5 rounded-lg bg-gray-900/60 border border-gray-800 space-y-1.5">
+                      <div className="flex items-center gap-1 mb-1">
+                        <Globe size={10} className="text-blue-400" />
+                        <span className="text-xs font-bold text-gray-400">Consultas Externas</span>
+                        <span className="text-xs text-gray-600 ml-auto">{externalResults[prop.id].sources_success.length}/{externalResults[prop.id].sources_consulted.length} fontes</span>
+                      </div>
+                      {externalResults[prop.id].sources_success.map(s => (
+                        <div key={s} className="flex items-center gap-1.5 text-xs">
+                          <CheckCircle2 size={10} className="text-emerald-500 flex-shrink-0" />
+                          <span className="text-gray-300">{s}</span>
+                          {s === 'SIGEF' && externalResults[prop.id].sigef?.sobreposicao_detectada && (
+                            <span className="text-red-400 font-bold ml-auto">Sobreposição!</span>
+                          )}
+                          {s === 'CAR' && externalResults[prop.id].car?.status && (
+                            <span className={`ml-auto font-medium ${externalResults[prop.id].car!.status === 'ativo' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                              {externalResults[prop.id].car!.status}
+                            </span>
+                          )}
+                          {s === 'Tribunais' && (
+                            <span className={`ml-auto font-medium ${externalResults[prop.id].tribunais_alerta ? 'text-red-400' : 'text-emerald-400'}`}>
+                              {externalResults[prop.id].tribunais_processos} processo{externalResults[prop.id].tribunais_processos !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                      {externalResults[prop.id].sources_failed.map(s => (
+                        <div key={s} className="flex items-center gap-1.5 text-xs">
+                          <XCircle size={10} className="text-gray-600 flex-shrink-0" />
+                          <span className="text-gray-600">{s} — indisponível</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
 
                   <div className="flex gap-2">
