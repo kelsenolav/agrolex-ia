@@ -1092,7 +1092,7 @@ function ResultadoContent() {
                 </span>
               </div>
               <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
-                <span className="flex items-center gap-1"><MapPin size={14} className="text-brand-gold" /> {propName} • {propLocation}</span>
+                <span className="flex items-center gap-1"><MapPin size={14} className="text-brand-gold" /> <strong className="font-bold text-gray-700">{propName}</strong> • <strong className="font-bold text-gray-700">{propLocation}</strong></span>
                 <span className="flex items-center gap-1"><Clock size={14} className="text-brand-gold" /> {new Date().toLocaleDateString('pt-BR')}</span>
                 <span className="flex items-center gap-1"><ShieldCheck size={14} className="text-brand-gold" /> ALX-{analise.id?.slice(0, 8).toUpperCase() || '00000000'}</span>
               </div>
@@ -1223,22 +1223,26 @@ function ResultadoContent() {
                   let badgeBg = 'bg-green-200 text-green-900';
                   let semaforo = 'bg-green-500';
                   let Icon = CheckCircle2;
+                  let achadoLabelColor = 'text-gray-500';
 
                   if (c.includes('critico')) {
                     cardBg = 'bg-red-50 border-red-200';
                     badgeBg = 'bg-red-200 text-red-900';
                     semaforo = 'bg-red-500';
                     Icon = AlertTriangle;
+                    achadoLabelColor = 'text-red-700';
                   } else if (c.includes('alto')) {
                     cardBg = 'bg-orange-50 border-orange-200';
                     badgeBg = 'bg-orange-200 text-orange-900';
                     semaforo = 'bg-orange-500';
                     Icon = AlertCircle;
+                    achadoLabelColor = 'text-orange-700';
                   } else if (c.includes('medio')) {
                     cardBg = 'bg-yellow-50 border-yellow-200';
                     badgeBg = 'bg-yellow-200 text-yellow-900';
                     semaforo = 'bg-yellow-500';
                     Icon = AlertCircle;
+                    achadoLabelColor = 'text-yellow-700';
                   }
 
                   return (
@@ -1248,6 +1252,7 @@ function ResultadoContent() {
                           <Icon size={14} />
                         </div>
                         <div className="flex-1 min-w-0">
+                          <p className={`text-[10px] font-extrabold uppercase tracking-widest mb-0.5 ${achadoLabelColor}`}>Achado Identificado:</p>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-bold text-gray-900 leading-tight">{titulo}</span>
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${badgeBg}`}>

@@ -98,6 +98,26 @@ body {
 }
 
 /* ============================================================
+   REPORT TEXT — Headings bold (screen + print)
+   Garante que títulos de seção no HTML gerado pela IA
+   (via dangerouslySetInnerHTML) apareçam em negrito.
+   ============================================================ */
+.report-text h1,
+.report-text h2,
+.report-text h3,
+.report-text h4,
+.report-text strong {
+  font-weight: 700 !important;
+}
+
+/* Títulos numerados gerados pela IA (ex: "1. IDENTIFICAÇÃO DA ANÁLISE") */
+.report-text h2,
+.report-text h3 {
+  color: #111827 !important; /* gray-900 */
+  letter-spacing: 0.02em;
+}
+
+/* ============================================================
    PRINT / PDF EXPORT — A4 Professional
    ============================================================ */
 @media print {
