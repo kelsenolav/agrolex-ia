@@ -591,6 +591,175 @@ function mapJsonRecomendacoes(recs: any[]): any[] {
   }));
 }
 
+/**
+ * Valida o JSON estruturado de matricula_individual.
+ */
+function validateMatriculaIndividualJson(parsed: Record<string, any>): string | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return 'JSON inválido: objeto raiz não encontrado.';
+  }
+  if (!parsed.identificacao || typeof parsed.identificacao !== 'object') {
+    return 'JSON inválido: identificacao ausente.';
+  }
+  if (!Array.isArray(parsed.documentos_analisados) || parsed.documentos_analisados.length < 1) {
+    return 'JSON inválido: documentos_analisados ausente ou vazio.';
+  }
+  if (!Array.isArray(parsed.atos_registrais)) {
+    return 'JSON inválido: atos_registrais não é array.';
+  }
+  if (!Array.isArray(parsed.achados)) {
+    return 'JSON inválido: achados não é array.';
+  }
+  if (!parsed.classificacao_risco || typeof parsed.classificacao_risco !== 'object') {
+    return 'JSON inválido: classificacao_risco ausente.';
+  }
+  if (!parsed.classificacao_risco.nivel || typeof parsed.classificacao_risco.nivel !== 'string') {
+    return 'JSON inválido: classificacao_risco.nivel ausente.';
+  }
+  if (!Array.isArray(parsed.recomendacoes)) {
+    return 'JSON inválido: recomendacoes não é array.';
+  }
+  if (!parsed.parecer_markdown || typeof parsed.parecer_markdown !== 'string' || parsed.parecer_markdown.trim().length === 0) {
+    return 'JSON inválido: parecer_markdown ausente ou vazio.';
+  }
+  const englishIndicators = [
+    'public deed', 'ownership', 'chain of title', 'risk classification',
+    'missing documents', 'recommendations', 'registry events', 'title deed',
+    'findings', 'mortgage', 'lien', 'encumbrance'
+  ];
+  const textToCheck = (
+    (parsed.parecer_markdown || '') + ' ' +
+    JSON.stringify(parsed.achados || []) + ' ' +
+    JSON.stringify(parsed.classificacao_risco || {})
+  ).toLowerCase();
+  const hits = englishIndicators.filter((ind) => textToCheck.includes(ind));
+  if (hits.length >= 2) {
+    return `JSON inválido: indícios de idioma estrangeiro (${hits.join(', ')}).`;
+  }
+  return null;
+}
+
+/**
+ * Tenta parsear a resposta da IA como JSON estruturado de matricula_individual.
+ */
+function tryParseMatriculaIndividualJson(rawText: string): { success: true; data: Record<string, any> } | { success: false; error: string } {
+  const attemptParse = (text: string): { success: true; data: Record<string, any> } | { success: false; error: string } => {
+    try {
+      const parsed = JSON.parse(text.trim());
+      const validationError = validateMatriculaIndividualJson(parsed);
+      if (!validationError) return { success: true, data: parsed };
+      return { success: false, error: validationError };
+    } catch (_) {
+      return { success: false, error: 'Falha ao parsear JSON.' };
+    }
+  };
+
+  const directResult = attemptParse(rawText);
+  if (directResult.success) return directResult;
+
+  const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  const cleanedResult = attemptParse(cleaned);
+  if (cleanedResult.success) return cleanedResult;
+
+  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    const extractedResult = attemptParse(jsonMatch[0]);
+    if (extractedResult.success) return extractedResult;
+    return { success: false, error: extractedResult.error };
+  }
+
+  return { success: false, error: directResult.error || 'Nenhum objeto JSON encontrado na resposta.' };
+}
+
+/**
+ * Converte achados do JSON de matricula_individual para formato interno.
+ */
+function mapJsonMatriculaAchadosToProblemas(achados: any[]): any[] {
+  return (achados || []).map((a: any) => ({
+    titulo: a.titulo || 'Achado',
+    descricao: a.descricao || '',
+    criticidade: mapJsonRiskToLevel(a.risco || 'medio'),
+    recomendacao: a.providencia || '',
+    base_documental: a.base_documental || '',
+    dimensao: a.dimensao || '',
+  }));
+}
+
+/**
+ * Executa passo de crítica sobre achados gerados pela IA (módulos texto-livre).
+ * Segunda passagem: valida base documental, criticidade e duplicações.
+ * Falha silenciosamente — retorna achados originais em caso de erro.
+ */
+async function runAchadosCritique(
+  achados: any[],
+  generateFn: typeof generateWithFallback
+): Promise<{ achadosValidados: any[]; achadosRemovidos: any[]; alertas: string[] }> {
+  if (!achados || achados.length === 0) {
+    return { achadosValidados: [], achadosRemovidos: [], alertas: [] };
+  }
+
+  const critiquePrompt = `Você é um auditor jurídico sênior revisando achados de uma análise fundiária.
+
+Revise os achados abaixo e retorne EXCLUSIVAMENTE um objeto JSON validando-os.
+
+CRITÉRIOS DE REMOÇÃO (remova achados que violem qualquer critério):
+1. base_documental é vaga, genérica ou ausente (ex: "matrícula", "documentos apresentados", "não consta") — exige referência específica como "R-3 da matrícula" ou "CCIR exercício 2022"
+2. O achado descreve apenas ausência de documento sem consequência jurídica concreta
+3. É recomendação disfarçada de achado (ex: "recomenda-se verificar", "sugere-se obter")
+4. É duplicado ou muito similar a outro achado da lista
+5. Criticidade "critico" ou "alto" sem descrição que justifique a severidade
+
+CRITÉRIOS DE MANUTENÇÃO:
+- Tem base documental específica com referência ao ato ou documento
+- Descreve risco jurídico real com consequência identificável
+- Criticidade coerente com a descrição
+
+ACHADOS PARA REVISÃO:
+${JSON.stringify(achados, null, 2)}
+
+RESPONDA EXCLUSIVAMENTE COM ESTE JSON (sem markdown, sem texto fora do JSON):
+{
+  "achados_validados": [],
+  "achados_removidos": [{"titulo": "...", "motivo_remocao": "base_documental vaga | recomendação disfarçada | duplicado | criticidade não justificada | ausência de consequência"}],
+  "alertas_qualidade": ["...observações gerais sobre qualidade dos achados..."]
+}`;
+
+  try {
+    const result = await generateFn([{ text: critiquePrompt }], {
+      geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+      maxOutputTokens: 2048,
+      timeoutMs: 25000,
+    });
+
+    const rawText = result.text || '';
+    let parsed: any;
+    try {
+      parsed = JSON.parse(rawText.trim());
+    } catch {
+      const match = rawText.match(/\{[\s\S]*\}/);
+      parsed = match ? JSON.parse(match[0]) : null;
+    }
+
+    if (!parsed || !Array.isArray(parsed.achados_validados)) {
+      return { achadosValidados: achados, achadosRemovidos: [], alertas: [] };
+    }
+
+    // Sanity check: se critique removeu TODOS os achados, manter originais
+    if (parsed.achados_validados.length === 0 && achados.length > 0) {
+      return { achadosValidados: achados, achadosRemovidos: [], alertas: parsed.alertas_qualidade || [] };
+    }
+
+    return {
+      achadosValidados: parsed.achados_validados,
+      achadosRemovidos: Array.isArray(parsed.achados_removidos) ? parsed.achados_removidos : [],
+      alertas: Array.isArray(parsed.alertas_qualidade) ? parsed.alertas_qualidade : [],
+    };
+  } catch (err: any) {
+    console.warn('[Critique] Falha na revisão de achados (ignorada):', err?.message || err);
+    return { achadosValidados: achados, achadosRemovidos: [], alertas: [] };
+  }
+}
+
 // Parsers locais de arquivos geoespaciais
 const parseKmlCoordinates = (kmlText: string): [number, number][] => {
   const coordsList: [number, number][] = [];
@@ -1211,6 +1380,7 @@ export async function POST(req: Request) {
           return m;
         })));
         const isFastChainOfTitleOnly = normalizedModules.length === 1 && normalizedModules[0] === "cadeia_dominial";
+        const isMatriculaIndividualOnly = normalizedModules.length === 1 && normalizedModules[0] === "matricula_individual";
         
         const instructions = buildLegalAuditPrompt(normalizedModules, documents);
 
@@ -1313,6 +1483,7 @@ export async function POST(req: Request) {
 
         // PASSO 25.7O — chainOfTitleJsonParsed para uso no pós-processamento
         let chainOfTitleJsonParsed: Record<string, any> | null = null;
+        let matriculaIndividualJsonParsed: Record<string, any> | null = null;
 
         if (isFastChainOfTitleOnly) {
           // PASSO 25.7I — Tentar parsing JSON estruturado primeiro
@@ -1344,12 +1515,28 @@ export async function POST(req: Request) {
           }
         }
 
+        if (isMatriculaIndividualOnly) {
+          const jsonParseResult = tryParseMatriculaIndividualJson(markdownResponse);
+          if (jsonParseResult.success) {
+            matriculaIndividualJsonParsed = jsonParseResult.data;
+            markdownResponse = matriculaIndividualJsonParsed.parecer_markdown;
+            validationPath = 'json_first';
+            console.log('[Analyze API] matricula_individual — JSON estruturado parseado com sucesso');
+          } else {
+            validationPath = 'textual_fallback';
+            console.warn('[Analyze API] matricula_individual — JSON inválido, fallback textual:', jsonParseResult.error);
+          }
+        }
+
         let riskLevel: RiskLevel;
         let riskLevelSource: RiskLevelSource;
-        
+
         if (chainOfTitleJsonParsed) {
-          // PASSO 25.7I — Risk level do JSON estruturado
+          // PASSO 25.7I — Risk level do JSON estruturado (cadeia_dominial)
           riskLevel = mapJsonRiskToLevel(chainOfTitleJsonParsed.classificacao_risco.nivel);
+          riskLevelSource = 'ai_json' as RiskLevelSource;
+        } else if (matriculaIndividualJsonParsed) {
+          riskLevel = mapJsonRiskToLevel(matriculaIndividualJsonParsed.classificacao_risco.nivel);
           riskLevelSource = 'ai_json' as RiskLevelSource;
         } else {
           const derivedRisk = deriveRiskLevelFromResumo(markdownResponse);
@@ -1523,15 +1710,29 @@ export async function POST(req: Request) {
           let parsedRecomendacoes: any[];
           let parsedAchados: any[] | null = null;
 
+          let critiqueResult: { achadosRemovidos: any[]; alertas: string[] } = { achadosRemovidos: [], alertas: [] };
+
           if (chainOfTitleJsonParsed) {
             parsedProblemas = mapJsonAchadosToProblemas(chainOfTitleJsonParsed.achados || []);
             parsedDocumentosFaltantes = mapJsonDocumentosFaltantes(chainOfTitleJsonParsed.documentos_faltantes || []);
             parsedRecomendacoes = mapJsonRecomendacoes(chainOfTitleJsonParsed.recomendacoes || []);
             parsedAchados = chainOfTitleJsonParsed.achados || [];
+          } else if (matriculaIndividualJsonParsed) {
+            parsedProblemas = mapJsonMatriculaAchadosToProblemas(matriculaIndividualJsonParsed.achados || []);
+            parsedDocumentosFaltantes = mapJsonDocumentosFaltantes(matriculaIndividualJsonParsed.documentos_faltantes || []);
+            parsedRecomendacoes = mapJsonRecomendacoes(matriculaIndividualJsonParsed.recomendacoes || []);
+            parsedAchados = matriculaIndividualJsonParsed.achados || [];
           } else {
             parsedProblemas = extractProblemsFromReport(markdownResponse);
             parsedDocumentosFaltantes = extractMissingDocumentsFromReport(markdownResponse);
             parsedRecomendacoes = extractRecommendationsFromReport(markdownResponse);
+
+            // Crítica de achados — apenas para módulos texto-livre (sem JSON schema)
+            if (parsedProblemas.length > 0) {
+              const critiqueOutput = await runAchadosCritique(parsedProblemas, generateWithFallback);
+              parsedProblemas = critiqueOutput.achadosValidados;
+              critiqueResult = { achadosRemovidos: critiqueOutput.achadosRemovidos, alertas: critiqueOutput.alertas };
+            }
           }
           const postprocessMs = Date.now() - postprocessStartAt;
           const totalMs = Date.now() - startedAt;
@@ -1735,6 +1936,8 @@ export async function POST(req: Request) {
           const patchedFindings = {
             ...resultJson,
             ...(chainOfTitleJsonParsed ? { chain_of_title_json: chainOfTitleJsonParsed } : {}),
+            ...(matriculaIndividualJsonParsed ? { matricula_individual_json: matriculaIndividualJsonParsed } : {}),
+            ...(critiqueResult.achadosRemovidos.length > 0 ? { achados_critica: critiqueResult } : {}),
             problemas: parsedProblemas,
             ...(parsedAchados ? { achados: parsedAchados } : {}),
             recomendacoes: parsedRecomendacoes,
