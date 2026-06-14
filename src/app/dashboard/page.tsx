@@ -658,6 +658,10 @@ export default function DashboardPage() {
                 Carregando saldo...
               </span>
             )}
+            <Link href="/dashboard/radar" className="flex items-center gap-1.5 text-sm bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-lg font-medium transition-colors">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Radar
+            </Link>
             <span className="text-sm font-medium">Olá, {userName}</span>
             <button onClick={handleLogout} className="text-sm hover:text-brand-gold transition-colors font-medium">Sair</button>
           </div>
@@ -904,293 +908,247 @@ export default function DashboardPage() {
         )}
 
 
-        {/* Tabela de Auditorias */}
-        <div id="tabela-auditorias" className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+        {/* ─── CARDS DE AUDITORIAS ─────────────────────────────────────────── */}
+        <div id="tabela-auditorias" className="space-y-3">
           {loading ? (
-             <div className="p-10 text-center text-gray-500">Carregando seus dados...</div>
+            <div className="bg-white rounded-xl p-12 text-center text-gray-400 shadow-sm border border-gray-100">
+              <div className="animate-pulse text-4xl mb-3">⏳</div>
+              <p className="font-medium">Carregando seus dados...</p>
+            </div>
           ) : analisesFiltradas.length === 0 ? (
-             <div className="p-10 text-center text-gray-500">
-               {searchTerm || statusFilter 
-                 ? 'Nenhuma auditoria encontrada com os filtros aplicados.' 
-                 : 'Nenhum documento enviado ainda. Clique em "Nova Auditoria Fundiária" para começar!'}
-             </div>
+            <div className="bg-white rounded-xl p-12 text-center shadow-sm border border-gray-100 space-y-3">
+              <div className="text-4xl">📂</div>
+              <p className="font-semibold text-gray-700">
+                {searchTerm || statusFilter || riskFilter
+                  ? 'Nenhuma auditoria com os filtros aplicados.'
+                  : 'Nenhuma auditoria ainda.'}
+              </p>
+              {!searchTerm && !statusFilter && !riskFilter && (
+                <Link href="/dashboard/nova-analise" className="inline-flex items-center gap-2 bg-brand-gold text-brand-green px-5 py-2.5 rounded-lg font-bold hover:brightness-110 transition-all shadow mt-2">
+                  <Plus size={16} /> Iniciar primeira auditoria
+                </Link>
+              )}
+            </div>
           ) : (
-            <table className="w-full text-left min-w-[800px]">
-              <thead className="bg-gray-50 text-gray-600 text-sm border-b border-gray-100">
-                <tr>
-                  <th className="px-6 py-4 font-semibold">Propriedade</th>
-                  <th className="px-6 py-4 font-semibold">Documento</th>
-                  <th className="px-6 py-4 font-semibold">Status da IA</th>
-                  <th className="px-6 py-4 font-semibold">Risco</th>
-                  <th className="px-6 py-4 font-semibold cursor-help">
-                    ISF
-                    <span className="ml-1.5 text-gray-400 cursor-help inline-block" title="ISF (Índice de Segurança Fundiária). Quanto maior o ISF, maior o risco fundiário identificado.">ⓘ</span>
-                  </th>
-                  <th className="px-6 py-4 font-semibold">Módulos Sugeridos</th>
-                  <th className="px-6 py-4 font-semibold">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {analisesPaginadas.map((analise) => {
-                  const { text: statusText, colorClass: statusColorClass, type: statusType } = normalizeStatus(analise.status || '');
-                  const hasParecer = analise.findings && analise.findings.resumo && String(analise.findings.resumo).trim().length > 0;
-                  const canRetryAnalysis = statusType === 'error' && isRecoverableAnalysisError(analise);
-                  const analysisDepth = (analise.findings as any)?.analysis_depth ?? 1;
-                  const depthLabel = analysisDepth === 1
-                    ? null
-                    : analysisDepth === 2
-                      ? 'Complementar 1'
-                      : `Complementar ${analysisDepth - 1}`;
-                  const recommended = getRecommendedModules(analise);
-                  const complementaryChildren = (analise.findings as any)?.complementary_children as Array<{ child_analysis_id: string; created_at: string; modules: string[]; total: number }> | undefined;
-                  
-                  // HOTFIX UI — Detectar análise complementar com módulos já processados no pai
-                  const findingsAny = analise.findings as any;
-                  const isComplementarJaProcessado = 
-                    findingsAny.parent_analysis_id != null &&
-                    Array.isArray(findingsAny.selected_modules) &&
-                    findingsAny.selected_modules.length > 0 &&
-                    findingsAny.selected_modules.every(
-                      (modId: string) => findingsAny.case_file?.module_results?.[modId]?.status === 'completed'
-                    );
-                  
-                  // Score individual — fonte primária: ISF v2, fallback: legado
-                  const isfV2ForScore = getISFV2FromFindings(analise.findings);
-                  const scoreData = calcularScoreAgroLex(analise.findings, analise.risk_level, isfV2ForScore.isf_score);
+            analisesPaginadas.map((analise) => {
+              const { text: statusText, colorClass: statusColorClass, type: statusType } = normalizeStatus(analise.status || '');
+              const hasParecer = analise.findings && analise.findings.resumo && String(analise.findings.resumo).trim().length > 0;
+              const canRetryAnalysis = statusType === 'error' && isRecoverableAnalysisError(analise);
+              const analysisDepth = (analise.findings as any)?.analysis_depth ?? 1;
+              const depthLabel = analysisDepth === 1 ? null : analysisDepth === 2 ? 'Complementar 1' : `Complementar ${analysisDepth - 1}`;
+              const recommended = getRecommendedModules(analise);
+              const complementaryChildren = (analise.findings as any)?.complementary_children as Array<{ child_analysis_id: string; created_at: string; modules: string[]; total: number }> | undefined;
 
-                  return (
-                    <tr key={analise.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <MapPin size={18} className="text-brand-green" />
-                          <span className="font-semibold text-gray-800">{analise.properties?.name}</span>
-                          {depthLabel && (
-                            <span className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
-                              {depthLabel}
+              const findingsAny = analise.findings as any;
+              const isComplementarJaProcessado =
+                findingsAny.parent_analysis_id != null &&
+                Array.isArray(findingsAny.selected_modules) &&
+                findingsAny.selected_modules.length > 0 &&
+                findingsAny.selected_modules.every(
+                  (modId: string) => findingsAny.case_file?.module_results?.[modId]?.status === 'completed'
+                );
+
+              const isfV2ForScore = getISFV2FromFindings(analise.findings);
+              const scoreData = calcularScoreAgroLex(analise.findings, analise.risk_level, isfV2ForScore.isf_score);
+              const isfV2 = getISFV2FromFindings(analise.findings);
+              const displayScore = statusType === 'completed' ? (isfV2.isf_score !== null ? isfV2.isf_score : scoreData.score) : null;
+              const displayLevel = (isfV2.risk_level || analise.risk_level || '') as ISFLevel;
+              const riskLabel = isfV2.risk_label || (displayLevel ? getISFLabel(displayLevel) : '') || analise.risk_level || '';
+
+              // Cor da borda-esquerda do card por criticidade / status
+              const cardBorderLeft =
+                statusType === 'processing' ? 'border-l-blue-400' :
+                statusType === 'error' ? 'border-l-red-400' :
+                statusType === 'pending' ? 'border-l-amber-400' :
+                displayLevel ? (normalizeISFLevel(displayLevel) === 'critico' ? 'border-l-red-500' :
+                  normalizeISFLevel(displayLevel) === 'alto_risco' ? 'border-l-amber-500' :
+                  normalizeISFLevel(displayLevel) === 'atencao' ? 'border-l-yellow-400' : 'border-l-green-400')
+                : 'border-l-gray-200';
+
+              return (
+                <div key={analise.id} className={`bg-white rounded-xl border border-gray-100 border-l-4 ${cardBorderLeft} shadow-sm hover:shadow-md transition-all`}>
+                  <div className="flex items-start gap-4 p-4">
+
+                    {/* ── Âncora visual: ISF Score ── */}
+                    <div className={`flex-shrink-0 w-[68px] h-[68px] rounded-xl flex flex-col items-center justify-center border ${
+                      displayScore !== null ? getISFBgTint(displayLevel) + ' border-transparent' : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      {displayScore !== null ? (
+                        <>
+                          <span className={`text-2xl font-black leading-none ${getISFTextTint(displayLevel)}`}>{displayScore}</span>
+                          <span className={`text-[8px] font-bold uppercase tracking-wider mt-0.5 ${getISFTextTint(displayLevel)} opacity-70`}>
+                            {getISFLabel(displayLevel) || 'ISF'}
+                          </span>
+                        </>
+                      ) : statusType === 'processing' ? (
+                        <span className="animate-pulse text-blue-400 text-2xl">⏳</span>
+                      ) : (
+                        <span className="text-gray-300 text-2xl">—</span>
+                      )}
+                    </div>
+
+                    {/* ── Informações principais ── */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+
+                        {/* Nome + localização + tipo */}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                            <h3 className="font-bold text-gray-900 text-base leading-tight">{analise.properties?.name}</h3>
+                            {depthLabel && (
+                              <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
+                                {depthLabel}
+                              </span>
+                            )}
+                            {complementaryChildren && complementaryChildren.length > 0 && (
+                              <span className="text-[9px] text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-bold">
+                                +{complementaryChildren.length} complementar
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500 flex items-center gap-1">
+                            <MapPin size={12} className="text-brand-green flex-shrink-0" />
+                            {analise.properties?.city}, {analise.properties?.state}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                            <FileText size={11} className="text-brand-gold flex-shrink-0" />
+                            {analise.documents?.[0]?.document_type || 'Documento'}
+                          </p>
+                        </div>
+
+                        {/* Status + Ações */}
+                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusColorClass}`}>
+                            {statusText}
+                          </span>
+
+                          {statusType === 'completed' && hasParecer && (
+                            <Link
+                              href={`/dashboard/resultado?id=${analise.id}`}
+                              className="inline-flex items-center gap-1.5 bg-brand-green text-white px-4 py-2 rounded-lg text-sm font-bold hover:brightness-110 transition-all shadow-sm"
+                            >
+                              Abrir Parecer <ArrowUpRight size={14} />
+                            </Link>
+                          )}
+                          {statusType === 'completed' && !hasParecer && (
+                            <span className="text-red-500 text-xs font-semibold">Anomalia: parecer ausente</span>
+                          )}
+                          {statusType === 'processing' && (
+                            <span className="text-sm text-gray-400 flex items-center gap-1.5">
+                              <span className="animate-pulse w-2 h-2 bg-blue-500 rounded-full" /> Processando...
                             </span>
                           )}
-                        </div>
-                        <span className="text-sm text-gray-500 ml-6">{analise.properties?.city}, {analise.properties?.state}</span>
-                        {complementaryChildren && complementaryChildren.length > 0 && (
-                          <div className="mt-1 ml-6">
-                            <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-medium">
-                              {complementaryChildren.length} {complementaryChildren.length === 1 ? 'documento complementar' : 'documentos complementares'}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-gray-700 flex items-center gap-2 mt-2">
-                        <FileText size={18} className="text-brand-gold" /> {analise.documents?.[0]?.document_type}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusColorClass}`}>
-                          {statusText}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        {statusType === 'completed' ? (() => {
-                          // P1B — Fonte primária: ISF v2, fallback: risk_level legado
-                          const isfV2 = getISFV2FromFindings(analise.findings);
-                          const riskLabel = isfV2.risk_label || analise.risk_level;
-                          return riskLabel ? (
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${getISFStyle(riskLabel)}`}>
-                              {isfV2.risk_label || analise.risk_level}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-sm font-medium">-</span>
-                          );
-                        })() : (
-                          <span className="text-gray-400 text-sm font-medium">-</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        {statusType === 'completed' ? (() => {
-                          // P1B — Fonte primária: ISF v2 score, fallback: score legado
-                          const isfV2 = getISFV2FromFindings(analise.findings);
-                          const displayScore = isfV2.isf_score !== null ? isfV2.isf_score : scoreData.score;
-                          const displayLevel = isfV2.risk_level || analise.risk_level || '';
-                          return (
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${getISFStyle(displayLevel)}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${getISFHex(displayLevel)}`} style={{ backgroundColor: getISFHex(displayLevel) }} />
-                              ISF {displayScore}
-                            </span>
-                          );
-                        })() : (
-                          <span className="text-gray-400 text-sm font-medium">-</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        {recommended.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5 max-w-[200px]">
-                            {recommended.slice(0, 3).map((mod) => (
-                              <span
-                                key={mod.module_id}
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getRiskStyle(getAnalysisRiskLevel(analise))}`}
-                                title={`${mod.title}${mod.price ? ` — R$ ${mod.price.toFixed(2)}` : ''}`}
-                              >
-                                {mod.title.length > 18 ? mod.title.substring(0, 16) + '…' : mod.title}
-                              </span>
-                            ))}
-                            {recommended.length > 3 && (
-                              <span className="text-gray-400 text-[10px] font-medium self-center">+{recommended.length - 3}</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400 text-[11px] font-medium">-</span>
-                        )}
-                      </td>
-                    <td className="px-6 py-4">
-                        {statusType === 'completed' ? (
-                          <div className="flex flex-col gap-1.5">
-                            {hasParecer ? (
-                              <Link href={`/dashboard/resultado?id=${analise.id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm flex items-center gap-1">
-                                Abrir Parecer <ArrowUpRight size={14} />
-                              </Link>
-                            ) : (
-                              <span className="text-red-500 text-xs font-semibold">Anomalia: parecer não localizado</span>
-                            )}
-                            {recommended.length > 0 && (
+                          {statusType === 'ready_for_processing' && isComplementarJaProcessado && (
+                            <Link href={`/dashboard/resultado?id=${findingsAny.parent_analysis_id}`} className="inline-flex items-center gap-1.5 bg-brand-green text-white px-4 py-2 rounded-lg text-sm font-bold hover:brightness-110 transition-all shadow-sm">
+                              Abrir Parecer <ArrowUpRight size={14} />
+                            </Link>
+                          )}
+                          {statusType === 'ready_for_processing' && !isComplementarJaProcessado && (
+                            <div className="flex items-center gap-2">
                               <button
-                                onClick={() =>
-                                  setRecommendModal({
-                                    analysisId: analise.id,
-                                    propertyName: analise.properties?.name || 'Propriedade',
-                                    modules: recommended
-                                  })
-                                }
-                                className="text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 px-2.5 py-1 rounded text-[10px] font-bold transition-colors w-fit"
+                                disabled={loadingAnalysisId !== null}
+                                onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: 'Processando auditoria...' })}
+                                className="bg-brand-green text-white px-4 py-2 rounded-lg text-sm font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
                               >
-                                + Adicionar Módulo
+                                {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar Parecer'}
                               </button>
-                            )}
-                          </div>
-                        ) : statusType === 'processing' ? (
-                          <span className="text-gray-400 text-sm font-medium flex items-center gap-1">
-                            <span className="animate-pulse w-2 h-2 bg-blue-500 rounded-full inline-block" /> Aguarde...
-                          </span>
-                        ) : statusType === 'ready_for_processing' && isComplementarJaProcessado ? (
-                          <Link href={`/dashboard/resultado?id=${(analise.findings as any).parent_analysis_id}`} className="text-brand-green font-bold hover:text-brand-gold transition-colors text-sm flex items-center gap-1">
-                            Abrir Parecer <ArrowUpRight size={14} />
-                          </Link>
-                        ) : statusType === 'ready_for_processing' ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              disabled={loadingAnalysisId !== null}
-                              onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: 'Processando auditoria...' })}
-                              className="bg-brand-green text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
-                            >
-                              {loadingAnalysisId === analise.id ? 'Auditando...' : 'Iniciar Parecer'}
-                            </button>
-                            <button
-                              onClick={() => handleDeleteAnalysis(analise.id)}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                              title="Excluir Auditoria Pendente"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        ) : statusType === 'error' ? (
-                          analise.findings?.retry_exhausted === true ? (
-                            <div className="flex flex-col gap-2 max-w-[300px]">
-                              <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wide w-fit">
-                                Exige processamento em etapas
-                              </span>
-                              <span className="text-gray-500 text-[10px] leading-tight">
-                                Esta matrícula possui volume ou complexidade acima do limite de processamento único. Adquira as etapas abaixo para uma auditoria completa:
-                              </span>
-                              <div className="flex flex-col gap-1.5 mt-1">
-                                {[
-                                  { id: 'matricula_individual', name: 'Análise de Matrícula Individual', price: 99.90 },
-                                  { id: 'cadeia_dominial', name: 'Cadeia Dominial Registral', price: 199.90 },
-                                  { id: 'origem_publica', name: 'Auditoria de Origem Pública', price: 199.90 },
-                                  { id: 'nulidades_fraudes', name: 'Mapeamento de Nulidades e Fraudes', price: 249.90 },
-                                ].map((etapa) => {
-                                  const selectedModules = (analise.findings as any)?.selected_modules || [];
-                                  const alreadyHasModule = selectedModules.includes(etapa.id);
-                                  return (
-                                    <div key={etapa.id} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-3 py-1.5">
-                                      <div className="flex items-center gap-2 min-w-0">
-                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${alreadyHasModule ? 'bg-green-500' : 'bg-amber-400'}`} />
-                                        <span className={`text-[10px] leading-tight ${alreadyHasModule ? 'text-gray-400 line-through' : 'text-gray-700 font-medium'}`}>
-                                          {etapa.name}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                                        {alreadyHasModule ? (
-                                          <span className="text-[9px] text-green-600 font-bold uppercase">Contratado</span>
-                                        ) : (
-                                          <>
-                                            <span className="text-[10px] font-bold text-brand-green">R$ {etapa.price.toFixed(2)}</span>
-                                            <button
-                                              onClick={() => {
-                                                setRecommendModal({
-                                                  analysisId: analise.id,
-                                                  propertyName: analise.properties?.name || 'Propriedade',
-                                                  modules: [{
-                                                    module_id: etapa.id,
-                                                    title: etapa.name,
-                                                    price: etapa.price
-                                                  }]
-                                                });
-                                              }}
-                                              className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold hover:brightness-110 transition-all"
-                                            >
-                                              Comprar
-                                            </button>
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              <span className="text-gray-400 text-[9px] leading-tight mt-1">
-                                * Cada etapa gera uma nova análise complementar vinculada a esta. Preço total estimado: <strong className="text-gray-700">R$ 749,60</strong>.
-                              </span>
+                              <button onClick={() => handleDeleteAnalysis(analise.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors" title="Excluir">
+                                <Trash2 size={15} />
+                              </button>
                             </div>
-                          ) : (
+                          )}
+                          {statusType === 'error' && analise.findings?.retry_exhausted !== true && (
                             <div className="flex items-center gap-2">
                               <button
                                 disabled={loadingAnalysisId !== null}
                                 onClick={() => handleStartAnalysis(analise.id, analise.properties?.id ?? '', { retryMessage: getRetryMessage(analise) })}
-                                className="bg-red-600 text-white px-3 py-1 rounded text-xs font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
+                                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:brightness-110 transition-all shadow disabled:opacity-50"
                               >
                                 {loadingAnalysisId === analise.id ? 'Reprocessando...' : 'Tentar novamente'}
                               </button>
-                              <button
-                                onClick={() => handleDeleteAnalysis(analise.id)}
-                                className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                                title="Excluir Análise"
-                              >
-                                <Trash2 size={16} />
+                              <button onClick={() => handleDeleteAnalysis(analise.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors" title="Excluir">
+                                <Trash2 size={15} />
                               </button>
                             </div>
-                          )
-                        ) : statusType === 'pending' ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handlePayNow(analise.id)}
-                              className="bg-brand-gold text-brand-green px-4 py-2 rounded text-xs font-bold hover:brightness-110 transition-all shadow"
-                            >
-                              Processar Pendência →
-                            </button>
-                            <button
-                              onClick={() => handleDeleteAnalysis(analise.id)}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                              title="Excluir Auditoria Pendente"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-gray-400 text-sm font-medium">-</span>
+                          )}
+                          {statusType === 'pending' && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handlePayNow(analise.id)}
+                                className="bg-brand-gold text-brand-green px-4 py-2 rounded-lg text-sm font-bold hover:brightness-110 transition-all shadow"
+                              >
+                                Processar Pendência →
+                              </button>
+                              <button onClick={() => handleDeleteAnalysis(analise.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors" title="Excluir">
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ── Linha inferior: risco + módulos sugeridos + retry_exhausted ── */}
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                        {riskLabel && statusType === 'completed' && (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getISFStyle(riskLabel)}`}>
+                            {riskLabel}
+                          </span>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {recommended.length > 0 && statusType === 'completed' && (
+                          <button
+                            onClick={() => setRecommendModal({ analysisId: analise.id, propertyName: analise.properties?.name || 'Propriedade', modules: recommended })}
+                            className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-colors"
+                          >
+                            + {recommended.length} módulo{recommended.length > 1 ? 's' : ''} sugerido{recommended.length > 1 ? 's' : ''}
+                          </button>
+                        )}
+                        {statusType === 'error' && analise.findings?.retry_exhausted === true && (
+                          <div className="w-full mt-1 space-y-1.5">
+                            <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide">
+                              ⚠ Exige processamento em etapas
+                            </span>
+                            <div className="flex flex-col gap-1 pl-1">
+                              {[
+                                { id: 'matricula_individual', name: 'Análise de Matrícula Individual', price: 99.90 },
+                                { id: 'cadeia_dominial', name: 'Cadeia Dominial Registral', price: 199.90 },
+                                { id: 'origem_publica', name: 'Auditoria de Origem Pública', price: 199.90 },
+                                { id: 'nulidades_fraudes', name: 'Mapeamento de Nulidades e Fraudes', price: 249.90 },
+                              ].map((etapa) => {
+                                const selectedModules = findingsAny?.selected_modules || [];
+                                const alreadyHasModule = selectedModules.includes(etapa.id);
+                                return (
+                                  <div key={etapa.id} className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-1.5 max-w-md">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${alreadyHasModule ? 'bg-green-500' : 'bg-amber-400'}`} />
+                                      <span className={`text-[10px] leading-tight ${alreadyHasModule ? 'text-gray-400 line-through' : 'text-gray-700 font-medium'}`}>{etapa.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                                      {alreadyHasModule ? (
+                                        <span className="text-[9px] text-green-600 font-bold uppercase">Contratado</span>
+                                      ) : (
+                                        <>
+                                          <span className="text-[10px] font-bold text-brand-green">R$ {etapa.price.toFixed(2)}</span>
+                                          <button
+                                            onClick={() => setRecommendModal({ analysisId: analise.id, propertyName: analise.properties?.name || 'Propriedade', modules: [{ module_id: etapa.id, title: etapa.name, price: etapa.price }] })}
+                                            className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold hover:brightness-110"
+                                          >
+                                            Comprar
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
 
