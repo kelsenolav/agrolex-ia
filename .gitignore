@@ -68,3 +68,13 @@ src/lib/pdf/markdownNormalizer.ts
 src/lib/pdf/textExtractor.server.ts
 src/lib/pdf/types.ts
 src/lib/pdf/__tests__/
+
+# Scripts com segredos hardcoded / logs (NUNCA commitar)
+scripts/reset-full.mjs
+scripts/reset-output.txt
+scripts/reset-hml.mjs
+scripts/fix-hml-grants.mjs
+scripts/test-hml-*.mjs
+scripts/backfill-isf-v2-2.mjs
+scripts/backtest-isf-v2-2.mjs
+scripts/backtest_inventario.mjs

@@ -89,17 +89,52 @@ export async function ocrWithGemini(
       },
     ];
 
-    const aiPromise = model.generateContent(parts as any).then(async (result) => {
-      const response = await result.response;
-      return response;
-    });
+    // Cascata de modelos: se o modelo principal estiver sobrecarregado (503),
+    // tenta o próximo. Resolve o problema de "alta demanda" do Gemini que
+    // antes fazia o OCR desistir e cair no fallback binário (que alucina).
+    const modelCandidates = Array.from(
+      new Set([modelName, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']),
+    );
+    const maxRetriesPerModel = 3;
+
+    async function generateWithResilience(): Promise<any> {
+      let lastErr: any = null;
+      for (const candidate of modelCandidates) {
+        const candidateModel =
+          candidate === modelName
+            ? model
+            : genAI.getGenerativeModel({
+                model: candidate,
+                generationConfig: { temperature: 0, maxOutputTokens: 16384 },
+              });
+
+        for (let attempt = 0; attempt < maxRetriesPerModel; attempt++) {
+          try {
+            const result = await candidateModel.generateContent(parts as any);
+            return await result.response;
+          } catch (err: any) {
+            lastErr = err;
+            const status = err?.status;
+            const isOverloaded = status === 503 || status === 429 || status === 500;
+            if (isOverloaded && attempt < maxRetriesPerModel - 1) {
+              const waitMs = (attempt + 1) * 5000;
+              await new Promise((r) => setTimeout(r, waitMs));
+              continue;
+            }
+            // Erro não-recuperável ou esgotou tentativas deste modelo → próximo modelo
+            break;
+          }
+        }
+      }
+      throw lastErr || new Error('OCR falhou em todos os modelos candidatos');
+    }
 
     let timeoutId: NodeJS.Timeout;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => reject(new Error('OCR timeout')), timeoutMs);
     });
 
-    const response = await Promise.race([aiPromise, timeoutPromise]).finally(() =>
+    const response = await Promise.race([generateWithResilience(), timeoutPromise]).finally(() =>
       clearTimeout(timeoutId!),
     );
 

@@ -86,6 +86,31 @@ function normalizeMatriculaNumber(num: string): string {
   return num.replace(/\./g, '').replace(/\s/g, '').trim();
 }
 
+// ── Detector de template de fabricação ────────────────────────────────────
+// Quando a IA NÃO consegue ler o PDF, ela emite um parecer "modelo" com dados
+// inventados genéricos. Esta assinatura é determinística e deve ser SEMPRE
+// rejeitada, independente de fingerprint (rede de segurança final).
+const FABRICATION_SIGNATURES: RegExp[] = [
+  /jo[ãa]o\s+da\s+silva/i,
+  /cidade\s+xyz/i,
+  /comarca\s+(?:de\s+)?xyz/i,
+  /bairro\s+das\s+flores/i,
+  /lote\s+12,?\s*quadra\s+b/i,
+  /maria\s+(?:da\s+)?silva/i,
+  /fulano\s+de\s+tal/i,
+  /\[nome\s+do\s+(?:interessado|propriet[áa]rio)\]/i,
+  /\[descri[çc][ãa]o\s+do\s+im[óo]vel\]/i,
+];
+
+function detectFabricationTemplate(aiResponse: string): string | null {
+  for (const sig of FABRICATION_SIGNATURES) {
+    if (sig.test(aiResponse)) {
+      return `Fabricação detectada: a resposta contém o padrão genérico "${sig.source}" — sinal de que a IA não leu o documento real e inventou os dados. Resposta rejeitada.`;
+    }
+  }
+  return null;
+}
+
 function validateResponseAgainstSource(
   aiResponse: string,
   parsedJson: Record<string, any> | null,
@@ -1356,7 +1381,7 @@ export async function POST(req: Request) {
                 console.log(`[OCR] Iniciando transcrição dedicada para: ${docName || docType || 'documento'}`);
                 const ocrResult = await ocrWithGemini(buffer, {
                   geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-                  timeoutMs: 60000,
+                  timeoutMs: 150000,
                 });
                 pdfExtractionDiags.extraction_total_ms += ocrResult.durationMs;
 
@@ -1588,7 +1613,27 @@ export async function POST(req: Request) {
           }
         }
 
-        // Anti-hallucination: validate AI response against PDF source fingerprints
+        // Anti-hallucination CAMADA 1: detector de template de fabricação (SEMPRE roda)
+        // Pega o parecer "modelo" com dados genéricos inventados (João da Silva, Cidade XYZ etc.)
+        // que a IA emite quando NÃO consegue ler o documento real.
+        {
+          const parsedJsonForTemplate = chainOfTitleJsonParsed || matriculaIndividualJsonParsed || null;
+          const responseForTemplate = parsedJsonForTemplate
+            ? markdownResponse + ' ' + JSON.stringify(parsedJsonForTemplate)
+            : markdownResponse;
+          const fabricationError = detectFabricationTemplate(responseForTemplate);
+          if (fabricationError) {
+            console.error('[Analyze API] ANTI-FABRICATION:', fabricationError);
+            const err = new Error(fabricationError);
+            (err as any).technicalErrorType = 'ai_incomplete_response';
+            (err as any).rawAiResponsePreview = rawAiPreview;
+            (err as any).validationPath = validationPath;
+            (err as any).hallucinationDetected = true;
+            throw err;
+          }
+        }
+
+        // Anti-hallucination CAMADA 2: validate AI response against PDF source fingerprints
         if (pdfSourceFingerprints.length > 0) {
           const mergedFingerprint: PdfSourceFingerprint = {
             matriculaNumbers: pdfSourceFingerprints.flatMap(fp => fp.matriculaNumbers),
