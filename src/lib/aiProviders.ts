@@ -467,12 +467,34 @@ async function generateWithGemini(
 
   // PASSO 25.7T: capturar o response completo (não apenas .text())
   // para poder inspecionar finishReason, promptFeedback e safetyRatings.
-  const aiPromise = model.generateContent(parts as any).then(async (result) => {
-    const response = await result.response;
-    return response; // retorna o objeto EnhancedGenerateContentResponse completo
-  });
-
-  const response = await withTimeout(aiPromise, timeoutMs, 'gemini_generation');
+  // Retry de sobrecarga (503/429/500): o Gemini é o melhor para esta tarefa —
+  // insistir nele antes de cair em provedores com limites menores.
+  const maxOverloadRetries = 3;
+  let response: any = null;
+  let overloadErr: any = null;
+  for (let attempt = 0; attempt < maxOverloadRetries; attempt++) {
+    try {
+      const aiPromise = model.generateContent(parts as any).then(async (result) => {
+        return await result.response;
+      });
+      response = await withTimeout(aiPromise, timeoutMs, 'gemini_generation');
+      break;
+    } catch (err: any) {
+      overloadErr = err;
+      const msg = (err?.message || String(err)).toLowerCase();
+      const status = err?.status;
+      const isOverloaded =
+        status === 503 || status === 429 || status === 500 ||
+        msg.includes('503') || msg.includes('overloaded') || msg.includes('high demand') ||
+        msg.includes('service unavailable');
+      if (isOverloaded && attempt < maxOverloadRetries - 1) {
+        await new Promise((r) => setTimeout(r, (attempt + 1) * 5000));
+        continue;
+      }
+      throw err;
+    }
+  }
+  if (!response) throw overloadErr || new Error('Gemini não retornou resposta');
   const durationMs = Date.now() - startTime;
 
   // ── PASSO 25.7T: Inspeção de metadados de segurança ──────────────────────
