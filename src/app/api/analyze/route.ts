@@ -48,6 +48,69 @@ interface DerivedRiskLevel {
 
 const RECOVERABLE_ERROR_TYPES: RecoverableErrorType[] = ['ai_timeout', 'ai_unavailable', 'ai_incomplete_response', 'ai_quota_exceeded'];
 
+// ── Anti-hallucination: extract key identifiers from PDF text ──────────────
+
+interface PdfSourceFingerprint {
+  matriculaNumbers: string[];
+  ownerNames: string[];
+  rawTextSnippet: string;
+}
+
+function extractPdfFingerprint(pdfText: string): PdfSourceFingerprint {
+  const fingerprint: PdfSourceFingerprint = {
+    matriculaNumbers: [],
+    ownerNames: [],
+    rawTextSnippet: pdfText.slice(0, 500),
+  };
+
+  // Extract matrícula numbers (e.g., "Matrícula 26.839", "matrícula nº 26839", "MATRÍCULA N. 26.839")
+  const matriculaPatterns = [
+    /matr[ií]cula\s*(?:n[°ºo.]?\s*)?(\d[\d.]+)/gi,
+    /(?:R-\d+|AV-\d+)\s*(?:da\s+)?matr[ií]cula\s*(?:n[°ºo.]?\s*)?(\d[\d.]+)/gi,
+    /livro\s*\d+[^\n]*matr[ií]cula\s*(?:n[°ºo.]?\s*)?(\d[\d.]+)/gi,
+  ];
+  for (const pattern of matriculaPatterns) {
+    let match;
+    while ((match = pattern.exec(pdfText)) !== null) {
+      const num = match[1].replace(/\./g, '').trim();
+      if (num.length >= 2 && !fingerprint.matriculaNumbers.includes(num)) {
+        fingerprint.matriculaNumbers.push(num);
+      }
+    }
+  }
+
+  return fingerprint;
+}
+
+function normalizeMatriculaNumber(num: string): string {
+  return num.replace(/\./g, '').replace(/\s/g, '').trim();
+}
+
+function validateResponseAgainstSource(
+  aiResponse: string,
+  parsedJson: Record<string, any> | null,
+  fingerprint: PdfSourceFingerprint
+): string | null {
+  if (fingerprint.matriculaNumbers.length === 0) return null;
+
+  const sourceNums = fingerprint.matriculaNumbers.map(normalizeMatriculaNumber);
+
+  // Check if AI response references any of the actual matrícula numbers
+  let responseText = aiResponse;
+  if (parsedJson) {
+    responseText += ' ' + JSON.stringify(parsedJson);
+  }
+  const responseNormalized = responseText.replace(/\./g, '');
+
+  const foundMatch = sourceNums.some(num => responseNormalized.includes(num));
+
+  if (!foundMatch) {
+    return `Hallucination detectada: a IA não referenciou nenhum dos números de matrícula presentes no documento (esperado: ${fingerprint.matriculaNumbers.join(', ')}). A resposta pode conter dados fabricados.`;
+  }
+
+  return null;
+}
+
 function isRecoverableErrorType(value: unknown): value is RecoverableErrorType {
   return typeof value === 'string' && RECOVERABLE_ERROR_TYPES.includes(value as RecoverableErrorType);
 }
@@ -1222,8 +1285,10 @@ export async function POST(req: Request) {
       }
     }
 
-        // Auto-detect per PDF: always try text extraction first, fall back to binary for scanned/empty PDFs
-        const pdfMode: string = 'auto';
+        // Pipeline em 2 etapas: OCR dedicado transcreve o PDF, depois análise jurídica sobre o texto.
+        // Enviar PDF binário + prompt de análise junto causa hallucination (Gemini ignora o PDF
+        // e inventa dados para preencher o formato). Separar "ler" de "analisar" resolve.
+        const pdfMode: string = 'ocr_then_analyze';
         const useMarkdownPipeline = true;
         let pdfExtractionDiags: {
           total_pdfs: number;
@@ -1255,6 +1320,7 @@ export async function POST(req: Request) {
         let geminiMs = 0;
         let geminiParts: any[] = [];
         let polygonCoords: [number, number][] = [];
+        const pdfSourceFingerprints: PdfSourceFingerprint[] = [];
 
         // Os downloads já foram feitos na Fase P2, reaproveitando buffers:
         for (const { doc } of downloadResults) {
@@ -1279,63 +1345,49 @@ export async function POST(req: Request) {
           if (doc.file_path.toLowerCase().endsWith('.pdf') || doc.document_type?.toLowerCase().includes('matrícula') || doc.document_type === 'Certidão Inteiro Teor' || doc.document_type === 'Matrícula') {
             pdfExtractionDiags.total_pdfs++;
 
-            // ── Pipeline Markdown (ativado via PDF_EXTRACTION_MODE) ──
+            // ── Pipeline OCR: transcrição dedicada via Gemini → texto limpo para análise ──
             if (useMarkdownPipeline) {
-              let usedMarkdown = false;
+              let usedOcr = false;
+              const docName = doc.file_path?.split('/').pop() || null;
+              const docType = doc.document_type || null;
+
               try {
-                const { extractTextFromPdfBuffer } = await import('@/lib/pdf/textExtractor.server');
-                const { normalizePdfTextToMarkdown } = await import('@/lib/pdf/markdownNormalizer');
+                const { ocrWithGemini } = await import('@/lib/pdf/ocrPreProcessor');
+                console.log(`[OCR] Iniciando transcrição dedicada para: ${docName || docType || 'documento'}`);
+                const ocrResult = await ocrWithGemini(buffer, {
+                  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+                  timeoutMs: 60000,
+                });
+                pdfExtractionDiags.extraction_total_ms += ocrResult.durationMs;
 
-                const extraction = await extractTextFromPdfBuffer(buffer, { maxPages: 50 });
-                pdfExtractionDiags.extraction_total_ms += extraction.extractionDurationMs;
-
-                const docName = doc.file_path?.split('/').pop() || null;
-                const docType = doc.document_type || null;
-
-                if (extraction.isScanned) {
-                  pdfExtractionDiags.scanned_count++;
-                  pdfExtractionDiags.warnings.push(
-                    `PDF escaneado (sem texto digital): ${docName || docType || 'documento'} — usando fallback binário.`
-                  );
-                } else if (!extraction.hasExtractableText) {
-                  pdfExtractionDiags.empty_count++;
-                  pdfExtractionDiags.warnings.push(
-                    `PDF sem texto extraível: ${docName || docType || 'documento'} — usando fallback binário.`
-                  );
-                } else {
-                  // Extração bem-sucedida: normalizar para Markdown
-                  const markdownContent = normalizePdfTextToMarkdown(extraction, {
-                    docIndex: pdfExtractionDiags.markdown_success + 1,
-                    docType,
-                    docName,
+                if (ocrResult.success && ocrResult.text.length > 100) {
+                  geminiParts.push({ text: ocrResult.text });
+                  geminiParts.push({
+                    text: `\n[Nota: O texto acima foi transcrito do PDF: ${docType || docName || 'Documento'} — confiança: ${ocrResult.confidence}, ${ocrResult.pageCount || '?'} página(s)]\n`,
                   });
+                  pdfExtractionDiags.markdown_success++;
+                  usedOcr = true;
 
-                  if (markdownContent && markdownContent.trim().length > 0) {
-                    geminiParts.push({
-                      text: markdownContent,
-                    });
-                    geminiParts.push({
-                      text: `\n[Nota: O texto acima foi extraído do PDF: ${docType || docName || 'Documento'} — ${extraction.pageCount} página(s)]\n`,
-                    });
-                    pdfExtractionDiags.markdown_success++;
-                    usedMarkdown = true;
-                  } else {
-                    // Markdown vazio após normalização (ex: PDF com pouquíssimo texto)
-                    pdfExtractionDiags.empty_count++;
-                    pdfExtractionDiags.warnings.push(
-                      `Markdown vazio após normalização: ${docName || docType || 'documento'} — usando fallback binário.`
-                    );
+                  const fp = extractPdfFingerprint(ocrResult.text);
+                  if (fp.matriculaNumbers.length > 0) {
+                    pdfSourceFingerprints.push(fp);
                   }
+                  console.log(`[OCR] Sucesso: ${ocrResult.text.length} chars, confiança ${ocrResult.confidence}, ${ocrResult.durationMs}ms`);
+                } else {
+                  console.warn(`[OCR] Texto insuficiente: ${ocrResult.error || 'texto curto'}`);
+                  pdfExtractionDiags.warnings.push(
+                    `OCR retornou texto insuficiente para: ${docName || docType || 'documento'} — usando PDF binário como fallback.`
+                  );
                 }
-              } catch (extractErr: any) {
-                console.warn('[PDF Extraction] Erro ao extrair texto do PDF:', extractErr?.message || extractErr);
+              } catch (ocrErr: any) {
+                console.warn('[OCR] Erro na transcrição:', ocrErr?.message || ocrErr);
                 pdfExtractionDiags.warnings.push(
-                  `Erro na extração de: ${doc.file_path?.split('/').pop() || doc.document_type || 'documento'} — usando fallback binário.`
+                  `Erro no OCR de: ${docName || docType || 'documento'} — usando PDF binário como fallback.`
                 );
               }
 
-              // Fallback para binary se markdown não funcionou
-              if (!usedMarkdown) {
+              // Fallback: PDF binário direto (último recurso)
+              if (!usedOcr) {
                 pdfExtractionDiags.binary_fallback++;
                 const base64Data = buffer.toString('base64');
                 geminiParts.push({
@@ -1345,11 +1397,11 @@ export async function POST(req: Request) {
                   },
                 });
                 geminiParts.push({
-                  text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`,
+                  text: `\n[Nota: O arquivo PDF acima representa: ${docType}. LEIA O DOCUMENTO ANEXADO — não invente dados.]\n`,
                 });
               }
             } else {
-              // ── Pipeline Binary (default) ──
+              // ── Pipeline Binary (default) — PDF direto para leitura multimodal ──
               const base64Data = buffer.toString('base64');
               geminiParts.push({
                 inlineData: {
@@ -1360,6 +1412,14 @@ export async function POST(req: Request) {
               geminiParts.push({
                 text: `\n[Nota: O arquivo PDF visualizado acima representa: ${doc.document_type}]\n`
               });
+              // Anti-hallucination: extrair fingerprint dos bytes brutos do PDF
+              try {
+                const rawPdfText = buffer.toString('latin1');
+                const fp = extractPdfFingerprint(rawPdfText);
+                if (fp.matriculaNumbers.length > 0) {
+                  pdfSourceFingerprints.push(fp);
+                }
+              } catch (_) { /* ignore */ }
             }
           }
         }
@@ -1433,7 +1493,7 @@ export async function POST(req: Request) {
 
           const result: FallbackResult = await generateWithFallback(geminiParts, {
             geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-            ...(isFastChainOfTitleOnly ? { maxOutputTokens: 4096 } : {}),
+            maxOutputTokens: isFastChainOfTitleOnly ? 4096 : 8192,
             timeoutMs: aiTimeoutMs,
           });
 
@@ -1525,6 +1585,27 @@ export async function POST(req: Request) {
           } else {
             validationPath = 'textual_fallback';
             console.warn('[Analyze API] matricula_individual — JSON inválido, fallback textual:', jsonParseResult.error);
+          }
+        }
+
+        // Anti-hallucination: validate AI response against PDF source fingerprints
+        if (pdfSourceFingerprints.length > 0) {
+          const mergedFingerprint: PdfSourceFingerprint = {
+            matriculaNumbers: pdfSourceFingerprints.flatMap(fp => fp.matriculaNumbers),
+            ownerNames: pdfSourceFingerprints.flatMap(fp => fp.ownerNames),
+            rawTextSnippet: pdfSourceFingerprints.map(fp => fp.rawTextSnippet).join(' '),
+          };
+          const parsedJson = chainOfTitleJsonParsed || matriculaIndividualJsonParsed || null;
+          const hallucinationError = validateResponseAgainstSource(markdownResponse, parsedJson, mergedFingerprint);
+          if (hallucinationError) {
+            console.error('[Analyze API] ANTI-HALLUCINATION:', hallucinationError);
+            const err = new Error(hallucinationError);
+            (err as any).technicalErrorType = 'ai_incomplete_response';
+            (err as any).rawAiResponsePreview = rawAiPreview;
+            (err as any).validationPath = validationPath;
+            (err as any).hallucinationDetected = true;
+            (err as any).expectedMatriculas = mergedFingerprint.matriculaNumbers;
+            throw err;
           }
         }
 

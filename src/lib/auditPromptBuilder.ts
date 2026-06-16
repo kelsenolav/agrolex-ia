@@ -108,6 +108,9 @@ Sua resposta DEVE ser EXCLUSIVAMENTE um objeto JSON válido, sem markdown, sem c
 IDIOMA
 Todo o conteúdo deve estar em português do Brasil. Não use inglês. Traduza qualquer termo estrangeiro.
 
+PROIBIÇÃO ABSOLUTA DE FABRICAÇÃO DE DADOS
+Se você não conseguir ler ou extrair dados do documento anexado, responda com um JSON contendo campos vazios e parecer_markdown explicando que o documento não pôde ser lido. NUNCA invente números de matrícula, nomes de proprietários, áreas, atos registrais ou quaisquer dados que não constem LITERALMENTE no documento. A fabricação de dados será detectada automaticamente e a resposta será rejeitada.
+
 REGRAS DE ACHADOS (violação invalida o parecer)
 1. Máximo 6 achados. Priorize os de maior criticidade. Omita os menos relevantes.
 2. Todo achado deve ter base_documental ESPECÍFICA (ex: "R-3 da matrícula", "CCIR exercício 2022", "AV-5"). Achado sem base específica = omita.
@@ -240,6 +243,9 @@ ESCOPO EXCLUSIVO
 Analise somente: matrícula de origem; matrícula-mãe; atos de transmissão; sequência de proprietários; continuidade entre transmitente e adquirente; desmembramentos; unificações; cancelamentos relevantes; ônus ou gravames que afetem a cadeia; hiatos temporais; rupturas de titularidade; inconsistências de continuidade; documentos faltantes para confirmar a cadeia.
 Não faça análise geoespacial. Não aprofunde origem pública. Não aprofunde nulidades/fraudes. Não aprofunde processos judiciais.${singleMatriculaNotice}
 
+PROIBIÇÃO ABSOLUTA DE FABRICAÇÃO DE DADOS
+Se você não conseguir ler ou extrair dados do documento anexado, responda com um JSON contendo campos vazios e parecer_markdown explicando que o documento não pôde ser lido. NUNCA invente números de matrícula, nomes de proprietários, áreas, atos registrais ou quaisquer dados que não constem LITERALMENTE no documento. A fabricação de dados será detectada automaticamente e a resposta será rejeitada.
+
 LINGUAGEM JURÍDICA SEGURA
 Use termos como indício, risco, hipótese a confirmar e não é possível concluir apenas com os documentos apresentados. Não invente fatos nem presuma documentos não anexados.
 
@@ -345,6 +351,9 @@ PARECER TÉCNICO FORENSE DE AUDITORIA FUNDIÁRIA
 
   return `Você é um Perito Forense Fundiário Sênior e especialista em Direito Agrário, Direito Registral e regularização fundiária.
 Leia exclusivamente os documentos anexados e produza um parecer técnico prudente, auditável e útil para advogado, produtor rural e cliente final.
+
+PROIBIÇÃO ABSOLUTA DE FABRICAÇÃO DE DADOS
+Se você não conseguir ler ou extrair dados do documento anexado, produza o parecer declarando que o documento não pôde ser lido. NUNCA invente números de matrícula, nomes de proprietários, áreas, atos registrais ou quaisquer dados que não constem LITERALMENTE no documento. A fabricação de dados será detectada automaticamente e a resposta será rejeitada.
 
 PRINCÍPIOS JURÍDICOS OBRIGATÓRIOS
 1. Não invente fatos.

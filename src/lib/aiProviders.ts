@@ -249,7 +249,7 @@ async function generateWithOpenAI(
       { role: 'user', content: userPrompt },
     ],
     max_tokens: maxTokens,
-    temperature: 0.3,
+    temperature: 0,
   });
 
   const completion = await withTimeout(completionPromise, timeoutMs, 'openai_generation');
@@ -396,7 +396,7 @@ async function generateWithGroq(
       { role: 'user', content: userPrompt },
     ],
     max_tokens: maxTokens,
-    temperature: 0.3,
+    temperature: 0,
   });
 
   const completion = await withTimeout(completionPromise, timeoutMs, 'groq_generation');
@@ -450,7 +450,10 @@ async function generateWithGemini(
   const modelName = options.geminiModel || getEnvVar('GEMINI_MODEL', 'gemini-3.5-flash');
   const timeoutMs = options.timeoutMs || 90000;
 
-  const genConfig: Record<string, unknown> = {};
+  const genConfig: Record<string, unknown> = {
+    // Temperature 0 garante saída determinística — mesma matrícula → mesmo parecer
+    temperature: 0,
+  };
   if (options.maxOutputTokens) {
     genConfig.maxOutputTokens = options.maxOutputTokens;
   }
