@@ -7,7 +7,8 @@ for (const line of readFileSync('.env.local','utf-8').split('\n')) {
 }
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 const { data: a } = await admin.from('analyses')
-  .select('findings').eq('id', '02d7aa76-aa19-434f-92d3-53e0fdb50e5d').single();
+  .select('status, findings, risk_level, isf_score').eq('id', '4b025d0f-9623-4837-bf7e-bcb95f68af95').single();
+console.log('STATUS:', a.status, '| risk:', a.risk_level, '| isf:', a.isf_score);
 const f = a.findings || {};
 console.log('Chaves findings:', Object.keys(f).join(', '));
 console.log('\ntechnical_error_type:', f.technical_error_type);

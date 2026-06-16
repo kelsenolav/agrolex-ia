@@ -529,10 +529,12 @@ function validateFastChainOfTitleResponse(resumo: string): string | null {
     return `Resposta inadequada: indícios de idioma estrangeiro (${englishHits.join(', ') || 'public deed'}).`;
   }
 
-  // PASSO 25.7R — Detectar placeholders no formato [texto] (template genérico não preenchido)
-  const placeholderPattern = /\[[^\]]{3,}\]/;
+  // PASSO 25.7R — Detectar placeholders no formato [Rótulo] (template genérico não preenchido).
+  // Preciso: rótulo em Title Case com letras/espaços (ex: [Nome do Interessado], [Número da Matrícula]).
+  // NÃO casa com arrays JSON [{...}] / ["..."] nem citações com números/pontos ([Art. 5º]).
+  const placeholderPattern = /\[[A-ZÀ-Ý][A-Za-zÀ-ÿ ]{2,50}\]/;
   if (placeholderPattern.test(resumo)) {
-    const matches = resumo.match(/\[[^\]]{3,}\]/g) || [];
+    const matches = resumo.match(/\[[A-ZÀ-Ý][A-Za-zÀ-ÿ ]{2,50}\]/g) || [];
     const examples = matches.slice(0, 5).join(', ');
     return `Resposta rejeitada: template genérico detectado com placeholders não preenchidos (ex: ${examples}).`;
   }
@@ -1595,11 +1597,13 @@ ${ocrTextBlocks.join('\n\n')}
           throw shortResponseError;
         }
 
-        // PASSO 25.7R — Detectar placeholders no formato [texto] (template genérico) logo na validação inicial
-        const bracketPlaceholderPattern = /\[[^\]]{3,}\]/;
+        // PASSO 25.7R — Detectar placeholders [Rótulo] (template genérico) logo na validação inicial.
+        // Preciso: Title Case com letras/espaços. NÃO casa com JSON [{...}] (matricula_individual
+        // e cadeia_dominial respondem em JSON, cujos arrays usam colchetes legítimos).
+        const bracketPlaceholderPattern = /\[[A-ZÀ-Ý][A-Za-zÀ-ÿ ]{2,50}\]/;
         if (bracketPlaceholderPattern.test(markdownResponse) && !isFastChainOfTitleOnly) {
           // Para módulos não-cadeia_dominial, placeholder com colchetes é tratado como erro imediato
-          const matches = markdownResponse.match(/\[[^\]]{3,}\]/g) || [];
+          const matches = markdownResponse.match(/\[[A-ZÀ-Ý][A-Za-zÀ-ÿ ]{2,50}\]/g) || [];
           const placeholderError = new Error(`Template genérico detectado com placeholders não preenchidos (ex: ${matches.slice(0, 3).join(', ')}).`);
           (placeholderError as any).rawAiResponsePreview = rawAiPreview;
           (placeholderError as any).technicalErrorType = 'ai_incomplete_response';
