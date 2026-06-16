@@ -201,7 +201,7 @@ CONTRATO JSON — responda EXATAMENTE esta estrutura:
       "motivo": "por que este documento é relevante para a análise"
     }
   ],
-  "parecer_markdown": "parecer técnico completo em formato narrativo, em português. Use \\n para separar parágrafos. Inclua: identificação da matrícula, proprietário e regime de bens, CCIR e exercício, atos registrais relevantes, ônus vigentes, achados principais e recomendações. Este campo será exibido como o laudo principal.",
+  "parecer_markdown": "parecer técnico forense completo em português, em TEXTO ESTRUTURADO com títulos em CAIXA ALTA e listas simples. PROIBIDO usar Markdown: NÃO use #, ##, ###, **, \`\`\`, nem asteriscos para negrito ou títulos. Use \\n para separar parágrafos. Siga EXATAMENTE esta estrutura, começando com a linha 'PARECER TÉCNICO FORENSE DE AUDITORIA FUNDIÁRIA' e depois as seções numeradas em caixa alta: '1. IDENTIFICAÇÃO DA ANÁLISE'; '2. LIMITAÇÃO DO ESCOPO DA ANÁLISE'; '3. DOCUMENTOS ANALISADOS'; '4. DADOS EXTRAÍDOS DOS DOCUMENTOS'; '5. LINHA DO TEMPO REGISTRAL' (cada item no formato 'Evento N DD/MM/AAAA - descrição'); '6. ACHADOS TÉCNICOS'; '7. DOCUMENTOS FALTANTES'; '8. CLASSIFICAÇÃO DE RISCO'; '9. RECOMENDAÇÕES'; '10. CONCLUSÃO'. Inclua identificação da matrícula, proprietário e regime de bens, CCIR e exercício, atos registrais relevantes e ônus vigentes. Este campo será exibido como o laudo principal.",
   "isf_dimensoes": {
     "D1": { "pontuacao": 70, "justificativa": "base em fato documental concreto da matrícula — ex: título originário presente e cadeia íntegra desde 1980" },
     "D2": { "pontuacao": 85, "justificativa": "base em fato documental concreto" },

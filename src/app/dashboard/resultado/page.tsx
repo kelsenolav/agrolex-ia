@@ -40,8 +40,12 @@ function parseMarkdown(md: string) {
   return md
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/### (.*?)\n/g, '<h3 class="text-xl font-bold text-gray-900 mt-6 mb-2">$1</h3>')
-    .replace(/## (.*?)\n/g, '<h2 class="text-2xl font-bold text-gray-900 mt-8 mb-4">$1</h2>')
+    // Cabeçalhos: âncora de linha (com ou sem \n final). Ordem do mais específico
+    // para o menos específico para o '#' único não engolir '##'/'###'.
+    .replace(/^#### (.*)$/gm, '<h4 class="text-lg font-bold text-gray-900 mt-4 mb-2">$1</h4>')
+    .replace(/^### (.*)$/gm, '<h3 class="text-xl font-bold text-gray-900 mt-6 mb-2">$1</h3>')
+    .replace(/^## (.*)$/gm, '<h2 class="text-2xl font-bold text-gray-900 mt-8 mb-4">$1</h2>')
+    .replace(/^# (.*)$/gm, '<h2 class="text-2xl font-bold text-gray-900 mt-8 mb-4">$1</h2>')
     .replace(/\n\* (.*?)/g, '<br/><span class="text-brand-green font-bold mr-2">•</span> $1')
     .replace(/\n1\. (.*?)/g, '<br/><span class="text-brand-gold font-bold mr-2">1.</span> $1')
     .replace(/\n2\. (.*?)/g, '<br/><span class="text-brand-gold font-bold mr-2">2.</span> $1')
@@ -49,7 +53,10 @@ function parseMarkdown(md: string) {
     .replace(/\n4\. (.*?)/g, '<br/><span class="text-brand-gold font-bold mr-2">4.</span> $1')
     .replace(/\n5\. (.*?)/g, '<br/><span class="text-brand-gold font-bold mr-2">5.</span> $1')
     .replace(/\n\n/g, '<br/><br/>')
-    .replace(/---/g, '<hr class="my-6 border-gray-300"/>');
+    .replace(/---/g, '<hr class="my-6 border-gray-300"/>')
+    // Rede de segurança: remove qualquer marcador de heading Markdown remanescente
+    // (ex: '#' solto no início de linha) para nunca exibir Markdown cru no laudo.
+    .replace(/(^|<br\/>)\s*#{1,6}\s+/g, '$1');
 }
 
 function matrizRiscoGrid() {
