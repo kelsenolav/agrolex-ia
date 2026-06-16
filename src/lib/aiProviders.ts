@@ -381,7 +381,7 @@ async function generateWithGroq(
     baseURL: 'https://api.groq.com/openai/v1'
   });
 
-  const modelName = getEnvVar('GROQ_MODEL', 'llama-3.1-70b-versatile');
+  const modelName = getEnvVar('GROQ_MODEL', 'llama-3.3-70b-versatile');
   const timeoutMs = options.timeoutMs || 90000;
   const maxTokens = options.maxOutputTokens || 4096;
 
