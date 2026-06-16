@@ -20,6 +20,11 @@ CREATE INDEX IF NOT EXISTS idx_credito_rural_property ON public.credito_rural_an
 CREATE INDEX IF NOT EXISTS idx_credito_rural_tipo ON public.credito_rural_analises(tipo);
 CREATE INDEX IF NOT EXISTS idx_credito_rural_created ON public.credito_rural_analises(created_at DESC);
 
+-- ─── Grants (necessário p/ RLS no Supabase quando a tabela é criada via SQL) ─
+
+GRANT SELECT, INSERT, DELETE ON public.credito_rural_analises TO authenticated;
+GRANT SELECT, INSERT, DELETE ON public.credito_rural_analises TO service_role;
+
 -- ─── RLS ─────────────────────────────────────────────────────────────────────
 
 ALTER TABLE public.credito_rural_analises ENABLE ROW LEVEL SECURITY;
