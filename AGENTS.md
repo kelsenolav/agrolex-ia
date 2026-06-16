@@ -2,6 +2,30 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 16/06/2026
+- **Bloco**: Correção definitiva de alucinação/template em análise de matrículas (pipeline OCR) + resiliência multi-IA
+- **Sintoma reportado**: análises retornavam dados fabricados ("João da Silva / Lote 12, Quadra B / Cidade XYZ / matrícula 12345") ou template com placeholders (`[Nome do Interessado]`), em vez de ler a matrícula real (testado com 26.839 Gurupi/TO e 27.180 Porto Nacional/TO).
+- **Causa raiz (descoberta via inspeção dos dados de produção, não suposição)**: 6 bugs empilhados, cada um exposto por E2E real contra produção:
+  1. OCR (`ocrPreProcessor`) morria no 1º 503/timeout 60s → caía no **fallback binário**, que com prompt longo faz a IA **fabricar** dados.
+  2. O fallback binário era a fonte da alucinação.
+  3. Detector de fabricação inicial bloquearia nomes reais comuns (João/Maria da Silva).
+  4. `buildLegalAuditPrompt` fala "documentos anexados", mas o texto vinha transcrito **inline** → IA devolvia template vazio.
+  5. Modelo do Groq descontinuado (`llama-3.1-70b-versatile`) quebrava a cascata.
+  6. Validador de placeholder (`/\[[^\]]{3,}\]/`) confundia arrays JSON `[{...}]` da resposta estruturada com template → falso-positivo rejeitava análises perfeitas.
+- **Arquivos alterados**:
+  - `src/lib/pdf/ocrPreProcessor.ts` — cascata de modelos (3.5→2.5→2.0→1.5 flash) com retry de 503/429/500 + retry quando resposta vem vazia/curta (<200 chars); timeout configurável.
+  - `src/app/api/analyze/route.ts` — (a) timeout OCR 60→150s; (b) remoção do fallback binário (OCR falha → erro limpo `ai_unavailable` re-tentável, nunca dado falso); (c) `detectFabricationTemplate` com marcadores inequívocos (Cidade XYZ, 12345, Bairro das Flores) — nomes comuns reais não bloqueiam; (d) texto OCR **embutido dentro do prompt** (não como part separada) + diretiva anti-template; (e) gates `geminiParts.length` ajustados (`anyOcrUsed`, `ocrTextBlocks`); (f) regex de placeholder precisa `/\[[A-ZÀ-Ý][A-Za-zÀ-ÿ ]{2,50}\]/` (não casa JSON).
+  - `src/lib/aiProviders.ts` — Groq `llama-3.1-70b` → `llama-3.3-70b-versatile`; retry de sobrecarga (503/429/500) 3x no `generateWithGemini` antes do fallback.
+- **Rotas afetadas**: `/api/analyze`
+- **Validações**: `npx tsc --noEmit` (✓), `npm run build` (✓), regex placeholder 11/11, detector fabricação 5/5
+- **Prova E2E (produção real, API + JWT)**: matrícula 26.839 **completou com dados reais** (Idemar José Ferreira, Gurupi/TO, Lote 02-B Remanescente) — zero alucinação. Matrícula 27.180 produziu análise correta (Investco S/A → Carlos Henrique, AV-2 Usucapião).
+- **Deploy em produção**: **EFETUADO** (commits 56f342c8→2c919a4a, múltiplos `vercel --prod --yes`)
+- **Estado residual (NÃO é bug de código)**: Gemini está com sobrecarga severa (503 intermitente). Quando responde, o pipeline completa com dados reais; em pico, alguma etapa falha mas **SEMPRE de forma segura** (erro re-tentável, zero alucinação, zero placeholder, zero dado falso). Auto-chain do painel re-tenta sozinho.
+- **Chaves de IA no Vercel (verificado)**: GEMINI, ANTHROPIC, OPENAI, GROQ — todas configuradas. `GEMINI_MODEL` válido (OCR sucede em prod). Cascata: Gemini→Claude→OpenAI→Groq (Groq tem TPM 12000, pequeno para prompts grandes — é último recurso).
+- **Recomendação futura**: monitorar se Claude/OpenAI realmente assumem nos picos do Gemini (numa rodada a cascata chegou ao Groq, indicando falha transitória dos 3 anteriores).
+
+---
+
 - **Data**: 14/06/2026
 - **Bloco**: Radar de Monitoramento Fundiário — UI dark ops + engine + API
 - **Arquivos criados**:
