@@ -1363,6 +1363,7 @@ export async function POST(req: Request) {
         let geminiParts: any[] = [];
         let polygonCoords: [number, number][] = [];
         const pdfSourceFingerprints: PdfSourceFingerprint[] = [];
+        let anyOcrUsed = false;
 
         // Os downloads já foram feitos na Fase P2, reaproveitando buffers:
         for (const { doc } of downloadResults) {
@@ -1403,12 +1404,12 @@ export async function POST(req: Request) {
                 pdfExtractionDiags.extraction_total_ms += ocrResult.durationMs;
 
                 if (ocrResult.success && ocrResult.text.length > 100) {
-                  geminiParts.push({ text: ocrResult.text });
                   geminiParts.push({
-                    text: `\n[Nota: O texto acima foi transcrito do PDF: ${docType || docName || 'Documento'} — confiança: ${ocrResult.confidence}, ${ocrResult.pageCount || '?'} página(s)]\n`,
+                    text: `\n===== INÍCIO DO DOCUMENTO TRANSCRITO: ${docType || docName || 'Documento'} =====\n${ocrResult.text}\n===== FIM DO DOCUMENTO TRANSCRITO =====\n(Este é o conteúdo REAL e LITERAL do documento — transcrito do PDF, confiança ${ocrResult.confidence}, ${ocrResult.pageCount || '?'} página(s). Analise EXCLUSIVAMENTE este texto.)\n`,
                   });
                   pdfExtractionDiags.markdown_success++;
                   usedOcr = true;
+                  anyOcrUsed = true;
 
                   const fp = extractPdfFingerprint(ocrResult.text);
                   if (fp.matriculaNumbers.length > 0) {
@@ -1483,12 +1484,27 @@ export async function POST(req: Request) {
         const isFastChainOfTitleOnly = normalizedModules.length === 1 && normalizedModules[0] === "cadeia_dominial";
         const isMatriculaIndividualOnly = normalizedModules.length === 1 && normalizedModules[0] === "matricula_individual";
         
-        const instructions = buildLegalAuditPrompt(normalizedModules, documents);
+        let instructions = buildLegalAuditPrompt(normalizedModules, documents);
+
+        // Quando o conteúdo veio via OCR (texto transcrito inline, SEM anexo binário),
+        // o prompt original fala em "documentos anexados" — o modelo se confunde e devolve
+        // um TEMPLATE com placeholders ([Nome do Interessado] etc.). Esta diretiva corrige
+        // o descasamento e proíbe explicitamente a resposta-modelo.
+        if (anyOcrUsed) {
+          instructions += `\n\n========================================
+FORMATO DE ENTRADA (LEIA COM ATENÇÃO):
+O conteúdo dos documentos NÃO está anexado como arquivo binário. Ele já foi TRANSCRITO por OCR e está incluído NESTA MENSAGEM, dentro dos blocos delimitados por "===== INÍCIO DO DOCUMENTO TRANSCRITO =====" e "===== FIM DO DOCUMENTO TRANSCRITO =====".
+- Trate esse texto transcrito como "os documentos anexados" mencionados nas instruções acima.
+- Extraia TODOS os dados (número de matrícula, proprietário, área, atos R-N/AV-N, cartório, datas) LITERALMENTE desse texto transcrito.
+- É TERMINANTEMENTE PROIBIDO devolver um modelo/template genérico com placeholders entre colchetes (ex: [Nome do Interessado], [Número da Matrícula], [Descrição do Imóvel], [Data]). Respostas com colchetes serão rejeitadas automaticamente.
+- Se um dado específico realmente não constar no texto transcrito, escreva "não consta no documento" — NUNCA um placeholder e NUNCA um dado inventado.
+========================================`;
+        }
 
         // Para matrículas densas, adicionar instrução de concisão ao prompt
         const pdfPartsCountForPrompt = geminiParts.filter(p => p.inlineData?.mimeType === 'application/pdf').length;
         if (pdfPartsCountForPrompt >= 2) {
-          const denseSuffix = `\n\nATENÇÃO: Os documentos anexados são densos e extensos. Produza o parecer de forma objetiva e concisa, focando nos pontos juridicamente relevantes. Evite transcrições longas de atos repetitivos. Agrupe eventos por período. Limite a resposta a no máximo 2.000 palavras. Priorize qualidade sobre volume.`;
+          const denseSuffix = `\n\nATENÇÃO: Os documentos são densos e extensos. Produza o parecer de forma objetiva e concisa, focando nos pontos juridicamente relevantes. Evite transcrições longas de atos repetitivos. Agrupe eventos por período. Limite a resposta a no máximo 2.000 palavras. Priorize qualidade sobre volume.`;
           geminiParts.unshift({ text: instructions + denseSuffix });
         } else {
           geminiParts.unshift({ text: instructions });
