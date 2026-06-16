@@ -97,7 +97,12 @@ export async function ocrWithGemini(
     );
     const maxRetriesPerModel = 3;
 
-    async function generateWithResilience(): Promise<any> {
+    const MIN_OCR_CHARS = 200; // matrícula real tem milhares de chars; <200 = leitura falha
+
+    // Retorna o TEXTO já validado. Re-tenta o próximo modelo tanto em exceção
+    // (503/429/500) quanto quando a resposta vem vazia/curta (sem exceção) — esta
+    // última é a causa do "texto insuficiente" intermitente sob sobrecarga do Gemini.
+    async function generateWithResilience(): Promise<string> {
       let lastErr: any = null;
       for (const candidate of modelCandidates) {
         const candidateModel =
@@ -111,7 +116,19 @@ export async function ocrWithGemini(
         for (let attempt = 0; attempt < maxRetriesPerModel; attempt++) {
           try {
             const result = await candidateModel.generateContent(parts as any);
-            return await result.response;
+            const response = await result.response;
+            let outText = '';
+            try { outText = response.text() || ''; } catch { outText = ''; }
+            if (outText.trim().length >= MIN_OCR_CHARS) {
+              return outText;
+            }
+            // Resposta curta/vazia: trata como recuperável → retry / próximo modelo
+            lastErr = new Error(`OCR retornou texto curto (${outText.trim().length} chars) com ${candidate}`);
+            if (attempt < maxRetriesPerModel - 1) {
+              await new Promise((r) => setTimeout(r, 3000));
+              continue;
+            }
+            break;
           } catch (err: any) {
             lastErr = err;
             const status = err?.status;
@@ -134,11 +151,10 @@ export async function ocrWithGemini(
       timeoutId = setTimeout(() => reject(new Error('OCR timeout')), timeoutMs);
     });
 
-    const response = await Promise.race([generateWithResilience(), timeoutPromise]).finally(() =>
+    const text = await Promise.race([generateWithResilience(), timeoutPromise]).finally(() =>
       clearTimeout(timeoutId!),
     );
 
-    const text = (response as any).text();
     const durationMs = Date.now() - startTime;
 
     if (!text || text.trim().length < 50) {
