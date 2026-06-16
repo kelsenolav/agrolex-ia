@@ -88,25 +88,42 @@ function normalizeMatriculaNumber(num: string): string {
 
 // ── Detector de template de fabricação ────────────────────────────────────
 // Quando a IA NÃO consegue ler o PDF, ela emite um parecer "modelo" com dados
-// inventados genéricos. Esta assinatura é determinística e deve ser SEMPRE
-// rejeitada, independente de fingerprint (rede de segurança final).
-const FABRICATION_SIGNATURES: RegExp[] = [
-  /jo[ãa]o\s+da\s+silva/i,
+// inventados genéricos. IMPORTANTE: nomes comuns como "João da Silva" ou
+// "Maria da Silva" são reais e frequentes no Brasil — NUNCA bloquear por eles
+// isoladamente. Só rejeitamos quando há marcadores INEQUÍVOCOS de placeholder
+// (que jamais aparecem num documento real): "Cidade XYZ", "matrícula 12345",
+// "Bairro das Flores", colchetes de template, etc.
+
+// Marcadores inequívocos (qualquer 1 já é prova de fabricação — não existem em docs reais)
+const FABRICATION_HARD_MARKERS: RegExp[] = [
   /cidade\s+xyz/i,
   /comarca\s+(?:de\s+)?xyz/i,
+  /registro\s+de\s+im[óo]veis\s+da\s+comarca\s+de\s+xyz/i,
   /bairro\s+das\s+flores/i,
-  /lote\s+12,?\s*quadra\s+b/i,
-  /maria\s+(?:da\s+)?silva/i,
-  /fulano\s+de\s+tal/i,
-  /\[nome\s+do\s+(?:interessado|propriet[áa]rio)\]/i,
+  /\[nome\s+do\s+(?:interessado|propriet[áa]rio|im[óo]vel)\]/i,
   /\[descri[çc][ãa]o\s+do\s+im[óo]vel\]/i,
+  /\bfulano\s+de\s+tal\b/i,
+  /matr[ií]cula\s+(?:do\s+im[óo]vel\s+)?n[°ºo.]?\s*12345\b/i,
+];
+
+// Marcadores fracos (comuns no template, mas plausíveis isolados) — só contam em conjunto
+const FABRICATION_SOFT_MARKERS: RegExp[] = [
+  /jo[ãa]o\s+da\s+silva/i,
+  /lote\s+12,?\s*quadra\s+b\b/i,
+  /15\s+de\s+outubro\s+de\s+2023/i,
 ];
 
 function detectFabricationTemplate(aiResponse: string): string | null {
-  for (const sig of FABRICATION_SIGNATURES) {
+  // Qualquer marcador inequívoco → rejeita imediatamente
+  for (const sig of FABRICATION_HARD_MARKERS) {
     if (sig.test(aiResponse)) {
-      return `Fabricação detectada: a resposta contém o padrão genérico "${sig.source}" — sinal de que a IA não leu o documento real e inventou os dados. Resposta rejeitada.`;
+      return `Fabricação detectada (marcador inequívoco "${sig.source}"): a IA não leu o documento real e usou um parecer-modelo com dados inventados. Resposta rejeitada.`;
     }
+  }
+  // Marcadores fracos só acusam se 2+ aparecem juntos (coincidência improvável num doc real)
+  const softHits = FABRICATION_SOFT_MARKERS.filter((sig) => sig.test(aiResponse));
+  if (softHits.length >= 2) {
+    return `Fabricação detectada (${softHits.length} marcadores de template combinados): a resposta corresponde ao parecer-modelo genérico. Resposta rejeitada.`;
   }
   return null;
 }
@@ -1411,19 +1428,18 @@ export async function POST(req: Request) {
                 );
               }
 
-              // Fallback: PDF binário direto (último recurso)
+              // SEM fallback binário: o PDF binário + prompt longo faz a IA FABRICAR
+              // dados (parecer-modelo "João da Silva / Cidade XYZ"). Em vez de exibir
+              // dado falso, falhamos de forma limpa e re-tentável. Com o OCR resiliente
+              // (cascata de modelos + retry 503 + timeout 150s) a re-tentativa sucede.
               if (!usedOcr) {
                 pdfExtractionDiags.binary_fallback++;
-                const base64Data = buffer.toString('base64');
-                geminiParts.push({
-                  inlineData: {
-                    data: base64Data,
-                    mimeType: "application/pdf",
-                  },
-                });
-                geminiParts.push({
-                  text: `\n[Nota: O arquivo PDF acima representa: ${docType}. LEIA O DOCUMENTO ANEXADO — não invente dados.]\n`,
-                });
+                const ocrFailError = new Error(
+                  `Não foi possível extrair o texto do documento "${docType || docName || 'PDF'}" nesta tentativa (serviço de leitura temporariamente indisponível). Clique em "Tentar novamente" — o sistema fará nova leitura.`,
+                );
+                (ocrFailError as any).technicalErrorType = 'ai_unavailable';
+                (ocrFailError as any).ocrFailed = true;
+                throw ocrFailError;
               }
             } else {
               // ── Pipeline Binary (default) — PDF direto para leitura multimodal ──
