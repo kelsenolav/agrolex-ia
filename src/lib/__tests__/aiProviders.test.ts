@@ -86,7 +86,10 @@ function setupGeminiMock(responseText: string): jest.Mock {
 }
 
 function setupGeminiError(errorMessage: string): jest.Mock {
-  mockStore.geminiGenerateContent.mockRejectedValueOnce(new Error(errorMessage));
+  // Rejeição PERSISTENTE: generateWithGemini re-tenta sobrecarga (503/429/500)
+  // até 3x antes de lançar. O mock precisa falhar em todas as tentativas para
+  // refletir o cenário real de indisponibilidade contínua.
+  mockStore.geminiGenerateContent.mockRejectedValue(new Error(errorMessage));
   return mockStore.geminiGenerateContent;
 }
 

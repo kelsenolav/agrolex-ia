@@ -470,6 +470,10 @@ async function generateWithGemini(
   // Retry de sobrecarga (503/429/500): o Gemini é o melhor para esta tarefa —
   // insistir nele antes de cair em provedores com limites menores.
   const maxOverloadRetries = 3;
+  // Backoff curto em teste (não bloqueia a suíte); moderado em produção
+  // (absorve blip transitório sem atrasar demais o fallback para Claude/OpenAI).
+  const isTestEnv = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+  const backoffBaseMs = isTestEnv ? 5 : 3000;
   let response: any = null;
   let overloadErr: any = null;
   for (let attempt = 0; attempt < maxOverloadRetries; attempt++) {
@@ -488,7 +492,7 @@ async function generateWithGemini(
         msg.includes('503') || msg.includes('overloaded') || msg.includes('high demand') ||
         msg.includes('service unavailable');
       if (isOverloaded && attempt < maxOverloadRetries - 1) {
-        await new Promise((r) => setTimeout(r, (attempt + 1) * 5000));
+        await new Promise((r) => setTimeout(r, (attempt + 1) * backoffBaseMs));
         continue;
       }
       throw err;
