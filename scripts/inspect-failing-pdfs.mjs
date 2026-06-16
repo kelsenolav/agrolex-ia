@@ -17,7 +17,7 @@ const s = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_K
 
 // Os arquivos que FALHARAM em produção (das análises aa05120a e 060db2bf)
 const failingFiles = [
-  'c3ae6e12-e025-4c9b-95e9-76bc7928deff/9da7d867-efe8-4f7f-b639-416de9cf5ae0-1781614587331-od6r35.pdf',
+  'c3ae6e12-e025-4c9b-95e9-76bc7928deff/67e97410-63ef-459b-8bba-671535cd0628-1781322405379-uqutj.pdf',
 ];
 // O arquivo que FUNCIONA no meu teste (para comparação)
 const workingFile = 'c3ae6e12-e025-4c9b-95e9-76bc7928deff/938c3bf2-eaec-46df-b888-c273f74de502-1781568206254-9hxpyg.pdf';

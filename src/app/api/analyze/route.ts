@@ -1364,6 +1364,7 @@ export async function POST(req: Request) {
         let polygonCoords: [number, number][] = [];
         const pdfSourceFingerprints: PdfSourceFingerprint[] = [];
         let anyOcrUsed = false;
+        const ocrTextBlocks: string[] = [];
 
         // Os downloads já foram feitos na Fase P2, reaproveitando buffers:
         for (const { doc } of downloadResults) {
@@ -1404,9 +1405,13 @@ export async function POST(req: Request) {
                 pdfExtractionDiags.extraction_total_ms += ocrResult.durationMs;
 
                 if (ocrResult.success && ocrResult.text.length > 100) {
-                  geminiParts.push({
-                    text: `\n===== INÍCIO DO DOCUMENTO TRANSCRITO: ${docType || docName || 'Documento'} =====\n${ocrResult.text}\n===== FIM DO DOCUMENTO TRANSCRITO =====\n(Este é o conteúdo REAL e LITERAL do documento — transcrito do PDF, confiança ${ocrResult.confidence}, ${ocrResult.pageCount || '?'} página(s). Analise EXCLUSIVAMENTE este texto.)\n`,
-                  });
+                  // NÃO enviar como part separada: o modelo lê o prompt gigante (com
+                  // exemplo de schema JSON) e entra em "modo template" antes de chegar
+                  // ao texto. Coletamos para EMBUTIR dentro do prompt, logo após as
+                  // instruções (igual ao fluxo isolado que sempre funciona).
+                  ocrTextBlocks.push(
+                    `===== INÍCIO DO DOCUMENTO TRANSCRITO: ${docType || docName || 'Documento'} =====\n${ocrResult.text}\n===== FIM DO DOCUMENTO TRANSCRITO =====`,
+                  );
                   pdfExtractionDiags.markdown_success++;
                   usedOcr = true;
                   anyOcrUsed = true;
@@ -1466,7 +1471,7 @@ export async function POST(req: Request) {
           }
         }
 
-        if (geminiParts.length === 0 && polygonCoords.length === 0) {
+        if (geminiParts.length === 0 && ocrTextBlocks.length === 0 && polygonCoords.length === 0) {
           throw new Error('Documentos ilegíveis ou insuficientes para análise fundiária');
         }
 
@@ -1490,14 +1495,17 @@ export async function POST(req: Request) {
         // o prompt original fala em "documentos anexados" — o modelo se confunde e devolve
         // um TEMPLATE com placeholders ([Nome do Interessado] etc.). Esta diretiva corrige
         // o descasamento e proíbe explicitamente a resposta-modelo.
-        if (anyOcrUsed) {
+        if (anyOcrUsed && ocrTextBlocks.length > 0) {
           instructions += `\n\n========================================
 FORMATO DE ENTRADA (LEIA COM ATENÇÃO):
-O conteúdo dos documentos NÃO está anexado como arquivo binário. Ele já foi TRANSCRITO por OCR e está incluído NESTA MENSAGEM, dentro dos blocos delimitados por "===== INÍCIO DO DOCUMENTO TRANSCRITO =====" e "===== FIM DO DOCUMENTO TRANSCRITO =====".
+O conteúdo dos documentos NÃO está anexado como arquivo binário. Ele já foi TRANSCRITO por OCR e está REPRODUZIDO LOGO ABAIXO, dentro dos blocos "===== INÍCIO/FIM DO DOCUMENTO TRANSCRITO =====".
 - Trate esse texto transcrito como "os documentos anexados" mencionados nas instruções acima.
-- Extraia TODOS os dados (número de matrícula, proprietário, área, atos R-N/AV-N, cartório, datas) LITERALMENTE desse texto transcrito.
-- É TERMINANTEMENTE PROIBIDO devolver um modelo/template genérico com placeholders entre colchetes (ex: [Nome do Interessado], [Número da Matrícula], [Descrição do Imóvel], [Data]). Respostas com colchetes serão rejeitadas automaticamente.
-- Se um dado específico realmente não constar no texto transcrito, escreva "não consta no documento" — NUNCA um placeholder e NUNCA um dado inventado.
+- Extraia TODOS os dados (número de matrícula, proprietário, área, atos R-N/AV-N, cartório, datas) LITERALMENTE desse texto.
+- O texto transcrito CONTÉM os dados — leia-o com atenção antes de afirmar que falta informação.
+- É TERMINANTEMENTE PROIBIDO devolver um modelo/template genérico com placeholders entre colchetes (ex: [Nome do Interessado], [Número da Matrícula], [Data]). Respostas com colchetes serão rejeitadas automaticamente.
+- Se um dado específico realmente não constar, escreva "não consta no documento" — NUNCA um placeholder, NUNCA um dado inventado.
+
+${ocrTextBlocks.join('\n\n')}
 ========================================`;
         }
 
@@ -1535,7 +1543,7 @@ O conteúdo dos documentos NÃO está anexado como arquivo binário. Ele já foi
         let fallbackTriggered = false;
         let fallbackReason: string | null = null;
 
-        if (geminiParts.length > 1) {
+        if (geminiParts.length > 1 || anyOcrUsed) {
           await supabaseAdmin
             .from('analyses')
             .update({ findings: { ...updatedFindings, current_step: "Sintetizando Parecer Técnico Forense com Inteligência Artificial..." } })
