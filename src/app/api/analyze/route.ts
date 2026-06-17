@@ -128,6 +128,33 @@ function detectFabricationTemplate(aiResponse: string): string | null {
   return null;
 }
 
+// ── Normalização de findings na ORIGEM ────────────────────────────────────
+// O caminho JSON (matricula_individual/cadeia_dominial) produz documentosFaltantes
+// e recomendacoes como OBJETOS; o caminho texto-livre produz string[]. Para evitar
+// a dupla forma (que já causou crash na UI), normalizamos para string[] ANTES de
+// persistir em findings. NUNCA inventa texto — apenas extrai campos existentes.
+function coerceFindingItemToText(item: unknown, kind: 'doc' | 'rec'): string {
+  if (item == null) return '';
+  if (typeof item === 'string') return item.trim();
+  if (typeof item === 'number' || typeof item === 'boolean') return String(item);
+  if (typeof item === 'object') {
+    const o = item as Record<string, unknown>;
+    const s = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    if (kind === 'doc') {
+      const nome = s(o.documento) || s(o.nome) || s(o.titulo);
+      const desc = s(o.descricao) || s(o.motivo) || s(o.motivo_ausencia) || s(o.justificativa);
+      if (nome && desc && nome !== desc) return `${nome} — ${desc}`;
+      return nome || desc;
+    }
+    return s(o.descricao) || s(o.recomendacao) || s(o.acao) || s(o.texto) || s(o.titulo);
+  }
+  return '';
+}
+function normalizeFindingList(arr: unknown, kind: 'doc' | 'rec'): string[] {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((x) => coerceFindingItemToText(x, kind)).filter((sx) => sx.length > 0);
+}
+
 function validateResponseAgainstSource(
   aiResponse: string,
   parsedJson: Record<string, any> | null,
@@ -2159,8 +2186,9 @@ ${ocrTextBlocks.join('\n\n')}
             ...(critiqueResult.achadosRemovidos.length > 0 ? { achados_critica: critiqueResult } : {}),
             problemas: parsedProblemas,
             ...(parsedAchados ? { achados: parsedAchados } : {}),
-            recomendacoes: parsedRecomendacoes,
-            documentosFaltantes: parsedDocumentosFaltantes,
+            // Normalizados para string[] na ORIGEM — elimina a dupla forma (objeto/string)
+            recomendacoes: normalizeFindingList(parsedRecomendacoes, 'rec'),
+            documentosFaltantes: normalizeFindingList(parsedDocumentosFaltantes, 'doc'),
             case_file: enrichedCaseFile,
             ...(caseFileExtractError ? { case_file_extract_error: caseFileExtractError } : {}),
             ...isfPayload,
