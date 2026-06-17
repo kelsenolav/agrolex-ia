@@ -2186,8 +2186,12 @@ ${ocrTextBlocks.join('\n\n')}
                 isf_score: effectiveISFResult.isf_score,
                 // Para v2.2: mapear faixa para valor compatível com CHECK constraint; o label real está em findings.isf_v2_2.faixa_label
                 isf_faixa: mapFaixaV2_2ToColumn(isfResultV2_2 ? isfResultV2_2.faixa : effectiveISFResult.risk_level),
-                // Manter eixos no formato v2.1 (Record) para compatibilidade com RadarChartV2
-                isf_eixos: isfResultV2_1 ? isfResultV2_1.eixos : effectiveISFResult.eixos,
+                // Eixos no formato v2.1 (Record) para o RadarChartV2. SÓ grava se houver
+                // valor válido — o motor v2.2 NÃO tem `.eixos` (tem `.dimensoes`), então
+                // gravar effectiveISFResult.eixos quando v2.1 é null escreveria `undefined`
+                // (radar zerado, escondendo risco). Quando não há eixos v2.1, omite o campo
+                // do UPDATE para PRESERVAR o valor já existente na coluna.
+                ...(isfResultV2_1?.eixos ? { isf_eixos: isfResultV2_1.eixos } : {}),
                 isf_explainer: comparison || null,
                 // isf_achados: SEMPRE usar parsedProblemas (achados reais da análise),
                 // NUNCA isfResultV2_2.alertas (que são alertas de dimensão, formato incompatível com ISFExplainer).

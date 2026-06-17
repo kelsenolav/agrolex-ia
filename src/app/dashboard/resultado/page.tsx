@@ -1312,22 +1312,31 @@ function ResultadoContent() {
                         </div>
                       </div>
                       <div className="ml-9 space-y-1.5">
-                        {prob.baseDocumental && (
-                          <div className="flex items-start gap-2 text-xs">
-                            <span className="font-bold text-gray-500 flex-shrink-0">Base:</span>
-                            <span className="text-gray-600">{prob.baseDocumental}</span>
-                          </div>
-                        )}
-                        {prob.documentoNecessario && (
-                          <div className="flex items-start gap-2 text-xs">
-                            <span className="font-bold text-gray-500 flex-shrink-0">Documento:</span>
-                            <span className="text-gray-600">{prob.documentoNecessario}</span>
-                          </div>
-                        )}
+                        {(() => {
+                          const probAny = prob as unknown as Record<string, unknown>;
+                          const baseDoc = coerceToDisplayText(prob.baseDocumental ?? probAny.base_documental);
+                          const docNec = coerceToDisplayText(prob.documentoNecessario ?? probAny.documento_necessario ?? probAny.providencia, 'doc');
+                          return (
+                            <>
+                              {baseDoc && (
+                                <div className="flex items-start gap-2 text-xs">
+                                  <span className="font-bold text-gray-500 flex-shrink-0">Base:</span>
+                                  <span className="text-gray-600">{baseDoc}</span>
+                                </div>
+                              )}
+                              {docNec && (
+                                <div className="flex items-start gap-2 text-xs">
+                                  <span className="font-bold text-gray-500 flex-shrink-0">Documento:</span>
+                                  <span className="text-gray-600">{docNec}</span>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                         {prob.recomendacao && (
                           <div className="flex items-start gap-2 text-xs">
                             <span className="font-bold text-gray-500 flex-shrink-0">Recomendação:</span>
-                            <span className="text-gray-600">{prob.recomendacao}</span>
+                            <span className="text-gray-600">{coerceToDisplayText(prob.recomendacao, 'rec')}</span>
                           </div>
                         )}
                       </div>
