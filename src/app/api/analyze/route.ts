@@ -674,28 +674,47 @@ function mapJsonAchadosToProblemas(achados: any[]): any[] {
     descricao: a.descricao || '',
     criticidade: mapJsonRiskToLevel(a.risco || 'medio'),
     recomendacao: a.providencia || '',
+    // Normalização: grava nas DUAS convenções (camelCase é a canônica lida pela UI
+    // e declarada em ReportProblem; snake mantida para retrocompatibilidade).
+    baseDocumental: a.base_documental || '',
     base_documental: a.base_documental || '',
   }));
 }
 
 /**
- * PASSO 25.7I — Converte documentos_faltantes do JSON estruturado para formato interno.
+ * PASSO 25.7I — Converte documentos_faltantes do JSON estruturado.
+ * NORMALIZA para string[] (formato canônico esperado pela UI e idêntico ao
+ * caminho texto-livre extractMissingDocumentsFromReport). Elimina na raiz o
+ * descasamento "objeto no pipeline vs string na UI" que causava o crash.
  */
-function mapJsonDocumentosFaltantes(docs: any[]): any[] {
-  return (docs || []).map((d: any) => ({
-    documento: d.documento || '',
-    descricao: d.motivo || '',
-  }));
+function mapJsonDocumentosFaltantes(docs: any[]): string[] {
+  return (docs || [])
+    .map((d: any) => {
+      if (typeof d === 'string') return d.trim();
+      const documento = typeof d?.documento === 'string' ? d.documento.trim() : '';
+      const motivo = typeof d?.motivo === 'string' ? d.motivo.trim()
+        : (typeof d?.descricao === 'string' ? d.descricao.trim() : '');
+      if (documento && motivo && documento !== motivo) return `${documento} — ${motivo}`;
+      return documento || motivo;
+    })
+    .filter((s: string) => s.length > 0);
 }
 
 /**
- * PASSO 25.7I — Converte recomendacoes do JSON estruturado para formato interno.
+ * PASSO 25.7I — Converte recomendacoes do JSON estruturado.
+ * NORMALIZA para string[] (formato canônico esperado pela UI e idêntico ao
+ * caminho texto-livre). A prioridade é embutida como prefixo "[ALTA] ...".
  */
-function mapJsonRecomendacoes(recs: any[]): any[] {
-  return (recs || []).map((r: any) => ({
-    descricao: `${r.prioridade ? `[${r.prioridade.toUpperCase()}] ` : ''}${r.descricao || ''}`,
-    prioridade: r.prioridade || 'media',
-  }));
+function mapJsonRecomendacoes(recs: any[]): string[] {
+  return (recs || [])
+    .map((r: any) => {
+      if (typeof r === 'string') return r.trim();
+      const prio = typeof r?.prioridade === 'string' && r.prioridade
+        ? `[${r.prioridade.toUpperCase()}] ` : '';
+      const desc = typeof r?.descricao === 'string' ? r.descricao.trim() : '';
+      return desc ? `${prio}${desc}` : '';
+    })
+    .filter((s: string) => s.length > 0);
 }
 
 /**
@@ -787,6 +806,8 @@ function mapJsonMatriculaAchadosToProblemas(achados: any[]): any[] {
     descricao: a.descricao || '',
     criticidade: mapJsonRiskToLevel(a.risco || 'medio'),
     recomendacao: a.providencia || '',
+    // Normalização: camelCase (canônica) + snake (retrocompat).
+    baseDocumental: a.base_documental || '',
     base_documental: a.base_documental || '',
     dimensao: a.dimensao || '',
   }));
