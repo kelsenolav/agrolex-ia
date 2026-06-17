@@ -59,6 +59,35 @@ function parseMarkdown(md: string) {
     .replace(/(^|<br\/>)\s*#{1,6}\s+/g, '$1');
 }
 
+/**
+ * Coage um item (string OU objeto) para texto de exibição.
+ * O pipeline JSON (matricula_individual) produz documentosFaltantes e
+ * recomendacoes como OBJETOS ({documento,descricao} / {descricao,prioridade}),
+ * enquanto o formato legado usava strings. Esta função aceita ambos, evitando
+ * o crash "Objects are not valid as a React child" e o TypeError de .toLowerCase
+ * em objetos. NUNCA inventa texto — apenas extrai campos existentes.
+ */
+function coerceToDisplayText(item: unknown, kind: 'doc' | 'rec' | 'generic' = 'generic'): string {
+  if (item == null) return '';
+  if (typeof item === 'string') return item.trim();
+  if (typeof item === 'number' || typeof item === 'boolean') return String(item);
+  if (typeof item === 'object') {
+    const o = item as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    if (kind === 'doc') {
+      const nome = str(o.documento) || str(o.nome) || str(o.titulo);
+      const desc = str(o.descricao) || str(o.motivo) || str(o.motivo_ausencia) || str(o.justificativa);
+      if (nome && desc && nome !== desc) return `${nome} — ${desc}`;
+      return nome || desc;
+    }
+    if (kind === 'rec') {
+      return str(o.descricao) || str(o.recomendacao) || str(o.acao) || str(o.texto) || str(o.titulo);
+    }
+    return str(o.descricao) || str(o.texto) || str(o.titulo) || str(o.nome) || str(o.documento);
+  }
+  return '';
+}
+
 function matrizRiscoGrid() {
   const cells: Array<{ row: number; col: number; risco: string }> = [];
   const niveis = ['baixo', 'baixo', 'medio', 'alto', 'critico'];
@@ -408,8 +437,18 @@ function ResultadoContent() {
   // Blindagem contra dados legados onde o campo existe mas não é array
   const safeDocuments = useMemo(() => Array.isArray(analise?.documents) ? analise.documents : [], [analise]);
   const safeProblemas = useMemo(() => Array.isArray(findings?.problemas) ? findings.problemas : [], [findings]);
-  const safeDocumentosFaltantes = useMemo(() => Array.isArray(findings?.documentosFaltantes) ? findings.documentosFaltantes : [], [findings]);
-  const safeRecomendacoes = useMemo(() => Array.isArray(findings?.recomendacoes) ? findings.recomendacoes : [], [findings]);
+  // Normalizados para string[] na origem (aceita string OU objeto do pipeline JSON),
+  // evitando crash de render e .toLowerCase em objetos. Conserta dados já salvos.
+  const safeDocumentosFaltantes = useMemo(() =>
+    (Array.isArray(findings?.documentosFaltantes) ? findings.documentosFaltantes : [])
+      .map((d: unknown) => coerceToDisplayText(d, 'doc'))
+      .filter((s: string) => s.length > 0),
+    [findings]);
+  const safeRecomendacoes = useMemo(() =>
+    (Array.isArray(findings?.recomendacoes) ? findings.recomendacoes : [])
+      .map((r: unknown) => coerceToDisplayText(r, 'rec'))
+      .filter((s: string) => s.length > 0),
+    [findings]);
   const safeLinhaDoTempo = useMemo(() => Array.isArray(findings?.linhaDoTempo) ? findings.linhaDoTempo : [], [findings]);
   const safeChecklist = useMemo(() => Array.isArray((findings as any)?.checklist) ? (findings as any).checklist : [], [findings]);
 
@@ -823,10 +862,10 @@ function ResultadoContent() {
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Recomendações Específicas</p>
                     <div className="bg-green-50 p-4 rounded-lg border border-green-100">
                       <ul className="space-y-2">
-                        {childRecomendacoes.map((rec: string, i: number) => (
+                        {childRecomendacoes.map((rec: unknown, i: number) => (
                           <li key={i} className="flex items-start gap-2 text-sm">
                             <CheckCircle2 size={14} className="text-green-500 mt-0.5 flex-shrink-0" />
-                            <span className="text-gray-700">{rec}</span>
+                            <span className="text-gray-700">{coerceToDisplayText(rec, 'rec')}</span>
                           </li>
                         ))}
                       </ul>
@@ -839,10 +878,10 @@ function ResultadoContent() {
                   <div>
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Documentos Necessários</p>
                     <div className="space-y-1">
-                      {childFindings.documentosFaltantes.map((doc: string, i: number) => (
+                      {childFindings.documentosFaltantes.map((doc: unknown, i: number) => (
                         <div key={i} className="flex items-center gap-2 text-sm text-gray-600">
                           <FileText size={14} className="text-orange-400 flex-shrink-0" />
-                          <span>{doc}</span>
+                          <span>{coerceToDisplayText(doc, 'doc')}</span>
                         </div>
                       ))}
                     </div>

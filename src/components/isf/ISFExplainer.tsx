@@ -368,7 +368,7 @@ export default function ISFExplainer({ isfAchados, problemasFallback, isfV2_2, i
           {isfV2_2.incompleto && (
             <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-700 flex items-center gap-2">
               <AlertTriangle size={14} className="text-yellow-500 flex-shrink-0" />
-              <span>Análise incompleta — algumas dimensões não foram preenchidas ({isfV2_2.dimensoes_faltantes.join(', ')}).</span>
+              <span>Análise incompleta — algumas dimensões não foram preenchidas ({(((isfV2_2 as { dimensoesFaltantes?: string[]; dimensoes_faltantes?: string[] }).dimensoesFaltantes ?? (isfV2_2 as { dimensoesFaltantes?: string[]; dimensoes_faltantes?: string[] }).dimensoes_faltantes ?? []) as string[]).join(', ')}).</span>
             </div>
           )}
         </div>
