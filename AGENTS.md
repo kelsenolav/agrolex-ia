@@ -2,6 +2,25 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 20/06/2026
+- **Bloco**: Investigação e calibração do ISF v2.2 — fim do "teto 54 sistêmico" + travas no caminho JSON + gravames graves
+- **Sintoma reportado**: matrícula 27.180 (com usucapião averbada) marcava ISF 54 quando deveria ≤39; suspeita de que "todas as matrículas davam 54".
+- **Causa raiz (descoberta por inspeção dos dados reais de produção, não suposição)**: 4 problemas empilhados:
+  1. **Teto 54 sistêmico**: toda análise de matrícula individual (sem o módulo `cadeia_dominial`) removia a dimensão D2 → disparava `TRAVA_D2_AUSENTE` → travava **tudo** em 54, até um título impecável (que daria 95) virava "Alto Risco". Era um artefato, não mérito.
+  2. **Travas por contagem de críticos** (≥3→39, ≥5→24) só existiam no caminho de inferência por keyword; o caminho JSON (matrícula individual, que usa as dimensões da própria IA) as pulava.
+  3. **Gravames graves sem teto**: indisponibilidade/bloqueio judicial e penhora/arresto/sequestro não rebaixavam o score.
+  4. **`risk_level` cru divergia da faixa do ISF** (já tratado na origem por `getAnalysisRiskLevel`, que prioriza a faixa do ISF).
+- **Arquivos alterados**:
+  - `src/lib/isf/isfEngineV2_2.ts` — novos helpers `detectarGravameGrave()` (indisponibilidade→teto 39 / penhora→teto 54), `travaPorCriticos()` (≥3→39, ≥5→24), `faixaParaRiskLevel()`.
+  - `src/app/api/analyze/route.ts` — removido o filtro que zerava D2; flag `cadeiaNaoAuditada`; **teto suave 84 (Regular)** quando a IA fornece D2 (em vez do 54 conservador); loop unificado de `tetosExternos` (gravame + críticos + cadeia) aplicado ao resultado do `calcularISFV2_2`.
+  - `src/lib/isf/__tests__/isfEngineV2_2.test.ts` — 9 testes novos (detector de litígio 5/5, gravames graves, travaPorCriticos, faixaParaRiskLevel, teto suave).
+- **Validações**: `npx tsc --noEmit` (✓), `npm run build` (✓), `npx jest` (634/634 — 25 suítes, ✓).
+- **Prova E2E (produção real, OCR + JWT)**: 27.180 (usucapião) = **39 (Crítico)** por `TRAVA_D3_GRAVAME`; 26.839 (execução fiscal) = **54 (Alto Risco)** por `TRAVA_PENHORA` — ambas com D2 preservada = 85, scores **diferentes** (antes, idênticos em 54). Achatamento eliminado; matrícula impecável agora chega a 84.
+- **Deploy em produção**: **EFETUADO** (commit `d429676e`, `vercel --prod --yes`).
+- **Ponto aberto para validação de domínio**: `TRAVA_PENHORA` rebaixa a 54 qualquer menção a penhora/execução fiscal. Definir se uma *notificação* de execução fiscal (antes de penhora registrada) deve travar em 54 (Alto Risco) ou apenas em ~Atenção.
+
+---
+
 - **Data**: 16/06/2026
 - **Bloco**: Correção definitiva de alucinação/template em análise de matrículas (pipeline OCR) + resiliência multi-IA
 - **Sintoma reportado**: análises retornavam dados fabricados ("João da Silva / Lote 12, Quadra B / Cidade XYZ / matrícula 12345") ou template com placeholders (`[Nome do Interessado]`), em vez de ler a matrícula real (testado com 26.839 Gurupi/TO e 27.180 Porto Nacional/TO).
