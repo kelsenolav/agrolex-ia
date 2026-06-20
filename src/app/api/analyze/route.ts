@@ -9,7 +9,7 @@ import { buildRecommendedModules } from '@/lib/recommendations';
 import { generateWithFallback, type FallbackResult, type AiProvider } from '@/lib/aiProviders';
 import { calcularComparacao } from '@/lib/isf/isfV2';
 import { calcularISFv2, classificarEixo, type ISFContext } from '@/lib/isf/isfEngine';
-import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2, normalizeFindingSeverity } from '@/lib/isf/isfEngineV2_2';
+import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2, normalizeFindingSeverity, detectarLitigioPropriedade } from '@/lib/isf/isfEngineV2_2';
 import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
 import {
   initializeProcessingStages,
@@ -2105,6 +2105,20 @@ ${ocrTextBlocks.join('\n\n')}
                 // Quando cadeia_dominial não foi analisada, remover D2 para activar TRAVA_D2_AUSENTE
                 if (!normalizedModules.includes('cadeia_dominial')) {
                   pontuacoesV2_2 = pontuacoesV2_2.filter(p => p.dimensaoId !== 'D2');
+                }
+              }
+
+              // ── Trava de litígio de propriedade (determinística) ──
+              // Ação de terceiro disputando a propriedade (usucapião, reivindicatória,
+              // ação real reipersecutória) averbada/em andamento = risco de PERDA do imóvel.
+              // Independente do que a IA pontuou, força D3/D5 ≤ 15 para acionar a
+              // TRAVA_D3_GRAVAME (teto 39 / Crítico). Espelha a regra: ação de terceiro = risco máximo.
+              if (detectarLitigioPropriedade(parsedProblemas)) {
+                for (const p of pontuacoesV2_2) {
+                  if (p.dimensaoId === 'D3' || p.dimensaoId === 'D5') {
+                    p.pontuacao = Math.min(p.pontuacao, 15);
+                    p.itemSelecionado = `${p.itemSelecionado ? p.itemSelecionado + ' ' : ''}[Trava: ação de terceiro disputando a propriedade]`;
+                  }
                 }
               }
 

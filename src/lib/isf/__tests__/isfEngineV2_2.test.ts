@@ -24,6 +24,7 @@ import {
   inferirPontuacoesDeAchados,
   prepararPayloadV2_2,
   normalizeFindingSeverity,
+  detectarLitigioPropriedade,
   DIMENSOES_V2_2,
   FAIXAS_V2_2,
   PESOS_DIMENSOES_V2_2,
@@ -632,5 +633,40 @@ describe('normalizeFindingSeverity — Regra de Usucapião (CRÍTICO forçado)',
     const finding = { titulo: 'Prescrição aquisitiva', criticidade: 'Médio', descricao: 'Posse prolongada' };
     const result = normalizeFindingSeverity(finding);
     expect(result.criticidade).toBe('Médio');
+  });
+});
+
+describe('Trava de litígio de propriedade (usucapião/reivindicatória → teto 39)', () => {
+  it('detecta ação de terceiro disputando a propriedade', () => {
+    expect(detectarLitigioPropriedade([{ titulo: 'Ação de Usucapião em andamento', descricao: 'AV-2 averbada' }])).toBe(true);
+    expect(detectarLitigioPropriedade([{ titulo: 'Ação Reivindicatória', descricao: 'terceiro pleiteia o imóvel' }])).toBe(true);
+    expect(detectarLitigioPropriedade([{ titulo: 'Ação real reipersecutória' }])).toBe(true);
+  });
+
+  it('NÃO trava quando a usucapião é favorável ao proprietário', () => {
+    expect(detectarLitigioPropriedade([{ titulo: 'Usucapião transitada em julgado a favor do proprietário' }])).toBe(false);
+  });
+
+  it('NÃO trava em achados neutros ou lista vazia', () => {
+    expect(detectarLitigioPropriedade([{ titulo: 'CCIR desatualizado' }])).toBe(false);
+    expect(detectarLitigioPropriedade([])).toBe(false);
+    expect(detectarLitigioPropriedade(null)).toBe(false);
+  });
+
+  it('força ISF ≤ 39 (Crítico) ao baixar D3/D5 (cenário 27.180)', () => {
+    // Dimensões originais (IA subavaliou a usucapião): D3=70, D5=45 → ISF 54 (Alto Risco)
+    const semTrava = calcularISFV2_2([
+      { dimensaoId: 'D1', pontuacao: 70 }, { dimensaoId: 'D3', pontuacao: 70 },
+      { dimensaoId: 'D4', pontuacao: 65 }, { dimensaoId: 'D5', pontuacao: 45 }, { dimensaoId: 'D6', pontuacao: 100 },
+    ]);
+    expect(semTrava.isf_score).toBeGreaterThan(39);
+
+    // Com a trava aplicada (D3/D5 ≤ 15) → aciona TRAVA_D3_GRAVAME → ≤ 39
+    const comTrava = calcularISFV2_2([
+      { dimensaoId: 'D1', pontuacao: 70 }, { dimensaoId: 'D3', pontuacao: 15 },
+      { dimensaoId: 'D4', pontuacao: 65 }, { dimensaoId: 'D5', pontuacao: 15 }, { dimensaoId: 'D6', pontuacao: 100 },
+    ]);
+    expect(comTrava.isf_score).toBeLessThanOrEqual(39);
+    expect(comTrava.travas_aplicadas.some(t => t.includes('TRAVA_D3_GRAVAME'))).toBe(true);
   });
 });

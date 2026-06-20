@@ -823,3 +823,32 @@ export function normalizeFindingSeverity<T extends FindingLike>(finding: T): T {
     criticidade: 'Crítico',
   };
 }
+
+// ── Detecção de litígio de propriedade (determinística) ─────────────────────
+// Ação de TERCEIRO disputando a propriedade do imóvel, averbada/em andamento:
+// usucapião, reivindicatória, ação real reipersecutória, ação possessória.
+// É risco de PERDA do bem → deve travar o ISF em ≤ 39 (Crítico/Alto Risco),
+// independentemente da pontuação que a IA atribuiu às dimensões.
+const LITIGIO_PROPRIEDADE_REGEX =
+  /usucapi[aã]o|reivindicat[óo]ri|reipersecut[óo]ri|a[çc][aã]o\s+real(?!\s+izad)|a[çc][aã]o\s+possess[óo]ri|ad\s*judicat/i;
+// Exclui caso claramente FAVORÁVEL ao proprietário (não é risco).
+const LITIGIO_FAVORAVEL_REGEX =
+  /transitad[ao]\s+em\s+julgado|a\s+favor\s+d[oa]\s+propriet[áa]ri|usucapi[aã]o\s+(do|pel[oa])\s+propriet[áa]ri|usucapi[aã]o\s+j[áa]\s+registrad/i;
+
+interface ProblemaLike { titulo?: string; descricao?: string; criticidade?: string; eixo?: string; dimensao?: string }
+
+/**
+ * Retorna true se algum ACHADO indicar ação de terceiro disputando a propriedade.
+ * Opera sobre os achados (que já são problemas/riscos sinalizados), evitando
+ * falso-positivo de menção conceitual no corpo do parecer.
+ */
+export function detectarLitigioPropriedade(problemas: ProblemaLike[] | undefined | null): boolean {
+  if (!Array.isArray(problemas)) return false;
+  for (const p of problemas) {
+    const txt = `${p?.titulo ?? ''} ${p?.descricao ?? ''}`;
+    if (LITIGIO_PROPRIEDADE_REGEX.test(txt) && !LITIGIO_FAVORAVEL_REGEX.test(txt)) {
+      return true;
+    }
+  }
+  return false;
+}

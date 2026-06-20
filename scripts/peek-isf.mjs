@@ -1,0 +1,20 @@
+import { createClient } from '@supabase/supabase-js';
+import { readFileSync } from 'fs';
+const env={};
+for (const l of readFileSync('.env.local','utf-8').split('\n')){const t=l.trim();if(!t||t.startsWith('#'))continue;const i=t.indexOf('=');if(i===-1)continue;env[t.slice(0,i).trim()]=t.slice(i+1).trim();}
+const admin=createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+const { data:a }=await admin.from('analyses').select('isf_score,isf_faixa,isf_eixos,findings').eq('id','e2b6030a-272c-400c-b8a0-c58171886bd3').single();
+const f=a.findings||{};
+console.log('isf_score (col):', a.isf_score, '| faixa:', a.isf_faixa);
+console.log('\n=== isf_v2_2 ===');
+const v=f.isf_v2_2||{};
+console.log('score:', v.isf_score, 'bruto:', v.isf_score_bruto, '| faixa:', v.faixa, v.faixa_label, '| incompleto:', v.incompleto);
+console.log('travas_aplicadas:', JSON.stringify(v.travas_aplicadas));
+console.log('dimensoes:', JSON.stringify(v.dimensoes, null, 1));
+console.log('alertas:', JSON.stringify(v.alertas));
+console.log('\n=== achados (com criticidade) ===');
+(f.achados||[]).forEach((x,i)=>console.log(`  [${i}] crit=${x.risco||x.criticidade} | ${x.titulo} | dim=${x.dimensao}`));
+console.log('\n=== problemas (com criticidade) ===');
+(f.problemas||[]).forEach((x,i)=>console.log(`  [${i}] crit=${x.criticidade} | ${x.titulo} | dim=${x.dimensao||x.eixo}`));
+console.log('\n=== isf_eixos (coluna) ===');
+console.log(JSON.stringify(a.isf_eixos, null, 1));
