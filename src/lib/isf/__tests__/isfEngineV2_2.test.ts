@@ -25,6 +25,9 @@ import {
   prepararPayloadV2_2,
   normalizeFindingSeverity,
   detectarLitigioPropriedade,
+  detectarGravameGrave,
+  travaPorCriticos,
+  faixaParaRiskLevel,
   DIMENSOES_V2_2,
   FAIXAS_V2_2,
   PESOS_DIMENSOES_V2_2,
@@ -668,5 +671,64 @@ describe('Trava de litígio de propriedade (usucapião/reivindicatória → teto
     ]);
     expect(comTrava.isf_score).toBeLessThanOrEqual(39);
     expect(comTrava.travas_aplicadas.some(t => t.includes('TRAVA_D3_GRAVAME'))).toBe(true);
+  });
+});
+
+describe('Gravames graves (penhora/indisponibilidade) — #3', () => {
+  it('indisponibilidade judicial → teto 39 (Crítico)', () => {
+    const g = detectarGravameGrave([{ titulo: 'Indisponibilidade judicial vigente', descricao: 'imóvel indisponível' }]);
+    expect(g?.teto).toBe(39);
+  });
+  it('penhora vigente → teto 54 (Alto Risco)', () => {
+    const g = detectarGravameGrave([{ titulo: 'Penhora vigente', descricao: 'arresto sobre o imóvel' }]);
+    expect(g?.teto).toBe(54);
+  });
+  it('retorna o teto mais grave quando há vários', () => {
+    const g = detectarGravameGrave([{ titulo: 'Penhora' }, { titulo: 'Indisponibilidade judicial' }]);
+    expect(g?.teto).toBe(39);
+  });
+  it('achado neutro / vazio → null', () => {
+    expect(detectarGravameGrave([{ titulo: 'CCIR desatualizado' }])).toBeNull();
+    expect(detectarGravameGrave([])).toBeNull();
+    expect(detectarGravameGrave(null)).toBeNull();
+  });
+});
+
+describe('Trava por múltiplos críticos no caminho JSON — #2', () => {
+  const crit = (n: number) => Array.from({ length: n }, (_, i) => ({ titulo: `Achado ${i}`, criticidade: 'Crítico' }));
+  it('≥3 críticos → teto 39', () => {
+    expect(travaPorCriticos(crit(3))?.teto).toBe(39);
+    expect(travaPorCriticos(crit(4))?.teto).toBe(39);
+  });
+  it('≥5 críticos → teto 24', () => {
+    expect(travaPorCriticos(crit(5))?.teto).toBe(24);
+  });
+  it('<3 críticos → null', () => {
+    expect(travaPorCriticos(crit(2))).toBeNull();
+    expect(travaPorCriticos([{ criticidade: 'Médio' }, { criticidade: 'Alto' }])).toBeNull();
+  });
+});
+
+describe('faixaParaRiskLevel — fonte única de risco (#4)', () => {
+  it('mapeia score para rótulo da faixa ISF', () => {
+    expect(faixaParaRiskLevel(20)).toBe('Crítico');   // invalido
+    expect(faixaParaRiskLevel(39)).toBe('Crítico');   // critico
+    expect(faixaParaRiskLevel(50)).toBe('Alto');      // alto_risco
+    expect(faixaParaRiskLevel(60)).toBe('Médio');     // atencao
+    expect(faixaParaRiskLevel(80)).toBe('Baixo');     // regular
+    expect(faixaParaRiskLevel(95)).toBe('Baixo');     // seguro
+  });
+});
+
+describe('Teto suave de cadeia não auditada (#1) — efeito no score', () => {
+  it('matrícula impecável com D2 presente NÃO fica travada em 54', () => {
+    // Com D2 mantido (cadeia aparente avaliada), o motor não aplica TRAVA_D2_AUSENTE.
+    const r = calcularISFV2_2([
+      { dimensaoId: 'D1', pontuacao: 95 }, { dimensaoId: 'D2', pontuacao: 95 },
+      { dimensaoId: 'D3', pontuacao: 95 }, { dimensaoId: 'D4', pontuacao: 95 },
+      { dimensaoId: 'D5', pontuacao: 95 }, { dimensaoId: 'D6', pontuacao: 95 },
+    ]);
+    expect(r.isf_score).toBeGreaterThan(54); // antes ficava preso em 54
+    expect(r.travas_aplicadas.some(t => t.includes('TRAVA_D2_AUSENTE'))).toBe(false);
   });
 });

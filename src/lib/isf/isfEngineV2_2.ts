@@ -852,3 +852,51 @@ export function detectarLitigioPropriedade(problemas: ProblemaLike[] | undefined
   }
   return false;
 }
+
+// ── Gravames graves com teto de ISF ─────────────────────────────────────────
+// Indisponibilidade/bloqueio judicial = imóvel travado → Crítico (teto 39).
+// Penhora/arresto/sequestro vigente = risco de leilão/perda → Alto Risco (teto 54).
+const INDISPONIBILIDADE_REGEX = /indisponibilidad|bloqueio\s+judicial|im[óo]vel\s+indispon[íi]vel|ordem\s+de\s+indisponib/i;
+const PENHORA_REGEX = /penhora|arresto|sequestro|constri[çc][aã]o\s+judicial/i;
+
+/**
+ * Retorna o teto de ISF e o motivo para gravames graves averbados, ou null.
+ * Se houver vários, retorna o teto mais baixo (mais grave).
+ */
+export function detectarGravameGrave(problemas: ProblemaLike[] | undefined | null): { teto: number; motivo: string } | null {
+  if (!Array.isArray(problemas)) return null;
+  const candidatos: { teto: number; motivo: string }[] = [];
+  for (const p of problemas) {
+    const txt = `${p?.titulo ?? ''} ${p?.descricao ?? ''}`;
+    if (INDISPONIBILIDADE_REGEX.test(txt)) {
+      candidatos.push({ teto: 39, motivo: 'TRAVA_INDISPONIBILIDADE: indisponibilidade/bloqueio judicial vigente — teto máximo 39 (Crítico)' });
+    } else if (PENHORA_REGEX.test(txt)) {
+      candidatos.push({ teto: 54, motivo: 'TRAVA_PENHORA: penhora/arresto/sequestro vigente — teto máximo 54 (Alto Risco)' });
+    }
+  }
+  if (candidatos.length === 0) return null;
+  return candidatos.reduce((a, b) => (b.teto < a.teto ? b : a));
+}
+
+/**
+ * Trava global por quantidade de achados CRÍTICOS — agora também no caminho JSON.
+ * ≥5 críticos → teto 24 (Inválido) | ≥3 críticos → teto 39 (Crítico).
+ */
+export function travaPorCriticos(problemas: ProblemaLike[] | undefined | null): { teto: number; motivo: string } | null {
+  if (!Array.isArray(problemas)) return null;
+  const n = problemas.filter(p => /cr[íi]tic/i.test(String(p?.criticidade ?? ''))).length;
+  if (n >= 5) return { teto: 24, motivo: `TRAVA_MULTIPLOS_CRITICOS: ${n} achados críticos — teto máximo 24 (Inválido)` };
+  if (n >= 3) return { teto: 39, motivo: `TRAVA_MULTIPLOS_CRITICOS: ${n} achados críticos — teto máximo 39 (Crítico)` };
+  return null;
+}
+
+/**
+ * Mapeia o score ISF para o rótulo de risco legível (fonte única: a faixa do ISF).
+ */
+export function faixaParaRiskLevel(score: number): string {
+  const f = classificarFaixaV2_2(score).faixa;
+  if (f === 'invalido' || f === 'critico') return 'Crítico';
+  if (f === 'alto_risco') return 'Alto';
+  if (f === 'atencao') return 'Médio';
+  return 'Baixo'; // regular, seguro
+}

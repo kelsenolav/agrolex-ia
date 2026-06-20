@@ -9,7 +9,7 @@ import { buildRecommendedModules } from '@/lib/recommendations';
 import { generateWithFallback, type FallbackResult, type AiProvider } from '@/lib/aiProviders';
 import { calcularComparacao } from '@/lib/isf/isfV2';
 import { calcularISFv2, classificarEixo, type ISFContext } from '@/lib/isf/isfEngine';
-import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2, normalizeFindingSeverity, detectarLitigioPropriedade } from '@/lib/isf/isfEngineV2_2';
+import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2, normalizeFindingSeverity, detectarLitigioPropriedade, detectarGravameGrave, travaPorCriticos, classificarFaixaV2_2 } from '@/lib/isf/isfEngineV2_2';
 import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
 import {
   initializeProcessingStages,
@@ -2067,6 +2067,12 @@ ${ocrTextBlocks.join('\n\n')}
               // Preferir pontuações explícitas fornecidas pela IA (matricula_individual.isf_dimensoes)
               // para eliminar não-determinismo causado por inferência via keywords.
               let pontuacoesV2_2: import('@/lib/isf/isfEngineV2_2').PontuacaoEntradaV2_2[];
+              // #1 — A cadeia dominial NÃO foi auditada em módulo dedicado. Mas a análise
+              // de matrícula já lê a cadeia VISÍVEL no documento (R-N/AV-N), então mantemos
+              // D2 (cadeia aparente) e, no fim, aplicamos um teto SUAVE de 84 (Regular) —
+              // em vez de remover D2 e travar tudo em 54. Um título limpo deixa de ser
+              // rotulado "Alto Risco" só por falta do módulo de cadeia.
+              const cadeiaNaoAuditada = !normalizedModules.includes('cadeia_dominial');
               const isfDimensoesFromAI = matriculaIndividualJsonParsed?.isf_dimensoes as Record<string, { pontuacao: number; justificativa?: string }> | undefined;
               if (isfDimensoesFromAI && typeof isfDimensoesFromAI === 'object') {
                 // Usar scores explícitos da IA — determinísticos, rastreáveis por documento
@@ -2077,10 +2083,6 @@ ${ocrTextBlocks.join('\n\n')}
                     pontuacao: Math.max(0, Math.min(100, Number(isfDimensoesFromAI[d].pontuacao))),
                     itemSelecionado: isfDimensoesFromAI[d].justificativa,
                   }));
-                // Quando cadeia_dominial não foi analisada, remover D2 para activar TRAVA_D2_AUSENTE
-                if (!normalizedModules.includes('cadeia_dominial')) {
-                  pontuacoesV2_2 = pontuacoesV2_2.filter(p => p.dimensaoId !== 'D2');
-                }
               } else {
                 // Fallback: inferência via keywords (não-determinístico — manter para módulos sem JSON)
                 const inferred = inferirPontuacoesDeAchados(parsedProblemas);
@@ -2102,10 +2104,6 @@ ${ocrTextBlocks.join('\n\n')}
                     }
                   }
                 }
-                // Quando cadeia_dominial não foi analisada, remover D2 para activar TRAVA_D2_AUSENTE
-                if (!normalizedModules.includes('cadeia_dominial')) {
-                  pontuacoesV2_2 = pontuacoesV2_2.filter(p => p.dimensaoId !== 'D2');
-                }
               }
 
               // ── Trava de litígio de propriedade (determinística) ──
@@ -2123,10 +2121,35 @@ ${ocrTextBlocks.join('\n\n')}
               }
 
               isfResultV2_2 = calcularISFV2_2(pontuacoesV2_2);
+
+              // ── Tetos externos (aplicados sobre o resultado, em ordem do mais grave) ──
+              // Reúne: gravames graves (#3 penhora/indisponibilidade), múltiplos críticos
+              // (#2 — também no caminho JSON) e teto suave de cadeia não auditada (#1).
+              const tetosExternos: { teto: number; motivo: string }[] = [];
+              const gravame = detectarGravameGrave(parsedProblemas);
+              if (gravame) tetosExternos.push(gravame);
+              const tCriticos = travaPorCriticos(parsedProblemas);
+              if (tCriticos) tetosExternos.push(tCriticos);
+              if (cadeiaNaoAuditada) {
+                tetosExternos.push({ teto: 84, motivo: 'TRAVA_CADEIA_NAO_AUDITADA: cadeia dominial não auditada em módulo dedicado — teto máximo 84 (Regular)' });
+              }
+              for (const c of tetosExternos) {
+                if (isfResultV2_2.isf_score > c.teto) {
+                  const fx = classificarFaixaV2_2(c.teto);
+                  isfResultV2_2 = {
+                    ...isfResultV2_2, isf_score: c.teto,
+                    faixa: fx.faixa, faixa_label: fx.label, faixa_desc: fx.desc,
+                    faixa_bg: fx.bg, faixa_color: fx.color, faixa_meter: fx.meter,
+                    travas_aplicadas: [...(isfResultV2_2.travas_aplicadas || []), c.motivo],
+                  };
+                }
+              }
+
               // Guardrail: risk_level Crítico nunca deve produzir ISF > 54 (alto_risco)
               if (riskLevel === 'Crítico' && isfResultV2_2.isf_score > 54) {
                 isfResultV2_2 = { ...isfResultV2_2, isf_score: 39, faixa: 'critico', faixa_label: 'Crítico', travas_aplicadas: [...(isfResultV2_2.travas_aplicadas || []), 'TRAVA_RISK_LEVEL_CRITICO'] };
               }
+
               const payloadV2_2 = prepararPayloadV2_2(isfResultV2_2);
 
               // ── v2.1 (compatibilidade — mantido para análises antigas e comparação) ──
