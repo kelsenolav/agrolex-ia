@@ -3,6 +3,20 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 20/06/2026
+- **Bloco**: Robustez do pipeline — OCR de fallback multi-provedor (Gemini→Claude) + verificação visual do fix de CSS de tela
+- **Frente 1 (verificação visual, deploy `8a285fa3`)**: subido dev server local, autenticado no browser (a proteção é **cookie httpOnly** via `POST /api/auth/session` — não localStorage), aberta análise real. Confirmado por **estilos computados** que as seções **Cadeia Dominial** e **Checklist Documental** (cujo CSS só existia em `@media print`) agora renderizam estilizadas na tela: checklist com ícone circular 28px red-100/red-800 + badge; cadeia com dot verde-marca 40px, connector gradiente, card radius-12. Verdict: PASS. (Screenshot JPEG falhou por timeout — página pesada; estilo computado é prova de runtime mais precisa.)
+- **Frente 2 (gap de robustez)**: o OCR (etapa que **precede** a análise) era **Gemini-only** — a cascata interna do `ocrWithGemini` só percorre modelos flash do Gemini. Num apagão total do Gemini (todos os flash em 503), o OCR retornava `failed` e a análise **nem chegava** à cascata multi-IA (Gemini→Claude→OpenAI→Groq). Durante pico de sobrecarga do Gemini, a análise falhava mesmo com Claude/OpenAI disponíveis.
+- **Arquivos alterados**:
+  - `src/lib/pdf/ocrPreProcessor.ts` — `ocrWithClaude()` (PDF nativo via bloco `document` base64, **mesmo** prompt estrito de transcrição verbatim + `MIN_OCR_CHARS` → anti-alucinação preservada); `ocrWithFallback()` (Gemini→Claude, só aciona Claude se Gemini falhar/texto<100 e houver `ANTHROPIC_API_KEY`; injeção de dependência p/ teste); `buildOcrResultFromText()` helper (DRY).
+  - `src/app/api/analyze/route.ts` — drop-in `ocrWithGemini` → `ocrWithFallback` (mesmo shape `OcrResult`); log registra o provedor (`via ${method}`).
+  - `src/lib/pdf/__tests__/ocrFallback.test.ts` — 5 testes (sucesso Gemini, fallback Claude, texto curto, sem chave, ambos falham). Force-add (dir em `.gitignore` legado).
+- **Validações**: `tsc` OK, `build` OK, `jest` **639/639** (26 suítes, +5).
+- **Deploy em produção**: **EFETUADO** (commits `2fe6ddba` + teste `b4355486`, `vercel --prod --yes`).
+- **Garantia preservada**: o fallback Claude **não** reintroduz o "fallback binário" que alucinava — Claude transcreve com o mesmo prompt estrito; texto insuficiente → `failed` re-tentável, nunca dado falso.
+
+---
+
+- **Data**: 20/06/2026
 - **Bloco**: Investigação e calibração do ISF v2.2 — fim do "teto 54 sistêmico" + travas no caminho JSON + gravames graves
 - **Sintoma reportado**: matrícula 27.180 (com usucapião averbada) marcava ISF 54 quando deveria ≤39; suspeita de que "todas as matrículas davam 54".
 - **Causa raiz (descoberta por inspeção dos dados reais de produção, não suposição)**: 4 problemas empilhados:
