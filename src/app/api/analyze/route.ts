@@ -1446,9 +1446,12 @@ export async function POST(req: Request) {
               const docType = doc.document_type || null;
 
               try {
-                const { ocrWithGemini } = await import('@/lib/pdf/ocrPreProcessor');
+                const { ocrWithFallback } = await import('@/lib/pdf/ocrPreProcessor');
                 console.log(`[OCR] Iniciando transcrição dedicada para: ${docName || docType || 'documento'}`);
-                const ocrResult = await ocrWithGemini(buffer, {
+                // Resiliência multi-provedor: Gemini (primário) → Claude.
+                // Sobrevive a apagão total do Gemini sem cair em fallback binário
+                // (que alucina) — o Claude usa o mesmo prompt estrito de transcrição.
+                const ocrResult = await ocrWithFallback(buffer, {
                   geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
                   timeoutMs: 150000,
                 });
@@ -1470,7 +1473,7 @@ export async function POST(req: Request) {
                   if (fp.matriculaNumbers.length > 0) {
                     pdfSourceFingerprints.push(fp);
                   }
-                  console.log(`[OCR] Sucesso: ${ocrResult.text.length} chars, confiança ${ocrResult.confidence}, ${ocrResult.durationMs}ms`);
+                  console.log(`[OCR] Sucesso via ${ocrResult.method}: ${ocrResult.text.length} chars, confiança ${ocrResult.confidence}, ${ocrResult.durationMs}ms`);
                 } else {
                   console.warn(`[OCR] Texto insuficiente: ${ocrResult.error || 'texto curto'}`);
                   pdfExtractionDiags.warnings.push(

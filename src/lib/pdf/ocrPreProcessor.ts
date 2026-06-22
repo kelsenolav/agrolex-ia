@@ -13,11 +13,57 @@
 export interface OcrResult {
   text: string;
   success: boolean;
-  method: 'gemini_ocr' | 'text_extraction' | 'failed';
+  method: 'gemini_ocr' | 'claude_ocr' | 'text_extraction' | 'failed';
   durationMs: number;
   pageCount: number | null;
   confidence: 'high' | 'medium' | 'low';
   error?: string;
+}
+
+// matrícula real tem milhares de chars; <200 = leitura falha (vale p/ Gemini e Claude)
+const MIN_OCR_CHARS = 200;
+
+/**
+ * Constrói um OcrResult validado a partir do texto transcrito por qualquer
+ * provedor. Centraliza a lógica de validação de tamanho mínimo, contagem de
+ * páginas e avaliação de confiança (marcadores [ILEGÍVEL]/[?]).
+ */
+function buildOcrResultFromText(
+  text: string,
+  method: OcrResult['method'],
+  startTime: number,
+): OcrResult {
+  const durationMs = Date.now() - startTime;
+
+  if (!text || text.trim().length < 50) {
+    return {
+      text: '',
+      success: false,
+      method: 'failed',
+      durationMs,
+      pageCount: null,
+      confidence: 'low',
+      error: 'OCR retornou texto vazio ou muito curto',
+    };
+  }
+
+  const pageMatches = text.match(/---\s*PÁGINA\s*\d+\s*---/gi);
+  const pageCount = pageMatches ? pageMatches.length : 1;
+
+  const illegibleCount = (text.match(/\[ILEGÍVEL\]/gi) || []).length;
+  const unknownCount = (text.match(/\[\?\]/g) || []).length;
+  let confidence: 'high' | 'medium' | 'low' = 'high';
+  if (illegibleCount > 10 || unknownCount > 20) confidence = 'low';
+  else if (illegibleCount > 3 || unknownCount > 5) confidence = 'medium';
+
+  return {
+    text: text.trim(),
+    success: true,
+    method,
+    durationMs,
+    pageCount,
+    confidence,
+  };
 }
 
 const OCR_PROMPT = `Você é um sistema de OCR (Reconhecimento Óptico de Caracteres) especializado em documentos imobiliários brasileiros.
@@ -96,8 +142,6 @@ export async function ocrWithGemini(
       new Set([modelName, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']),
     );
     const maxRetriesPerModel = 3;
-
-    const MIN_OCR_CHARS = 200; // matrícula real tem milhares de chars; <200 = leitura falha
 
     // Retorna o TEXTO já validado. Re-tenta o próximo modelo tanto em exceção
     // (503/429/500) quanto quando a resposta vem vazia/curta (sem exceção) — esta
@@ -199,4 +243,165 @@ export async function ocrWithGemini(
       error: error?.message || 'Erro desconhecido no OCR',
     };
   }
+}
+
+/**
+ * OCR de fallback via Claude (Anthropic). O Claude lê PDFs nativamente (bloco
+ * `document` base64) e transcreve com alta fidelidade. Usa EXATAMENTE o mesmo
+ * prompt estrito de transcrição verbatim + validação de mínimo de chars do
+ * caminho Gemini — preservando a garantia anti-alucinação (nunca inventa dados;
+ * se a leitura falhar, retorna `failed` em vez de fabricar).
+ *
+ * Existe para sobreviver a um apagão total do Gemini (todos os modelos flash em
+ * 503), em que o OCR Gemini-only falharia e a análise nem chegaria à cascata.
+ */
+export async function ocrWithClaude(
+  pdfBuffer: Buffer,
+  options: { claudeModel?: string; timeoutMs?: number } = {},
+): Promise<OcrResult> {
+  const startTime = Date.now();
+
+  try {
+    const claudeKey = process.env.ANTHROPIC_API_KEY || '';
+    if (!claudeKey) {
+      return {
+        text: '',
+        success: false,
+        method: 'failed',
+        durationMs: Date.now() - startTime,
+        pageCount: null,
+        confidence: 'low',
+        error: 'ANTHROPIC_API_KEY não configurada',
+      };
+    }
+
+    const { Anthropic } = await import('@anthropic-ai/sdk');
+    const anthropic = new Anthropic({ apiKey: claudeKey });
+    const modelName = options.claudeModel || process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022';
+    const timeoutMs = options.timeoutMs || 60000;
+
+    const base64Data = pdfBuffer.toString('base64');
+
+    const maxOverloadRetries = 3;
+    const isTestEnv = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+    const backoffBaseMs = isTestEnv ? 5 : 4000;
+
+    async function generateWithResilience(): Promise<string> {
+      let lastErr: any = null;
+      for (let attempt = 0; attempt < maxOverloadRetries; attempt++) {
+        try {
+          const completion = await anthropic.messages.create({
+            model: modelName,
+            max_tokens: 8192,
+            system: OCR_PROMPT,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'document',
+                    source: { type: 'base64', media_type: 'application/pdf', data: base64Data },
+                  } as any,
+                  { type: 'text', text: 'Transcreva integralmente o documento acima.' },
+                ],
+              },
+            ],
+          });
+          let outText = '';
+          if (completion?.content && completion.content.length > 0) {
+            outText = (completion.content.find((c: any) => c.type === 'text') as any)?.text || '';
+          }
+          if (outText.trim().length >= MIN_OCR_CHARS) {
+            return outText;
+          }
+          lastErr = new Error(`OCR Claude retornou texto curto (${outText.trim().length} chars)`);
+          if (attempt < maxOverloadRetries - 1) {
+            await new Promise((r) => setTimeout(r, backoffBaseMs));
+            continue;
+          }
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          const status = err?.status;
+          // 529 = "overloaded" (código específico da Anthropic)
+          const isOverloaded = status === 529 || status === 503 || status === 429 || status === 500;
+          if (isOverloaded && attempt < maxOverloadRetries - 1) {
+            await new Promise((r) => setTimeout(r, (attempt + 1) * backoffBaseMs));
+            continue;
+          }
+          break;
+        }
+      }
+      throw lastErr || new Error('OCR Claude falhou');
+    }
+
+    let timeoutId: NodeJS.Timeout;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('OCR Claude timeout')), timeoutMs);
+    });
+
+    const text = await Promise.race([generateWithResilience(), timeoutPromise]).finally(() =>
+      clearTimeout(timeoutId!),
+    );
+
+    return buildOcrResultFromText(text, 'claude_ocr', startTime);
+  } catch (error: any) {
+    return {
+      text: '',
+      success: false,
+      method: 'failed',
+      durationMs: Date.now() - startTime,
+      pageCount: null,
+      confidence: 'low',
+      error: error?.message || 'Erro desconhecido no OCR Claude',
+    };
+  }
+}
+
+export interface OcrFallbackDeps {
+  gemini?: typeof ocrWithGemini;
+  claude?: typeof ocrWithClaude;
+}
+
+/**
+ * Orquestra o OCR com resiliência multi-provedor: Gemini (primário) → Claude.
+ *
+ * - Tenta o Gemini primeiro (melhor custo/latência para esta tarefa).
+ * - Se o Gemini falhar OU retornar texto insuficiente (<100 chars úteis) e houver
+ *   `ANTHROPIC_API_KEY`, tenta o Claude com o mesmo prompt estrito.
+ * - Se ambos falharem, retorna um `failed` com o erro combinado (re-tentável).
+ *
+ * `deps` permite injeção das funções de OCR em testes (sem bater nas APIs reais).
+ */
+export async function ocrWithFallback(
+  pdfBuffer: Buffer,
+  options: { geminiModel?: string; claudeModel?: string; timeoutMs?: number } = {},
+  deps: OcrFallbackDeps = {},
+): Promise<OcrResult> {
+  const geminiFn = deps.gemini || ocrWithGemini;
+  const claudeFn = deps.claude || ocrWithClaude;
+
+  const primary = await geminiFn(pdfBuffer, options);
+  if (primary.success && primary.text.trim().length >= 100) {
+    return primary;
+  }
+
+  // Gemini falhou ou texto insuficiente. Só tenta Claude se houver chave.
+  const hasClaude = !!(process.env.ANTHROPIC_API_KEY || '');
+  if (!hasClaude) {
+    return primary;
+  }
+
+  const secondary = await claudeFn(pdfBuffer, options);
+  if (secondary.success && secondary.text.trim().length >= 100) {
+    return secondary;
+  }
+
+  // Ambos falharam → preserva o erro mais informativo, sem fabricar dado.
+  if (primary.success) return primary;
+  if (secondary.success) return secondary;
+  return {
+    ...primary,
+    error: `OCR falhou em ambos os provedores. Gemini: ${primary.error || 'falhou'} | Claude: ${secondary.error || 'falhou'}`,
+  };
 }
