@@ -69,9 +69,9 @@ function timeAgo(dateStr: string): string {
 }
 
 function ISFBadge({ score }: { score: number | null | undefined }) {
-  if (score == null) return <span className="text-gray-500 text-xs">—</span>;
+  if (score == null) return <span className="text-gray-400 text-xs">—</span>;
   const color = score >= 70 ? 'text-emerald-400' : score >= 55 ? 'text-amber-400' : score >= 40 ? 'text-orange-400' : 'text-red-400';
-  return <span className={`font-bold tabular-nums ${color}`}>{score}<span className="text-gray-500 font-normal text-xs">/100</span></span>;
+  return <span className={`font-bold tabular-nums ${color}`}>{score}<span className="text-gray-400 font-normal text-xs">/100</span></span>;
 }
 
 function RadarContent() {
@@ -285,7 +285,7 @@ function RadarContent() {
             <div className="flex items-center gap-3">
               <Logo size="sm" className="text-white" />
               <div className="flex items-center gap-2">
-                <span className="text-gray-500 font-mono text-sm">·</span>
+                <span className="text-gray-400 font-mono text-sm">·</span>
                 <div className="relative flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute" />
                   <span className="w-2 h-2 rounded-full bg-emerald-400 relative" />
@@ -296,7 +296,7 @@ function RadarContent() {
           </div>
           <div className="flex items-center gap-4">
             {lastGlobalScan && (
-              <span className="text-xs text-gray-500 font-mono hidden sm:block">
+              <span className="text-xs text-gray-400 font-mono hidden sm:block">
                 Última varredura: {timeAgo(lastGlobalScan.toISOString())}
               </span>
             )}
@@ -360,14 +360,14 @@ function RadarContent() {
               <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest font-mono flex items-center gap-2">
                 <Activity size={14} /> Áreas Vigiadas
               </h2>
-              <span className="text-xs text-gray-600">{monitoredProperties.length} ativas</span>
+              <span className="text-xs text-gray-400">{monitoredProperties.length} ativas</span>
             </div>
 
             {monitoredProperties.length === 0 && (
               <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center">
-                <Radio size={32} className="mx-auto text-gray-700 mb-3" />
-                <p className="text-gray-500 text-sm">Nenhuma propriedade no radar.</p>
-                <p className="text-gray-600 text-xs mt-1">Ative o monitoramento abaixo.</p>
+                <Radio size={32} className="mx-auto text-gray-400 mb-3" />
+                <p className="text-gray-400 text-sm">Nenhuma propriedade no radar.</p>
+                <p className="text-gray-400 text-xs mt-1">Ative o monitoramento abaixo.</p>
               </div>
             )}
 
@@ -387,7 +387,7 @@ function RadarContent() {
                         <h3 className="font-semibold text-white text-sm truncate">{prop.name}</h3>
                       </div>
                       {(prop.city || prop.state) && (
-                        <p className="text-xs text-gray-500 mt-0.5 ml-4">{[prop.city, prop.state].filter(Boolean).join(' / ')}</p>
+                        <p className="text-xs text-gray-400 mt-0.5 ml-4">{[prop.city, prop.state].filter(Boolean).join(' / ')}</p>
                       )}
                     </div>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${cfg.badgeBg}`}>
@@ -397,7 +397,7 @@ function RadarContent() {
 
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <div className="text-xs text-gray-500 mb-0.5">ISF atual</div>
+                      <div className="text-xs text-gray-400 mb-0.5">ISF atual</div>
                       <ISFBadge score={result?.latestIsfScore ?? prop.last_radar_isf_score} />
                     </div>
                     {alertCount > 0 && (
@@ -407,7 +407,7 @@ function RadarContent() {
                       </div>
                     )}
                     {alertCount === 0 && prop.last_radar_check_at && (
-                      <div className="flex items-center gap-1 text-emerald-600 text-xs">
+                      <div className="flex items-center gap-1 text-emerald-400 text-xs">
                         <CheckCircle2 size={12} />
                         <span>OK</span>
                       </div>
@@ -415,7 +415,7 @@ function RadarContent() {
                   </div>
 
                   {prop.last_radar_check_at && (
-                    <p className="text-xs text-gray-600 flex items-center gap-1 mb-3">
+                    <p className="text-xs text-gray-400 flex items-center gap-1 mb-3">
                       <Clock size={10} /> Varredura {timeAgo(prop.last_radar_check_at)}
                     </p>
                   )}
@@ -438,7 +438,7 @@ function RadarContent() {
                         { key: 'registry_office', label: 'Cartório', placeholder: 'CRI de ...' },
                       ] as const).map(({ key, label, placeholder }) => (
                         <div key={key}>
-                          <label className="text-xs text-gray-500 block mb-0.5">{label}</label>
+                          <label className="text-xs text-gray-400 block mb-0.5">{label}</label>
                           <input
                             type="text"
                             value={(editForm as Record<string, string>)[key] || ''}
@@ -448,12 +448,12 @@ function RadarContent() {
                           />
                         </div>
                       ))}
-                      <button onClick={() => setEditingProp(null)} className="text-xs text-gray-500 hover:text-gray-300 mt-1">Cancelar</button>
+                      <button onClick={() => setEditingProp(null)} className="text-xs text-gray-400 hover:text-gray-300 mt-1">Cancelar</button>
                     </div>
                   ) : (
                     <button
                       onClick={() => startEditProp(prop)}
-                      className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-300 mb-3 transition-colors"
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-300 mb-3 transition-colors"
                     >
                       <Edit3 size={10} />
                       {prop.car_code || prop.sigef_code || prop.cpf_cnpj ? 'Editar dados cadastrais' : 'Adicionar dados cadastrais (CAR, SIGEF, CPF...)'}
@@ -466,7 +466,7 @@ function RadarContent() {
                       <div className="flex items-center gap-1 mb-1">
                         <Globe size={10} className="text-blue-400" />
                         <span className="text-xs font-bold text-gray-400">Consultas Externas</span>
-                        <span className="text-xs text-gray-600 ml-auto">{externalResults[prop.id].sources_success.length}/{externalResults[prop.id].sources_consulted.length} fontes</span>
+                        <span className="text-xs text-gray-400 ml-auto">{externalResults[prop.id].sources_success.length}/{externalResults[prop.id].sources_consulted.length} fontes</span>
                       </div>
                       {externalResults[prop.id].sources_success.map(s => (
                         <div key={s} className="flex items-center gap-1.5 text-xs">
@@ -489,8 +489,8 @@ function RadarContent() {
                       ))}
                       {externalResults[prop.id].sources_failed.map(s => (
                         <div key={s} className="flex items-center gap-1.5 text-xs">
-                          <XCircle size={10} className="text-gray-600 flex-shrink-0" />
-                          <span className="text-gray-600">{s} — indisponível</span>
+                          <XCircle size={10} className="text-gray-400 flex-shrink-0" />
+                          <span className="text-gray-400">{s} — indisponível</span>
                         </div>
                       ))}
                     </div>
@@ -521,7 +521,7 @@ function RadarContent() {
               <>
                 <div className="flex items-center gap-2 pt-2">
                   <div className="flex-1 h-px bg-gray-800" />
-                  <span className="text-[10px] text-gray-600 font-mono uppercase tracking-wider">Sem monitoramento</span>
+                  <span className="text-[10px] text-gray-400 font-mono uppercase tracking-wider">Sem monitoramento</span>
                   <div className="flex-1 h-px bg-gray-800" />
                 </div>
                 {unmonitoredProperties.map(prop => (
@@ -533,10 +533,10 @@ function RadarContent() {
                           <h3 className="font-medium text-gray-400 text-sm truncate">{prop.name}</h3>
                         </div>
                         {(prop.city || prop.state) && (
-                          <p className="text-xs text-gray-600 mt-0.5 ml-4">{[prop.city, prop.state].filter(Boolean).join(' / ')}</p>
+                          <p className="text-xs text-gray-400 mt-0.5 ml-4">{[prop.city, prop.state].filter(Boolean).join(' / ')}</p>
                         )}
                       </div>
-                      <span className="text-[10px] text-gray-600 border border-gray-700 px-2 py-0.5 rounded-full">Inativo</span>
+                      <span className="text-[10px] text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full">Inativo</span>
                     </div>
                     <button
                       onClick={() => toggleMonitoring(prop.id, true)}
@@ -558,7 +558,7 @@ function RadarContent() {
                 <Bell size={14} /> Central de Alertas
               </h2>
               {unreadAlerts.length > 0 && (
-                <button onClick={markAllRead} className="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1">
+                <button onClick={markAllRead} className="text-xs text-gray-400 hover:text-gray-300 transition-colors flex items-center gap-1">
                   <BellOff size={12} /> Marcar todos como lidos
                 </button>
               )}
@@ -571,8 +571,8 @@ function RadarContent() {
                   <div className="absolute inset-2 rounded-full border border-emerald-800 opacity-20" />
                   <Shield className="absolute inset-0 m-auto text-emerald-700" size={24} />
                 </div>
-                <p className="text-emerald-600 font-medium mb-1">Nenhuma anomalia detectada</p>
-                <p className="text-gray-600 text-sm">Execute uma varredura para iniciar o monitoramento.</p>
+                <p className="text-emerald-400 font-medium mb-1">Nenhuma anomalia detectada</p>
+                <p className="text-gray-400 text-sm">Execute uma varredura para iniciar o monitoramento.</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -594,23 +594,23 @@ function RadarContent() {
                             <span className={`text-xs font-bold uppercase tracking-wide ${cfg.color}`}>
                               {cfg.label}
                             </span>
-                            <span className="text-gray-500 text-xs">·</span>
+                            <span className="text-gray-400 text-xs">·</span>
                             <span className="text-gray-300 text-xs font-medium">{propName}</span>
-                            <span className="text-gray-600 text-xs ml-auto flex-shrink-0">{timeAgo(alert.created_at)}</span>
+                            <span className="text-gray-400 text-xs ml-auto flex-shrink-0">{timeAgo(alert.created_at)}</span>
                           </div>
                           <p className={`text-sm font-semibold mb-1 ${cfg.color}`}>{alert.title}</p>
                           <p className="text-xs text-gray-400 leading-relaxed">{alert.description}</p>
                           <div className="flex gap-3 mt-2">
                             <Link
                               href="/dashboard"
-                              className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1 transition-colors"
+                              className="text-xs text-gray-400 hover:text-gray-300 flex items-center gap-1 transition-colors"
                             >
                               <ChevronRight size={11} /> Ver análises
                             </Link>
                             {!alert.is_read && (
                               <button
                                 onClick={() => markRead(alert.id)}
-                                className="text-xs text-gray-600 hover:text-gray-400 flex items-center gap-1 transition-colors"
+                                className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1 transition-colors"
                               >
                                 <XCircle size={11} /> Dispensar
                               </button>
@@ -653,11 +653,11 @@ function RadarContent() {
                 </div>
                 <div className="flex-shrink-0 text-right hidden md:block">
                   <div className="text-2xl font-black text-white">R$ 49<span className="text-sm font-bold text-gray-400">,90</span></div>
-                  <div className="text-[10px] text-gray-500">/propriedade/mês</div>
+                  <div className="text-[10px] text-gray-400">/propriedade/mês</div>
                 </div>
               </div>
               <div className="border-t border-emerald-900/60 px-5 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <p className="text-[11px] text-gray-600">R$ 49,90/propriedade/mês · Cancele quando quiser</p>
+                <p className="text-[11px] text-gray-400">R$ 49,90/propriedade/mês · Cancele quando quiser</p>
                 <Link
                   href="/dashboard/planos"
                   className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-5 py-2 rounded-lg transition-all text-xs shadow-lg shadow-emerald-900/50 whitespace-nowrap"
@@ -668,7 +668,7 @@ function RadarContent() {
             </div>
 
             {/* Info footer */}
-            <div className="mt-4 flex items-start gap-2 text-xs text-gray-600">
+            <div className="mt-4 flex items-start gap-2 text-xs text-gray-400">
               <Info size={13} className="flex-shrink-0 mt-0.5" />
               <p>O radar analisa os dados das suas análises existentes. Para detectar novos ônus registrados após a data da análise, atualize os documentos e execute nova auditoria completa.</p>
             </div>
@@ -731,8 +731,8 @@ function RadarContent() {
               <div className="text-3xl font-black text-white">
                 R$ 49<span className="text-lg text-gray-400">,90</span>
               </div>
-              <div className="text-xs text-gray-500 mt-1">por propriedade / mês</div>
-              <div className="text-xs text-gray-600 mt-2">Cancele a qualquer momento</div>
+              <div className="text-xs text-gray-400 mt-1">por propriedade / mês</div>
+              <div className="text-xs text-gray-400 mt-2">Cancele a qualquer momento</div>
             </div>
 
             <div className="flex gap-3">

@@ -68,6 +68,8 @@ export default function DashboardPage() {
     modules: Array<{ module_id: string; title: string; priority?: string; price?: number | null }>;
   } | null>(null);
   const [acceptingModules, setAcceptingModules] = useState(false);
+  const [selectedModuleIds, setSelectedModuleIds] = useState<Set<string>>(new Set());
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
 
   // SPRINT COMERCIAL P0.2 — Trial control e mensagens rotativas
   const [trialUsed, setTrialUsed] = useState(false);
@@ -497,9 +499,8 @@ export default function DashboardPage() {
         return;
       }
 
-      // HOTFIX P0 — Filtrar apenas módulos não processados antes de enviar
       const moduleIds = recommendModal.modules
-        .filter((m) => !(m as any).already_processed)
+        .filter((m) => !(m as any).already_processed && selectedModuleIds.has(m.module_id))
         .map((m) => m.module_id);
 
       if (moduleIds.length === 0) {
@@ -551,14 +552,29 @@ export default function DashboardPage() {
     }
   };
 
-  // --- Métricas Executivas ---
-  const analisesConcluidas = analises.filter(a => a.status === 'completed').length;
-  const analisesEmAndamento = analises.filter(a => a.status === 'processing' || a.status === 'pending' || a.status === 'payment_pending' || a.status === 'ready_for_processing').length;
-  const riscosAltos = analises.filter(a => getAnalysisRiskLevel(a) === 'alto_risco').length;
-  const riscosCriticos = analises.filter(a => getAnalysisRiskLevel(a) === 'critico').length;
-  const riscosMedios = analises.filter(a => getAnalysisRiskLevel(a) === 'atencao').length;
-  const riscosBaixos = analises.filter(a => getAnalysisRiskLevel(a) === 'seguro' || getAnalysisRiskLevel(a) === 'muito_seguro').length;
-  const semRisco = analises.filter(a => getAnalysisRiskLevel(a) === 'desconhecido').length;
+  // Mapa de filhas agrupadas por parent_analysis_id
+  const childrenByParent = new Map<string, Analysis[]>();
+  const childIds = new Set<string>();
+  for (const a of analises) {
+    const parentId = (a.findings as any)?.parent_analysis_id;
+    if (parentId) {
+      childIds.add(a.id);
+      const list = childrenByParent.get(parentId) || [];
+      list.push(a);
+      childrenByParent.set(parentId, list);
+    }
+  }
+
+  const analisesPai = analises.filter(a => !childIds.has(a.id));
+
+  // --- Métricas Executivas (apenas análises-pai) ---
+  const analisesConcluidas = analisesPai.filter(a => a.status === 'completed').length;
+  const analisesEmAndamento = analisesPai.filter(a => a.status === 'processing' || a.status === 'pending' || a.status === 'payment_pending' || a.status === 'ready_for_processing').length;
+  const riscosAltos = analisesPai.filter(a => getAnalysisRiskLevel(a) === 'alto_risco').length;
+  const riscosCriticos = analisesPai.filter(a => getAnalysisRiskLevel(a) === 'critico').length;
+  const riscosMedios = analisesPai.filter(a => getAnalysisRiskLevel(a) === 'atencao').length;
+  const riscosBaixos = analisesPai.filter(a => getAnalysisRiskLevel(a) === 'seguro' || getAnalysisRiskLevel(a) === 'muito_seguro').length;
+  const semRisco = analisesPai.filter(a => getAnalysisRiskLevel(a) === 'desconhecido').length;
   const totalRiscos = riscosAltos + riscosCriticos;
 
   // Horas economizadas (benchmark: 8h por auditoria concluída)
@@ -574,7 +590,8 @@ export default function DashboardPage() {
   };
 
   const analisesFiltradas = analises.filter(a => {
-    const matchSearch = !searchTerm || 
+    if (childIds.has(a.id)) return false;
+    const matchSearch = !searchTerm ||
       a.properties?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       a.properties?.city?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = !statusFilter || a.status === statusFilter;
@@ -584,8 +601,8 @@ export default function DashboardPage() {
     return matchSearch && matchStatus && matchRisk;
   });
 
-  // P1B — Score médio do portfólio usando ISF v2 como fonte primária
-  const scoresISFV2 = analises
+  // P1B — Score médio do portfólio usando ISF v2 (apenas análises-pai)
+  const scoresISFV2 = analisesPai
     .filter(a => a.status === 'completed' && a.findings)
     .map(a => {
       const isfV2 = getISFV2FromFindings(a.findings);
@@ -661,6 +678,10 @@ export default function DashboardPage() {
             <Link href="/dashboard/radar" className="flex items-center gap-1.5 text-sm bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-lg font-medium transition-colors">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               Radar
+            </Link>
+            <Link href="/dashboard/credito-rural" className="flex items-center gap-1.5 text-sm bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-lg font-medium transition-colors">
+              <span className="w-2 h-2 rounded-full bg-green-400" />
+              Crédito Rural
             </Link>
             <span className="text-sm font-medium">Olá, {userName}</span>
             <button onClick={handleLogout} className="text-sm hover:text-brand-gold transition-colors font-medium">Sair</button>
@@ -749,21 +770,21 @@ export default function DashboardPage() {
           {/* Card 1 — Análises */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5">
             <div className="flex items-center justify-between mb-0.5">
-              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Análises</span>
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Análises</span>
               <ShieldCheck size={15} className="text-brand-green" />
             </div>
             <p className="text-2xl font-black text-gray-800">{analisesConcluidas}</p>
             <span className="text-xs">
               {analisesEmAndamento > 0
                 ? <span className="text-amber-500 font-bold">{analisesEmAndamento} em andamento</span>
-                : <span className="text-gray-400">Todas concluídas</span>}
+                : <span className="text-gray-500">Todas concluídas</span>}
             </span>
           </div>
 
           {/* Card 2 — Riscos */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5">
             <div className="flex items-center justify-between mb-0.5">
-              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Riscos</span>
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Riscos</span>
               <AlertTriangle size={15} className={totalRiscos > 0 ? 'text-red-500' : 'text-green-500'} />
             </div>
             <p className="text-2xl font-black text-gray-800">{totalRiscos}</p>
@@ -777,7 +798,7 @@ export default function DashboardPage() {
           {/* Card 3 — Saldo */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1.5">
             <div className="flex items-center justify-between mb-0.5">
-              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Saldo</span>
+              <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">Saldo</span>
               <Layers size={15} className={dynamicBalance !== null && dynamicBalance < 0 ? 'text-red-500' : 'text-blue-500'} />
             </div>
             <p className={`text-2xl font-black ${dynamicBalance !== null && dynamicBalance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
@@ -1001,7 +1022,7 @@ export default function DashboardPage() {
                       {displayScore !== null ? (
                         <>
                           <span className={`text-2xl font-black leading-none ${getISFTextTint(displayLevel)}`}>{displayScore}</span>
-                          <span className={`text-xs font-bold uppercase tracking-wider mt-0.5 ${getISFTextTint(displayLevel)} opacity-70`}>
+                          <span className={`text-[10px] font-bold uppercase tracking-tight leading-none mt-0.5 text-center ${getISFTextTint(displayLevel)} opacity-70`}>
                             {getISFLabel(displayLevel) || 'ISF'}
                           </span>
                         </>
@@ -1025,17 +1046,24 @@ export default function DashboardPage() {
                                 {depthLabel}
                               </span>
                             )}
-                            {complementaryChildren && complementaryChildren.length > 0 && (
-                              <span className="text-xs text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-bold">
-                                +{complementaryChildren.length} complementar
-                              </span>
+                            {childrenByParent.has(analise.id) && (
+                              <button
+                                onClick={() => setExpandedParents(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(analise.id)) next.delete(analise.id); else next.add(analise.id);
+                                  return next;
+                                })}
+                                className="text-xs text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-bold hover:bg-blue-100 transition-colors flex items-center gap-1"
+                              >
+                                {expandedParents.has(analise.id) ? '▾' : '▸'} {childrenByParent.get(analise.id)!.length} complementar{childrenByParent.get(analise.id)!.length > 1 ? 'es' : ''}
+                              </button>
                             )}
                           </div>
                           <p className="text-sm text-gray-500 flex items-center gap-1">
                             <MapPin size={12} className="text-brand-green flex-shrink-0" />
                             {analise.properties?.city}, {analise.properties?.state}
                           </p>
-                          <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                          <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
                             <FileText size={11} className="text-brand-gold flex-shrink-0" />
                             {analise.documents?.[0]?.document_type || 'Documento'}
                           </p>
@@ -1121,7 +1149,11 @@ export default function DashboardPage() {
                         )}
                         {recommended.length > 0 && statusType === 'completed' && (
                           <button
-                            onClick={() => setRecommendModal({ analysisId: analise.id, propertyName: analise.properties?.name || 'Propriedade', modules: recommended })}
+                            onClick={() => {
+                              const mods = recommended;
+                              setSelectedModuleIds(new Set(mods.filter((m: any) => !m.already_processed).map((m: any) => m.module_id)));
+                              setRecommendModal({ analysisId: analise.id, propertyName: analise.properties?.name || 'Propriedade', modules: mods });
+                            }}
                             className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 px-2.5 py-0.5 rounded-full text-xs font-bold transition-colors"
                           >
                             + {recommended.length} módulo{recommended.length > 1 ? 's' : ''} sugerido{recommended.length > 1 ? 's' : ''}
@@ -1154,7 +1186,10 @@ export default function DashboardPage() {
                                         <>
                                           <span className="text-xs font-bold text-brand-green">R$ {etapa.price.toFixed(2)}</span>
                                           <button
-                                            onClick={() => setRecommendModal({ analysisId: analise.id, propertyName: analise.properties?.name || 'Propriedade', modules: [{ module_id: etapa.id, title: etapa.name, price: etapa.price }] })}
+                                            onClick={() => {
+                                              setSelectedModuleIds(new Set([etapa.id]));
+                                              setRecommendModal({ analysisId: analise.id, propertyName: analise.properties?.name || 'Propriedade', modules: [{ module_id: etapa.id, title: etapa.name, price: etapa.price }] });
+                                            }}
                                             className="text-xs bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold hover:brightness-110"
                                           >
                                             Comprar
@@ -1171,6 +1206,107 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* ── Sub-análises complementares (agrupadas) ── */}
+                  {expandedParents.has(analise.id) && childrenByParent.has(analise.id) && (
+                    <div className="border-t border-gray-100 bg-gray-50/50 px-4 pb-3 pt-2 space-y-2">
+                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Análises complementares</span>
+                      {childrenByParent.get(analise.id)!.map((child) => {
+                        const childFindings = child.findings as any;
+                        const childISF = getISFV2FromFindings(child.findings);
+                        const childScore = child.status === 'completed' ? (childISF.isf_score ?? calcularScoreAgroLex(child.findings, child.risk_level, childISF.isf_score).score) : null;
+                        const childLevel = (childISF.risk_level || child.risk_level || '') as ISFLevel;
+                        const childStatus = normalizeStatus(child.status || '');
+                        const childHasParecer = child.findings && child.findings.resumo && String(child.findings.resumo).trim().length > 0;
+                        const childModules = Array.isArray(childFindings?.selected_modules) ? childFindings.selected_modules : [];
+                        const childDepth = childFindings?.analysis_depth ?? 2;
+                        return (
+                          <div key={child.id} className="flex items-center gap-3 bg-white rounded-lg border border-gray-100 px-3 py-2">
+                            {/* Mini ISF badge */}
+                            <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex flex-col items-center justify-center ${
+                              childScore !== null ? getISFBgTint(childLevel) : 'bg-gray-100'
+                            }`}>
+                              {childScore !== null ? (
+                                <>
+                                  <span className={`text-sm font-black leading-none ${getISFTextTint(childLevel)}`}>{childScore}</span>
+                                  <span className={`text-[7px] font-bold uppercase leading-none ${getISFTextTint(childLevel)} opacity-60`}>ISF</span>
+                                </>
+                              ) : (
+                                <span className="text-gray-300 text-sm">—</span>
+                              )}
+                            </div>
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold text-gray-800">
+                                  Complementar {childDepth - 1}
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${childStatus.colorClass}`}>
+                                  {childStatus.text}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 truncate">
+                                {childModules.map((m: string) => {
+                                  const modName: Record<string, string> = {
+                                    matricula_individual: 'Matrícula Individual',
+                                    cadeia_dominial: 'Cadeia Dominial',
+                                    cruzamento_matriculas: 'Cruzamento de Matrículas',
+                                    origem_publica: 'Origem Pública',
+                                    geoespacial: 'Geoespacial',
+                                    nulidades_fraudes: 'Nulidades e Fraudes',
+                                    cruzamento_total: 'Cruzamento Total',
+                                  };
+                                  return modName[m] || m;
+                                }).join(', ')}
+                              </p>
+                            </div>
+                            {/* Actions */}
+                            <div className="flex-shrink-0">
+                              {childStatus.type === 'completed' && childHasParecer && (
+                                <Link
+                                  href={`/dashboard/resultado?id=${child.id}`}
+                                  className="inline-flex items-center gap-1 bg-brand-green text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:brightness-110 transition-all"
+                                >
+                                  Parecer <ArrowUpRight size={12} />
+                                </Link>
+                              )}
+                              {childStatus.type === 'ready_for_processing' && (
+                                <button
+                                  disabled={loadingAnalysisId !== null}
+                                  onClick={() => handleStartAnalysis(child.id, child.properties?.id ?? '', { retryMessage: 'Processando...' })}
+                                  className="bg-brand-green text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:brightness-110 transition-all disabled:opacity-50"
+                                >
+                                  {loadingAnalysisId === child.id ? 'Auditando...' : 'Iniciar'}
+                                </button>
+                              )}
+                              {childStatus.type === 'processing' && (
+                                <span className="text-xs text-gray-400 flex items-center gap-1">
+                                  <span className="animate-pulse w-1.5 h-1.5 bg-blue-500 rounded-full" /> Processando
+                                </span>
+                              )}
+                              {childStatus.type === 'error' && (
+                                <button
+                                  disabled={loadingAnalysisId !== null}
+                                  onClick={() => handleStartAnalysis(child.id, child.properties?.id ?? '', { retryMessage: 'Reprocessando...' })}
+                                  className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:brightness-110 transition-all disabled:opacity-50"
+                                >
+                                  Tentar novamente
+                                </button>
+                              )}
+                              {childStatus.type === 'pending' && (
+                                <button
+                                  onClick={() => handlePayNow(child.id)}
+                                  className="bg-brand-gold text-brand-green px-3 py-1.5 rounded-lg text-xs font-bold hover:brightness-110 transition-all"
+                                >
+                                  Processar →
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -1230,16 +1366,36 @@ export default function DashboardPage() {
             <div className="space-y-2 mb-4">
               {recommendModal.modules.map((mod) => {
                 const isProcessed = (mod as any).already_processed === true;
+                const isSelected = selectedModuleIds.has(mod.module_id);
                 return (
-                  <div
+                  <label
                     key={mod.module_id}
-                    className={`flex items-center justify-between rounded-lg px-4 py-3 border ${
+                    className={`flex items-center justify-between rounded-lg px-4 py-3 border cursor-pointer transition-colors ${
                       isProcessed
-                        ? 'bg-green-50 border-green-200 opacity-70'
-                        : 'bg-gray-50 border-gray-100'
+                        ? 'bg-green-50 border-green-200 opacity-70 cursor-default'
+                        : isSelected
+                          ? 'bg-brand-green/5 border-brand-green/30'
+                          : 'bg-gray-50 border-gray-100 hover:bg-gray-100'
                     }`}
                   >
                     <div className="flex items-center gap-3">
+                      {!isProcessed ? (
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            setSelectedModuleIds(prev => {
+                              const next = new Set(prev);
+                              if (next.has(mod.module_id)) next.delete(mod.module_id);
+                              else next.add(mod.module_id);
+                              return next;
+                            });
+                          }}
+                          className="w-4 h-4 rounded border-gray-300 text-brand-green focus:ring-brand-green accent-green-600"
+                        />
+                      ) : (
+                        <span className="w-4 h-4 flex items-center justify-center text-green-500">✓</span>
+                      )}
                       <span className={`w-2 h-2 rounded-full ${
                         isProcessed ? 'bg-green-500' :
                         mod.priority === 'critica' ? 'bg-red-500' :
@@ -1256,18 +1412,18 @@ export default function DashboardPage() {
                       )}
                     </div>
                     {mod.price != null && !isProcessed && (
-                      <span className="text-sm font-bold text-brand-green">
+                      <span className={`text-sm font-bold ${isSelected ? 'text-brand-green' : 'text-gray-400'}`}>
                         R$ {mod.price.toFixed(2)}
                       </span>
                     )}
-                  </div>
+                  </label>
                 );
               })}
             </div>
             <div className="flex items-center justify-between bg-amber-50 rounded-lg px-4 py-3 border border-amber-200 mb-6">
               <span className="text-sm font-semibold text-amber-800">Valor total estimado</span>
               <span className="text-lg font-bold text-amber-800">
-                R$ {recommendModal.modules.reduce((sum, m) => sum + (m.price || 0), 0).toFixed(2)}
+                R$ {recommendModal.modules.filter(m => selectedModuleIds.has(m.module_id) && !(m as any).already_processed).reduce((sum, m) => sum + (m.price || 0), 0).toFixed(2)}
               </span>
             </div>
             <div className="text-xs text-gray-500 mb-4 leading-relaxed">
@@ -1284,7 +1440,7 @@ export default function DashboardPage() {
               </button>
               <button
                 onClick={handleAcceptModules}
-                disabled={acceptingModules}
+                disabled={acceptingModules || selectedModuleIds.size === 0}
                 className="flex-1 px-4 py-2.5 rounded-xl bg-brand-green text-white font-bold text-sm hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {acceptingModules ? (

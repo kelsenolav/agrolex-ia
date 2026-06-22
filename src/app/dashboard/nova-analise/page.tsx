@@ -538,7 +538,7 @@ export default function NovaAnalisePage() {
                             placeholder="Ex: 122,54"
                             className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green outline-none text-sm"
                           />
-                          <p className="text-xs text-gray-400 mt-1">Deixe em branco se não souber — o sistema extrai a área dos documentos.</p>
+                          <p className="text-xs text-gray-600 mt-1">Deixe em branco se não souber — o sistema extrai a área dos documentos.</p>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
@@ -618,11 +618,11 @@ export default function NovaAnalisePage() {
                   }`}
                 >
                   <input ref={fileInputRef} type="file" accept=".pdf" multiple className="sr-only" onChange={onFileInput} />
-                  <UploadCloud size={40} className={`mx-auto mb-3 transition-colors ${isDragging ? 'text-brand-green' : 'text-gray-300'}`} />
+                  <UploadCloud size={40} className={`mx-auto mb-3 transition-colors ${isDragging ? 'text-brand-green' : 'text-gray-400'}`} />
                   <p className="font-bold text-gray-700 mb-1">
                     {isDragging ? 'Solte para adicionar' : 'Arraste PDFs aqui ou clique para selecionar'}
                   </p>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-600">
                     Tipo selecionado: <strong className="text-brand-green">{currentDocType}</strong> · máx. {MAX_FILE_SIZE_MB} MB por arquivo · até {MAX_FILE_COUNT} arquivos
                   </p>
                 </div>
@@ -724,7 +724,7 @@ export default function NovaAnalisePage() {
                               <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded uppercase tracking-wider border border-green-200">recomendado</span>
                             )}
                           </div>
-                          <p className={`text-xs mt-0.5 line-clamp-1 ${!compat.enabled ? 'text-gray-300' : isMaster ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <p className={`text-xs mt-0.5 line-clamp-1 ${!compat.enabled ? 'text-gray-500' : isMaster ? 'text-gray-300' : 'text-gray-600'}`}>
                             {!compat.enabled && compat.reason ? compat.reason : mod.description}
                           </p>
                           {compat.enabled && compat.warning && (
@@ -856,7 +856,7 @@ export default function NovaAnalisePage() {
             >
               {leadSaving ? 'Salvando...' : <>Salvar e Continuar <ArrowRight size={20} /></>}
             </button>
-            <p className="text-xs text-gray-400 text-center mt-4">Seus dados são protegidos e não serão compartilhados.</p>
+            <p className="text-xs text-gray-600 text-center mt-4">Seus dados são protegidos e não serão compartilhados.</p>
           </div>
         </div>
       )}
