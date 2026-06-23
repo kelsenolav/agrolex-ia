@@ -29,6 +29,7 @@ export interface AnalysisFindings {
   ccir_exercicio?: string;
   area_registrada_ha?: number;
   area_sigef_ha?: number;
+  numeros_processo?: string[];
   [key: string]: unknown;
 }
 
@@ -322,17 +323,38 @@ export async function consultarCNIR(
 }
 
 // ─── Tribunais / DataJud ─────────────────────────────────────────────────────
+// API Pública DataJud (CNJ): https://api-publica.datajud.cnj.jus.br/
+// Campos disponíveis: numeroProcesso, classe, assuntos, movimentos, orgaoJulgador, tribunal, grau, dataAjuizamento
+// NÃO expõe: partes, CPF, CNPJ (dados sigilosos)
+// Estratégia: (1) consultar números de processo já conhecidos nos achados
+//             (2) buscar classes processuais agrárias no estado da propriedade
 
-const KEYWORDS_AGRARIOS = [
-  'usucapião',
-  'reintegração de posse',
-  'imissão na posse',
-  'desapropriação',
-  'demarcação',
-  'divisão de terras',
-  'ação reivindicatória',
-  'nulidade de registro',
-];
+const CLASSES_AGRARIAS: Record<string, number> = {
+  'Usucapião': 10459,
+  'Reintegração / Manutenção de Posse': 1707,
+  'Imissão na Posse': 1698,
+  'Desapropriação': 39,
+  'Ação Reivindicatória': 10445,
+  'Nulidade / Anulação de Escritura': 10532,
+};
+
+const UF_TO_TJ: Record<string, string> = {
+  AC: 'tjac', AL: 'tjal', AM: 'tjam', AP: 'tjap', BA: 'tjba', CE: 'tjce',
+  DF: 'tjdft', ES: 'tjes', GO: 'tjgo', MA: 'tjma', MG: 'tjmg', MS: 'tjms',
+  MT: 'tjmt', PA: 'tjpa', PB: 'tjpb', PE: 'tjpe', PI: 'tjpi', PR: 'tjpr',
+  RJ: 'tjrj', RN: 'tjrn', RO: 'tjro', RR: 'tjrr', RS: 'tjrs', SC: 'tjsc',
+  SE: 'tjse', SP: 'tjsp', TO: 'tjto',
+};
+
+const UF_TO_TRF: Record<string, string> = {
+  AC: 'trf1', AM: 'trf1', AP: 'trf1', BA: 'trf1', DF: 'trf1', GO: 'trf1',
+  MA: 'trf1', MG: 'trf1', MT: 'trf1', PA: 'trf1', PI: 'trf1', RO: 'trf1',
+  RR: 'trf1', TO: 'trf1',
+  ES: 'trf2', RJ: 'trf2',
+  MS: 'trf3', SP: 'trf3',
+  PR: 'trf4', RS: 'trf4', SC: 'trf4',
+  AL: 'trf5', CE: 'trf5', PB: 'trf5', PE: 'trf5', RN: 'trf5', SE: 'trf5',
+};
 
 function classificarRiscoProcesso(classe: string, assuntos: string[]): ProcessoTribunal['risco_para_propriedade'] {
   const textoCompleto = `${classe} ${assuntos.join(' ')}`.toLowerCase();
@@ -342,53 +364,32 @@ function classificarRiscoProcesso(classe: string, assuntos: string[]): ProcessoT
   return 'indeterminado';
 }
 
-export async function consultarTribunais(params: PropertyParams): Promise<TribunaisResult> {
-  const result: TribunaisResult = {
-    consultas_realizadas: [],
-    processos_encontrados: 0,
-    processos: [],
-    alerta_litigio: false,
-  };
-
-  if (!params.cpf_cnpj) {
-    result.erro = 'CPF/CNPJ do proprietário não informado — consulta a tribunais limitada';
-    return result;
+function extrairNumerosProcesso(findings?: AnalysisFindings): string[] {
+  const nums = new Set<string>();
+  if (findings?.numeros_processo) {
+    for (const n of findings.numeros_processo) nums.add(n.replace(/[.\-\/]/g, ''));
   }
+  const regex = /\d{7}-?\d{2}\.?\d{4}\.?\d\.?\d{2}\.?\d{4}/g;
+  const textoAchados = (findings?.achados ?? []).map(a => `${a.titulo ?? ''} ${a.descricao ?? ''}`).join(' ');
+  const resumo = findings?.resumo ?? '';
+  for (const match of `${textoAchados} ${resumo}`.matchAll(regex)) {
+    nums.add(match[0].replace(/[.\-\/]/g, ''));
+  }
+  return Array.from(nums).slice(0, 10);
+}
 
-  const cpfLimpo = params.cpf_cnpj.replace(/[.\-\/]/g, '');
+async function datajudSearch(
+  tribunal: string,
+  query: Record<string, unknown>,
+  label: string
+): Promise<{ hits: Array<Record<string, unknown>>; error?: string }> {
+  const datajudKey = process.env.DATAJUD_API_KEY;
+  if (!datajudKey) return { hits: [], error: 'DATAJUD_API_KEY não configurada' };
 
+  const url = `https://api-publica.datajud.cnj.jus.br/api_publica_${tribunal}/_search`;
   try {
-    const apiUrl = 'https://api-publica.datajud.cnj.jus.br/api_publica_trf1/_search';
-    const query = {
-      query: {
-        bool: {
-          must: [
-            {
-              match: {
-                numeroDocumentoPrincipal: cpfLimpo,
-              },
-            },
-          ],
-          should: KEYWORDS_AGRARIOS.map((kw) => ({
-            match_phrase: { assunto: kw },
-          })),
-          minimum_should_match: 0,
-        },
-      },
-      size: 20,
-      sort: [{ dataAjuizamento: { order: 'desc' } }],
-    };
-
-    result.consultas_realizadas.push('DataJud API Pública — TRF1');
-
-    const datajudKey = process.env.DATAJUD_API_KEY;
-    if (!datajudKey) {
-      result.erro = 'DATAJUD_API_KEY não configurada — consulta a tribunais desabilitada';
-      return result;
-    }
-
     const res = await withTimeout(
-      fetch(apiUrl, {
+      fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -398,50 +399,137 @@ export async function consultarTribunais(params: PropertyParams): Promise<Tribun
         body: JSON.stringify(query),
       }),
       15000,
-      'DataJud TRF1'
+      label
     );
-
-    if (!res.ok) {
-      result.erro = `DataJud retornou HTTP ${res.status}`;
-      return result;
-    }
-
+    if (!res.ok) return { hits: [], error: `HTTP ${res.status}` };
     const data = await res.json();
-    const hits = data?.hits?.hits ?? [];
-
-    for (const hit of hits) {
-      const src = hit._source ?? {};
-      const assuntos: string[] = Array.isArray(src.assuntos)
-        ? src.assuntos.map((a: { nome?: string; descricao?: string }) => a.nome ?? a.descricao ?? '')
-        : [];
-      const partes: string[] = Array.isArray(src.partes)
-        ? src.partes.map((p: { nome?: string }) => p.nome ?? '')
-        : [];
-
-      const processo: ProcessoTribunal = {
-        numero: src.numeroProcesso ?? src.numero ?? 'N/D',
-        tribunal: src.tribunal ?? src.orgaoJulgador ?? 'TRF1',
-        classe: src.classeProcessual ?? src.classe ?? '',
-        assuntos,
-        partes_envolvidas: partes,
-        data_ajuizamento: src.dataAjuizamento ?? '',
-        ultimo_movimento: src.dataUltimaAtualizacao ?? src.ultimoMovimento ?? '',
-        risco_para_propriedade: classificarRiscoProcesso(
-          src.classeProcessual ?? '',
-          assuntos
-        ),
-      };
-      result.processos.push(processo);
-    }
-
-    result.processos_encontrados = result.processos.length;
-    result.alerta_litigio = result.processos.some(
-      (p) => p.risco_para_propriedade === 'alto' || p.risco_para_propriedade === 'medio'
-    );
+    return { hits: data?.hits?.hits ?? [] };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    result.erro = `Falha ao consultar DataJud: ${msg}`;
+    return { hits: [], error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+function parseHitToProcesso(hit: Record<string, unknown>, fallbackTribunal: string): ProcessoTribunal {
+  const src = (hit._source ?? {}) as Record<string, unknown>;
+  const classeObj = src.classe as Record<string, unknown> | undefined;
+  const assuntosRaw = Array.isArray(src.assuntos) ? src.assuntos : [];
+  const assuntos: string[] = assuntosRaw.map((a: Record<string, unknown>) => (a.nome as string) ?? '');
+  const classeName = (classeObj?.nome as string) ?? '';
+  const movimentos = Array.isArray(src.movimentos) ? src.movimentos : [];
+  const ultimoMov = movimentos.length > 0
+    ? (movimentos[movimentos.length - 1] as Record<string, unknown>)
+    : null;
+
+  return {
+    numero: (src.numeroProcesso as string) ?? 'N/D',
+    tribunal: (src.tribunal as string) ?? fallbackTribunal.toUpperCase(),
+    classe: classeName,
+    assuntos,
+    partes_envolvidas: [],
+    data_ajuizamento: (src.dataAjuizamento as string) ?? '',
+    ultimo_movimento: ultimoMov
+      ? `${(ultimoMov.nome as string) ?? ''} (${(ultimoMov.dataHora as string)?.slice(0, 10) ?? ''})`
+      : (src.dataHoraUltimaAtualizacao as string) ?? '',
+    risco_para_propriedade: classificarRiscoProcesso(classeName, assuntos),
+  };
+}
+
+export async function consultarTribunais(
+  params: PropertyParams,
+  findings?: AnalysisFindings
+): Promise<TribunaisResult> {
+  const result: TribunaisResult = {
+    consultas_realizadas: [],
+    processos_encontrados: 0,
+    processos: [],
+    alerta_litigio: false,
+  };
+
+  const datajudKey = process.env.DATAJUD_API_KEY;
+  if (!datajudKey) {
+    result.erro = 'DATAJUD_API_KEY não configurada — consulta a tribunais desabilitada';
+    return result;
+  }
+
+  const seenProcessos = new Set<string>();
+  const searches: Promise<void>[] = [];
+
+  // ── Estratégia 1: buscar processos por número (extraídos dos achados) ──
+  const numerosConhecidos = extrairNumerosProcesso(findings);
+  if (numerosConhecidos.length > 0) {
+    const uf = (params.state ?? '').toUpperCase();
+    const tribunais = new Set<string>();
+    const tj = UF_TO_TJ[uf];
+    const trf = UF_TO_TRF[uf];
+    if (tj) tribunais.add(tj);
+    if (trf) tribunais.add(trf);
+    if (tribunais.size === 0) { tribunais.add('trf1'); tribunais.add('tjgo'); }
+
+    for (const tribunal of tribunais) {
+      const search = async () => {
+        const label = `DataJud ${tribunal.toUpperCase()} — processos conhecidos`;
+        result.consultas_realizadas.push(label);
+        const query = {
+          query: {
+            bool: {
+              should: numerosConhecidos.map(n => ({ match: { numeroProcesso: n } })),
+              minimum_should_match: 1,
+            },
+          },
+          size: 20,
+          sort: [{ '@timestamp': { order: 'desc' as const } }],
+        };
+        const { hits, error } = await datajudSearch(tribunal, query, label);
+        if (error) { result.erro = (result.erro ? result.erro + '; ' : '') + `${tribunal}: ${error}`; return; }
+        for (const hit of hits) {
+          const proc = parseHitToProcesso(hit, tribunal);
+          if (!seenProcessos.has(proc.numero)) {
+            seenProcessos.add(proc.numero);
+            result.processos.push(proc);
+          }
+        }
+      };
+      searches.push(search());
+    }
+  }
+
+  // ── Estratégia 2: buscar classes agrárias no TJ estadual ──
+  const uf = (params.state ?? '').toUpperCase();
+  const tjAlias = UF_TO_TJ[uf];
+  if (tjAlias) {
+    const classesCodes = Object.values(CLASSES_AGRARIAS);
+    const search = async () => {
+      const label = `DataJud ${tjAlias.toUpperCase()} — classes agrárias`;
+      result.consultas_realizadas.push(label);
+      const query = {
+        query: {
+          bool: {
+            should: classesCodes.map(codigo => ({ match: { 'classe.codigo': codigo } })),
+            minimum_should_match: 1,
+          },
+        },
+        size: 10,
+        sort: [{ '@timestamp': { order: 'desc' as const } }],
+      };
+      const { hits, error } = await datajudSearch(tjAlias, query, label);
+      if (error) { result.erro = (result.erro ? result.erro + '; ' : '') + `${tjAlias}: ${error}`; return; }
+      for (const hit of hits) {
+        const proc = parseHitToProcesso(hit, tjAlias);
+        if (!seenProcessos.has(proc.numero)) {
+          seenProcessos.add(proc.numero);
+          result.processos.push(proc);
+        }
+      }
+    };
+    searches.push(search());
+  }
+
+  await Promise.allSettled(searches);
+
+  result.processos_encontrados = result.processos.length;
+  result.alerta_litigio = result.processos.some(
+    (p) => p.risco_para_propriedade === 'alto' || p.risco_para_propriedade === 'medio'
+  );
 
   return result;
 }
@@ -519,7 +607,7 @@ export async function runExternalChecks(
     consultarSIGEF(propertyData),
     consultarCAR(propertyData),
     consultarCNIR(propertyData, analysisFindings),
-    consultarTribunais(propertyData),
+    consultarTribunais(propertyData, analysisFindings),
     consultarCertidoes(propertyData, analysisFindings),
   ]);
 
