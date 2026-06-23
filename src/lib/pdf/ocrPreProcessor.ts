@@ -476,22 +476,40 @@ export async function ocrDocumentComplete(
   }
 
   const pagesToProcess = Math.min(pageBuffers.length, MAX_PAGES);
+  const rank = { high: 0, medium: 1, low: 2 };
+
+  // Transcreve as páginas em PARALELO com concorrência limitada. Sequencial
+  // estoura o maxDuration (300s) em documentos de várias páginas — 6 páginas em
+  // série mataram a função. Em paralelo (lote de CONCURRENCY), a latência total
+  // ≈ a de uma página × (nº de lotes). O cap evita disparar dezenas de chamadas
+  // simultâneas (429) em documentos longos; a cascata interna já reabsorve 503/429.
+  const CONCURRENCY = 5;
+  const results: (OcrResult | null)[] = new Array(pagesToProcess).fill(null);
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (cursor < pagesToProcess) {
+      const i = cursor++;
+      results[i] = await ocrWithFallback(pageBuffers[i], { ...options, timeoutMs: perPageTimeout }, deps);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, pagesToProcess) }, () => worker()),
+  );
+
   const blocks: string[] = [];
   let okPages = 0;
   let method: OcrResult['method'] = 'failed';
   let worstConfidence: OcrResult['confidence'] = 'high';
-  const rank = { high: 0, medium: 1, low: 2 };
-
   for (let i = 0; i < pagesToProcess; i++) {
-    const r = await ocrWithFallback(pageBuffers[i], { ...options, timeoutMs: perPageTimeout }, deps);
-    if (r.success && r.text.trim().length >= 50) {
+    const r = results[i];
+    if (r && r.success && r.text.trim().length >= 50) {
       blocks.push(`--- PÁGINA ${i + 1} ---\n${r.text.trim()}`);
       okPages++;
       if (method === 'failed' && r.method !== 'failed') method = r.method;
       if (rank[r.confidence] > rank[worstConfidence]) worstConfidence = r.confidence;
     } else {
       // Página ilegível/falha: registra a lacuna SEM fabricar conteúdo.
-      blocks.push(`--- PÁGINA ${i + 1} ---\n[PÁGINA NÃO TRANSCRITA: ${r.error || 'leitura falhou'}]`);
+      blocks.push(`--- PÁGINA ${i + 1} ---\n[PÁGINA NÃO TRANSCRITA: ${(r && r.error) || 'leitura falhou'}]`);
     }
   }
 
