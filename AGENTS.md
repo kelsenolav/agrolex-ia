@@ -3,6 +3,19 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 23/06/2026
+- **Bloco**: Radar — reescrita da consulta DataJud (CNJ) para o motor de checagem externa
+- **Sintoma**: a consulta a tribunais (`consultarTribunais` em `src/lib/monitoring/externalDataProviders.ts`) buscava por `numeroDocumentoPrincipal` (CPF/CNPJ) na API pública do DataJud. Essa API **não expõe partes/CPF/CNPJ** (dados sigilosos), então a busca **nunca retornava nada** — o radar reportava "0 processos" mesmo em propriedades litigiosas.
+- **Correção (commit `848b10db`)**: nova estratégia em 2 frentes, executadas em paralelo (`Promise.allSettled`):
+  1. **Por número de processo**: `extrairNumerosProcesso()` lê o campo `numeros_processo` dos findings + faz regex no `resumo`/`achados` (padrão CNJ `NNNNNNN-DD.AAAA.J.TR.OOOO`); consulta `numeroProcesso` no TJ e TRF do estado da propriedade.
+  2. **Por classe agrária**: busca classes processuais agrárias (usucapião, reintegração/manutenção de posse, imissão, desapropriação, reivindicatória, nulidade de escritura) por `classe.codigo` no TJ estadual.
+  - Mapas `UF_TO_TJ` (27 UFs) e `UF_TO_TRF` (TRF1–5); dedup por número; `consultarTribunais(params, findings)` agora recebe os findings; `runExternalChecks` repassa. Requer `DATAJUD_API_KEY` (retorna erro limpo se ausente).
+- **Consumidores**: `/api/monitoring/check` e `/api/monitoring/cron` (já passavam `findings` a `runExternalChecks`).
+- **Validações**: `npx tsc --noEmit` OK, `npm run lint` 0 erros, `npm test` **642/642** (26 suítes), `npm run build` OK.
+- **Deploy em produção**: **EFETUADO** (push `848b10db` + `vercel --prod --yes`). `/dashboard` → HTTP 307 (→ login) OK.
+
+---
+
+- **Data**: 23/06/2026
 - **Bloco**: CORREÇÃO CRÍTICA — "falso-78" (matrícula com nulidades pontuando ISF 78/Regular)
 - **Sintoma**: matrícula 2.705 (Fazenda Santa Bárbara — com cancelamento por coisa julgada, restabelecimento administrativo do CNJ, 2 penhoras fiscais e ação federal) recebeu **ISF 78 (Regular)**. Análise manual (forense) deu 30/100 (Crítico).
 - **Causa raiz (diagnóstico com dados reais da análise `72c13e14`, sem chute)**: o OCR transcrevia o PDF inteiro numa **única** chamada ao modelo, que **truncava** em documentos longos — entregava só a **1ª página** (memorial/identificação). A IA, fielmente, extraiu `atos_registrais=0`, `proprietario="não consta"`, `0 problemas`, e pontuou alto (`D5 litigioso=100`) porque "não achou litígio". O motor calculou 78 corretamente a partir de inputs benignos. **Garbage in → garbage out** — nem o motor nem o raciocínio da IA estavam errados; a entrada é que era **1 de 6 páginas**. A Trava CTO nunca disparou (depende de achado crítico; com 0 achados, não há o que vetar).
