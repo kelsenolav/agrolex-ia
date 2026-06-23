@@ -1390,6 +1390,8 @@ export async function POST(req: Request) {
           empty_count: number;
           extraction_total_ms: number;
           warnings: string[];
+          ocr_incomplete: boolean;
+          ocr_pages: { expected: number; transcribed: number } | null;
         } = {
           total_pdfs: 0,
           markdown_success: 0,
@@ -1398,6 +1400,8 @@ export async function POST(req: Request) {
           empty_count: 0,
           extraction_total_ms: 0,
           warnings: [],
+          ocr_incomplete: false,
+          ocr_pages: null,
         };
 
         const runBackground = async () => {
@@ -1446,16 +1450,31 @@ export async function POST(req: Request) {
               const docType = doc.document_type || null;
 
               try {
-                const { ocrWithFallback } = await import('@/lib/pdf/ocrPreProcessor');
+                const { ocrDocumentComplete } = await import('@/lib/pdf/ocrPreProcessor');
                 console.log(`[OCR] Iniciando transcrição dedicada para: ${docName || docType || 'documento'}`);
-                // Resiliência multi-provedor: Gemini (primário) → Claude.
-                // Sobrevive a apagão total do Gemini sem cair em fallback binário
-                // (que alucina) — o Claude usa o mesmo prompt estrito de transcrição.
-                const ocrResult = await ocrWithFallback(buffer, {
+                // Resiliência multi-provedor (Gemini→Claude) + transcrição PÁGINA-A-PÁGINA:
+                // transcrever o PDF inteiro numa só chamada trunca documentos longos (o
+                // modelo lê a 1ª página e para), entregando uma matrícula incompleta à
+                // análise — a causa raiz do "falso-78". O ocrDocumentComplete fatia o PDF
+                // e transcreve cada página, garantindo que TODOS os atos registrais cheguem.
+                const ocrResult = await ocrDocumentComplete(buffer, {
                   geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-                  timeoutMs: 150000,
+                  timeoutMs: 60000,
                 });
                 pdfExtractionDiags.extraction_total_ms += ocrResult.durationMs;
+
+                // Portão de completude: se a transcrição cobriu MENOS páginas do que o
+                // PDF tem, está INCOMPLETA. Sinaliza para o cálculo do ISF travar em
+                // Inválido (em vez de pontuar alto por "não ter achado nada").
+                if (typeof ocrResult.pagesExpected === 'number' && typeof ocrResult.pageCount === 'number'
+                    && ocrResult.pageCount < ocrResult.pagesExpected) {
+                  pdfExtractionDiags.ocr_incomplete = true;
+                  pdfExtractionDiags.ocr_pages = { expected: ocrResult.pagesExpected, transcribed: ocrResult.pageCount };
+                  pdfExtractionDiags.warnings.push(
+                    `OCR incompleto: ${ocrResult.pageCount}/${ocrResult.pagesExpected} páginas transcritas em "${docName || docType || 'documento'}".`
+                  );
+                  console.warn(`[OCR] INCOMPLETO: ${ocrResult.pageCount}/${ocrResult.pagesExpected} páginas.`);
+                }
 
                 if (ocrResult.success && ocrResult.text.length > 100) {
                   // NÃO enviar como part separada: o modelo lê o prompt gigante (com
@@ -2076,6 +2095,21 @@ ${ocrTextBlocks.join('\n\n')}
               // em vez de remover D2 e travar tudo em 54. Um título limpo deixa de ser
               // rotulado "Alto Risco" só por falta do módulo de cadeia.
               const cadeiaNaoAuditada = !normalizedModules.includes('cadeia_dominial');
+
+              // ── Portão de SUFICIÊNCIA da extração (anti "falso-78") ──
+              // Causa raiz documentada: OCR parcial entregou só a página de identificação
+              // → a IA extraiu 0 atos registrais, proprietário "não consta", 0 problemas,
+              // e pontuou alto (D5=100) porque "não achou litígio". Ausência de evidência
+              // NÃO é evidência de ausência. Se o OCR veio incompleto OU o miolo registral
+              // está vazio, a análise não tem base → travar em Inválido (nunca alto).
+              const mijSuf: any = matriculaIndividualJsonParsed;
+              const ehMatriculaModule = normalizedModules.includes('matricula_individual') || normalizedModules.includes('cadeia_dominial');
+              const atosCountSuf = mijSuf && Array.isArray(mijSuf.atos_registrais) ? mijSuf.atos_registrais.length : null;
+              const propNomeSuf = String(mijSuf?.proprietario_atual?.nome || '').toLowerCase().trim();
+              const proprietarioAusente = !propNomeSuf || /n[ãa]o\s*consta|n[ãa]o\s*identificad|n[ãa]o\s*informad/.test(propNomeSuf);
+              const extractRegistralVazio = ehMatriculaModule && mijSuf != null && atosCountSuf === 0 && proprietarioAusente && parsedProblemas.length === 0;
+              const dadosInsuficientes = pdfExtractionDiags.ocr_incomplete || extractRegistralVazio;
+
               const isfDimensoesFromAI = matriculaIndividualJsonParsed?.isf_dimensoes as Record<string, { pontuacao: number; justificativa?: string }> | undefined;
               if (isfDimensoesFromAI && typeof isfDimensoesFromAI === 'object') {
                 // Usar scores explícitos da IA — determinísticos, rastreáveis por documento
@@ -2151,6 +2185,22 @@ ${ocrTextBlocks.join('\n\n')}
               // Guardrail: risk_level Crítico nunca deve produzir ISF > 54 (alto_risco)
               if (riskLevel === 'Crítico' && isfResultV2_2.isf_score > 54) {
                 isfResultV2_2 = { ...isfResultV2_2, isf_score: 39, faixa: 'critico', faixa_label: 'Crítico', travas_aplicadas: [...(isfResultV2_2.travas_aplicadas || []), 'TRAVA_RISK_LEVEL_CRITICO'] };
+              }
+
+              // ── Trava de dados insuficientes (aplicada por ÚLTIMO — vence todas) ──
+              // Score não confiável → Inválido (faixa 0-24). Evita o "falso-78" quando a
+              // leitura do documento foi parcial ou a IA não capturou o miolo registral.
+              if (dadosInsuficientes) {
+                const motivo = pdfExtractionDiags.ocr_incomplete
+                  ? `TRAVA_DADOS_INSUFICIENTES: leitura incompleta do documento (${pdfExtractionDiags.ocr_pages ? `${pdfExtractionDiags.ocr_pages.transcribed}/${pdfExtractionDiags.ocr_pages.expected} páginas` : 'OCR parcial'}) — re-executar a leitura.`
+                  : 'TRAVA_DADOS_INSUFICIENTES: extração não capturou atos registrais nem proprietário — análise sem base. Re-executar a leitura.';
+                const fx = classificarFaixaV2_2(20);
+                isfResultV2_2 = {
+                  ...isfResultV2_2, isf_score: 20,
+                  faixa: fx.faixa, faixa_label: fx.label, faixa_desc: fx.desc,
+                  faixa_bg: fx.bg, faixa_color: fx.color, faixa_meter: fx.meter,
+                  travas_aplicadas: [...(isfResultV2_2.travas_aplicadas || []), motivo],
+                };
               }
 
               const payloadV2_2 = prepararPayloadV2_2(isfResultV2_2);

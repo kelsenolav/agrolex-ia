@@ -18,6 +18,14 @@ export interface OcrResult {
   pageCount: number | null;
   confidence: 'high' | 'medium' | 'low';
   error?: string;
+  /**
+   * Nº REAL de páginas do PDF de origem (contado do buffer via pdf-lib).
+   * Comparar com `pageCount` (páginas efetivamente transcritas) detecta OCR
+   * parcial — a causa raiz do "falso-78" (a IA recebeu só a 1ª página de uma
+   * matrícula multipágina e não viu os registros/penhoras). Quando
+   * `pageCount < pagesExpected`, a transcrição está INCOMPLETA.
+   */
+  pagesExpected?: number;
 }
 
 // matrícula real tem milhares de chars; <200 = leitura falha (vale p/ Gemini e Claude)
@@ -403,5 +411,101 @@ export async function ocrWithFallback(
   return {
     ...primary,
     error: `OCR falhou em ambos os provedores. Gemini: ${primary.error || 'falhou'} | Claude: ${secondary.error || 'falhou'}`,
+  };
+}
+
+/**
+ * Fatia um PDF em buffers de 1 página cada (via pdf-lib). Usado para o OCR
+ * página-a-página: transcrever o PDF inteiro numa só chamada faz o modelo
+ * truncar em documentos longos (ele transcreve a 1ª página e para), entregando
+ * uma matrícula INCOMPLETA à análise. Uma página por chamada cabe folgado no
+ * limite de tokens e garante que TODOS os atos registrais cheguem à IA.
+ */
+async function splitPdfIntoPageBuffers(pdfBuffer: Buffer): Promise<Buffer[]> {
+  const { PDFDocument } = await import('pdf-lib');
+  const src = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+  const total = src.getPageCount();
+  const out: Buffer[] = [];
+  for (let i = 0; i < total; i++) {
+    const single = await PDFDocument.create();
+    const [page] = await single.copyPages(src, [i]);
+    single.addPage(page);
+    out.push(Buffer.from(await single.save()));
+  }
+  return out;
+}
+
+/**
+ * OCR COMPLETO e à prova de truncamento para PDFs multipágina.
+ *
+ * - Conta o nº REAL de páginas do PDF.
+ * - 1 página → caminho normal (`ocrWithFallback`).
+ * - N páginas → fatia em 1 página por vez e transcreve cada uma (sequencial,
+ *   com a mesma cascata Gemini→Claude por página), concatenando com marcadores
+ *   "--- PÁGINA N ---". Assim nenhuma página se perde por truncamento do modelo.
+ * - Sempre devolve `pagesExpected` (real) e `pageCount` (transcritas com sucesso),
+ *   permitindo ao chamador detectar transcrição incompleta.
+ *
+ * Se o fatiamento falhar (PDF corrompido), faz fallback para o OCR do documento
+ * inteiro — nunca quebra o fluxo.
+ */
+export async function ocrDocumentComplete(
+  pdfBuffer: Buffer,
+  options: { geminiModel?: string; claudeModel?: string; timeoutMs?: number } = {},
+  deps: OcrFallbackDeps = {},
+): Promise<OcrResult> {
+  const startTime = Date.now();
+  const { countPdfPagesFromBuffer } = await import('./pageCounter.server');
+  const realPages = await countPdfPagesFromBuffer(pdfBuffer);
+  // Timeout por página: cada página é leve; cap em 60s independente do budget total.
+  const perPageTimeout = Math.min(options.timeoutMs || 60000, 60000);
+  const MAX_PAGES = 40; // guarda contra documentos absurdamente longos
+
+  if (realPages <= 1) {
+    const r = await ocrWithFallback(pdfBuffer, options, deps);
+    return { ...r, pagesExpected: realPages };
+  }
+
+  let pageBuffers: Buffer[];
+  try {
+    pageBuffers = await splitPdfIntoPageBuffers(pdfBuffer);
+  } catch {
+    // Fatiamento falhou → tenta o documento inteiro (comportamento legado).
+    const r = await ocrWithFallback(pdfBuffer, options, deps);
+    return { ...r, pagesExpected: realPages };
+  }
+
+  const pagesToProcess = Math.min(pageBuffers.length, MAX_PAGES);
+  const blocks: string[] = [];
+  let okPages = 0;
+  let method: OcrResult['method'] = 'failed';
+  let worstConfidence: OcrResult['confidence'] = 'high';
+  const rank = { high: 0, medium: 1, low: 2 };
+
+  for (let i = 0; i < pagesToProcess; i++) {
+    const r = await ocrWithFallback(pageBuffers[i], { ...options, timeoutMs: perPageTimeout }, deps);
+    if (r.success && r.text.trim().length >= 50) {
+      blocks.push(`--- PÁGINA ${i + 1} ---\n${r.text.trim()}`);
+      okPages++;
+      if (method === 'failed' && r.method !== 'failed') method = r.method;
+      if (rank[r.confidence] > rank[worstConfidence]) worstConfidence = r.confidence;
+    } else {
+      // Página ilegível/falha: registra a lacuna SEM fabricar conteúdo.
+      blocks.push(`--- PÁGINA ${i + 1} ---\n[PÁGINA NÃO TRANSCRITA: ${r.error || 'leitura falhou'}]`);
+    }
+  }
+
+  const text = blocks.join('\n\n').trim();
+  const durationMs = Date.now() - startTime;
+
+  return {
+    text,
+    success: okPages > 0,
+    method: okPages > 0 ? method : 'failed',
+    durationMs,
+    pageCount: okPages,
+    pagesExpected: realPages,
+    confidence: worstConfidence,
+    error: okPages === 0 ? 'Nenhuma página transcrita' : undefined,
   };
 }
