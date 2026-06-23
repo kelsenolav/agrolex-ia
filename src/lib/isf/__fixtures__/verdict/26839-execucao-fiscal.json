@@ -1,0 +1,23 @@
+{
+  "id": "26839-execucao-fiscal",
+  "source": "documented:AGENTS.md@2026-06-20",
+  "label": "golden",
+  "note": "Matrícula 26.839 Gurupi/TO com penhora em execução fiscal → trava de gravame grave (penhora), teto 54 (Alto Risco). D2 preservada (=85).",
+  "input": {
+    "isfDimensoesFromAI": { "D1": {"pontuacao": 85}, "D2": {"pontuacao": 85}, "D3": {"pontuacao": 60}, "D4": {"pontuacao": 85}, "D5": {"pontuacao": 60}, "D6": {"pontuacao": 85} },
+    "parsedProblemas": [
+      { "titulo": "Penhora fiscal (AV-4)", "criticidade": "alto", "descricao": "penhora registrada em execução fiscal" }
+    ],
+    "ocrIncomplete": false,
+    "ocrPages": null,
+    "ehMatriculaModule": true,
+    "atosCount": 5,
+    "proprietarioNome": "Idemar José Ferreira",
+    "cadeiaNaoAuditada": false,
+    "riskLevel": "Alto"
+  },
+  "expected": {
+    "isf_score": 54,
+    "faixa": "alto_risco"
+  }
+}

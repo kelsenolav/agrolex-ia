@@ -1,0 +1,22 @@
+{
+  "id": "2705-fazenda-santa-barbara",
+  "source": "documented:AGENTS.md@2026-06-23",
+  "label": "golden",
+  "note": "Cancelamento por coisa julgada + restabelecimento CNJ + 2 penhoras fiscais + ação federal. OCR truncou (1/6 páginas) → portão de suficiência trava em Inválido. Mata o falso-78.",
+  "input": {
+    "isfDimensoesFromAI": null,
+    "parsedProblemas": [],
+    "ocrIncomplete": true,
+    "ocrPages": { "expected": 6, "transcribed": 1 },
+    "ehMatriculaModule": true,
+    "atosCount": 0,
+    "proprietarioNome": "não consta",
+    "cadeiaNaoAuditada": false,
+    "riskLevel": "Baixo"
+  },
+  "expected": {
+    "isf_score": 20,
+    "faixa": "invalido",
+    "travas_includes": ["TRAVA_DADOS_INSUFICIENTES"]
+  }
+}

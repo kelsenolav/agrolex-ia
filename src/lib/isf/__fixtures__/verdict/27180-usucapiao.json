@@ -1,0 +1,23 @@
+{
+  "id": "27180-usucapiao",
+  "source": "documented:AGENTS.md@2026-06-20",
+  "label": "golden",
+  "note": "Matrícula 27.180 Porto Nacional/TO com usucapião averbada (AV-2). Ação de terceiro disputando a propriedade → trava de litígio força D3/D5 ≤ 15 → TRAVA_D3_GRAVAME, teto 39 (Crítico).",
+  "input": {
+    "isfDimensoesFromAI": { "D1": {"pontuacao": 85}, "D2": {"pontuacao": 85}, "D3": {"pontuacao": 85}, "D4": {"pontuacao": 85}, "D5": {"pontuacao": 85}, "D6": {"pontuacao": 85} },
+    "parsedProblemas": [
+      { "titulo": "Usucapião averbada (AV-2)", "criticidade": "alto", "descricao": "ação de usucapião por terceiro em andamento sobre o imóvel" }
+    ],
+    "ocrIncomplete": false,
+    "ocrPages": null,
+    "ehMatriculaModule": true,
+    "atosCount": 4,
+    "proprietarioNome": "Investco S/A",
+    "cadeiaNaoAuditada": false,
+    "riskLevel": "Crítico"
+  },
+  "expected": {
+    "isf_score": 39,
+    "faixa": "critico"
+  }
+}
