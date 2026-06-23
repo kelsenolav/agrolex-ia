@@ -3,6 +3,20 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 20/06/2026
+- **Bloco**: CORREÇÃO CRÍTICA — schema do Radar nunca aplicado em produção (radar quebrado desde o lançamento)
+- **Sintoma reportado**: usuário não conseguia cadastrar/puxar propriedade para o radar; radar mostrava "0 propriedades" mesmo com análises feitas. Apontamento do usuário: "tem que ter opção de puxar dados de propriedade já cadastrada e analisada".
+- **Causa raiz (descoberta por inspeção do schema real de produção)**: as 3 migrations do radar (`20260613_monitoring_radar`, `20260614_radar_external_fields`, `20260614_radar_subscriptions`) **nunca foram aplicadas em produção** (`hbcnsgpdosooodmwfsgh`) — só no HML (a confusão dos 2 projetos, ver memória). Faltavam 8 colunas em `properties` (`last_radar_check_at`, `last_radar_isf_score`, `last_radar_analysis_id`, `car_code`, `ccir`, `sigef_code`, `matricula_number`, `registry_office`) + tabelas `monitoring_alerts`, `radar_subscriptions`, `radar_trial_usage`. A query do radar (`select ...last_radar_check_at...`) **falhava silenciosamente** → `setProperties(data || [])` → lista vazia. O código estava CORRETO; o schema é que estava ausente.
+- **Correção (aplicada direto no banco de produção via Management API)**:
+  - As 3 migrations aplicadas via `POST /v1/projects/{ref}/database/query` (token `SUPABASE_ACCESS_TOKEN`, ref `SUPABASE_PROD_PROJECT_ID` — ambos no `.env.local`). Migrations idempotentes (`IF NOT EXISTS`).
+  - GRANTs faltantes: `GRANT ALL ON {monitoring_alerts,radar_subscriptions,radar_trial_usage} TO authenticated, service_role` + `NOTIFY pgrst, 'reload schema'`.
+  - Scripts: `scripts/apply-radar-migrations.mjs`, `scripts/apply-radar-grants.mjs`, `scripts/check-radar-schema.mjs`.
+- **NOTA DE INFRA (importante)**: `supabase/.temp/pooler-url` está **corrompido** (ref truncado + sem senha) — não usar. Para aplicar SQL em prod, usar a **Management API** com `SUPABASE_ACCESS_TOKEN` + `SUPABASE_PROD_PROJECT_ID` do `.env.local` (parsear removendo aspas). `SUPABASE_PROD_DB_PASSWORD` também existe no `.env.local` para conexão `pg` direta (user `postgres.{ref}`).
+- **Prova (browser autenticado, mesmo Supabase de prod)**: radar passou de 0 → **54 propriedades carregadas** (4 monitoradas, 50 com "Ativar monitoramento"); screenshot confirma lista completa renderizando no padrão branco. CTA "Cadastrar propriedade" só aparece para usuário com 0 propriedades (novo).
+- **Deploy**: schema aplicado direto no banco (não requer deploy de código — o código do radar já estava correto e em produção).
+
+---
+
+- **Data**: 20/06/2026
 - **Bloco**: Auditoria de UX (parte 2) — conversão do Radar para o padrão branco + ajustes finos
 - **Pedido do usuário**: "Faça o resto da auditoria UX" + apontamento direto: "a página do radar não segue o padrão fundo branco do site".
 - **Causa**: o radar foi feito como "dark ops center" (bg `#0a0d14`, glows, neon) — destoava do padrão branco do resto do app.
