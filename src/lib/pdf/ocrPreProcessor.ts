@@ -13,7 +13,7 @@
 export interface OcrResult {
   text: string;
   success: boolean;
-  method: 'gemini_ocr' | 'claude_ocr' | 'text_extraction' | 'failed';
+  method: 'gemini_ocr' | 'claude_ocr' | 'openai_ocr' | 'text_extraction' | 'failed';
   durationMs: number;
   pageCount: number | null;
   confidence: 'high' | 'medium' | 'low';
@@ -366,51 +366,171 @@ export async function ocrWithClaude(
   }
 }
 
+/**
+ * OCR de 3º nível via OpenAI (gpt-4o). Lê PDF nativamente (input `file` base64).
+ *
+ * Diferença vs Gemini/Claude: o gpt-4o RECUSA transcrição verbatim com o prompt
+ * genérico ("não posso transcrever o documento integral" — guardrail de copyright).
+ * Por isso usa um system prompt que o enquadra como MOTOR DE OCR sobre o documento
+ * DO PRÓPRIO usuário — comprovado empiricamente que destrava a transcrição. A
+ * garantia anti-alucinação é preservada: instrução explícita de NÃO inventar +
+ * validação de `MIN_OCR_CHARS` (texto curto → `failed`, nunca dado falso).
+ *
+ * Existe para sobreviver a apagão simultâneo de Gemini (503) + Claude (sem crédito),
+ * exatamente o cenário que travou a análise de matrículas.
+ */
+const OPENAI_OCR_SYSTEM = `Você é um MOTOR DE OCR automatizado de um sistema de due diligence imobiliária. O usuário é o titular/responsável por este documento (matrícula imobiliária) e precisa do texto legível por máquina para a própria análise. Esta é uma tarefa padrão de OCR sobre o documento do próprio usuário.
+
+Transcreva INTEGRALMENTE e VERBATIM o texto do documento, exatamente como escrito, preservando números de matrícula/registro/averbação (R-1, AV-2...), nomes, CPF/CNPJ, datas, áreas, valores, CCIR/CAR/ITR/SIGEF e confrontações.
+
+REGRAS:
+- Saída: SOMENTE o texto transcrito. Não resuma, não comente, não recuse.
+- Transcreva exatamente; trecho ilegível → [ILEGÍVEL]; dígito parcial → [?].
+- NÃO invente nada que não esteja no documento.`;
+
+export async function ocrWithOpenAI(
+  pdfBuffer: Buffer,
+  options: { openaiModel?: string; timeoutMs?: number } = {},
+): Promise<OcrResult> {
+  const startTime = Date.now();
+
+  try {
+    const openaiKey = process.env.OPENAI_API_KEY || '';
+    if (!openaiKey) {
+      return {
+        text: '', success: false, method: 'failed', durationMs: Date.now() - startTime,
+        pageCount: null, confidence: 'low', error: 'OPENAI_API_KEY não configurada',
+      };
+    }
+
+    const { default: OpenAI } = await import('openai');
+    const client = new OpenAI({ apiKey: openaiKey });
+    const modelName = options.openaiModel || process.env.OPENAI_OCR_MODEL || 'gpt-4o';
+    const timeoutMs = options.timeoutMs || 60000;
+    const base64Data = pdfBuffer.toString('base64');
+
+    const maxOverloadRetries = 3;
+    const isTestEnv = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+    const backoffBaseMs = isTestEnv ? 5 : 4000;
+
+    async function generateWithResilience(): Promise<string> {
+      let lastErr: any = null;
+      for (let attempt = 0; attempt < maxOverloadRetries; attempt++) {
+        try {
+          const completion = await client.chat.completions.create({
+            model: modelName,
+            temperature: 0,
+            max_tokens: 8000,
+            messages: [
+              { role: 'system', content: OPENAI_OCR_SYSTEM },
+              {
+                role: 'user',
+                content: [
+                  { type: 'file', file: { filename: 'documento.pdf', file_data: `data:application/pdf;base64,${base64Data}` } } as any,
+                  { type: 'text', text: 'OCR deste documento. Saída: somente o texto transcrito, verbatim.' },
+                ],
+              },
+            ],
+          });
+          const outText = completion.choices?.[0]?.message?.content || '';
+          if (outText.trim().length >= MIN_OCR_CHARS) {
+            return outText;
+          }
+          lastErr = new Error(`OCR OpenAI retornou texto curto (${outText.trim().length} chars)`);
+          if (attempt < maxOverloadRetries - 1) { await new Promise((r) => setTimeout(r, backoffBaseMs)); continue; }
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          const status = err?.status;
+          const isOverloaded = status === 503 || status === 429 || status === 500;
+          if (isOverloaded && attempt < maxOverloadRetries - 1) {
+            await new Promise((r) => setTimeout(r, (attempt + 1) * backoffBaseMs));
+            continue;
+          }
+          break;
+        }
+      }
+      throw lastErr || new Error('OCR OpenAI falhou');
+    }
+
+    let timeoutId: NodeJS.Timeout;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('OCR OpenAI timeout')), timeoutMs);
+    });
+
+    const text = await Promise.race([generateWithResilience(), timeoutPromise]).finally(() =>
+      clearTimeout(timeoutId!),
+    );
+
+    return buildOcrResultFromText(text, 'openai_ocr', startTime);
+  } catch (error: any) {
+    return {
+      text: '', success: false, method: 'failed', durationMs: Date.now() - startTime,
+      pageCount: null, confidence: 'low', error: error?.message || 'Erro desconhecido no OCR OpenAI',
+    };
+  }
+}
+
 export interface OcrFallbackDeps {
   gemini?: typeof ocrWithGemini;
   claude?: typeof ocrWithClaude;
+  openai?: typeof ocrWithOpenAI;
 }
 
 /**
- * Orquestra o OCR com resiliência multi-provedor: Gemini (primário) → Claude.
+ * Orquestra o OCR com resiliência multi-provedor: Gemini → Claude → OpenAI.
  *
- * - Tenta o Gemini primeiro (melhor custo/latência para esta tarefa).
- * - Se o Gemini falhar OU retornar texto insuficiente (<100 chars úteis) e houver
- *   `ANTHROPIC_API_KEY`, tenta o Claude com o mesmo prompt estrito.
- * - Se ambos falharem, retorna um `failed` com o erro combinado (re-tentável).
+ * - Modelos FORTES de leitura de documento primeiro (Gemini, Claude), na ordem de
+ *   custo/latência; OpenAI (gpt-4o) como 3º nível para sobreviver a apagão
+ *   simultâneo de Gemini (503) + Claude (sem crédito).
+ * - Cada nível só é acionado se o anterior falhar OU retornar texto insuficiente
+ *   (<100 chars), e só se a respectiva chave existir.
+ * - Se todos falharem, retorna `failed` com o erro combinado (re-tentável). Em
+ *   nenhum caso fabrica dado.
  *
  * `deps` permite injeção das funções de OCR em testes (sem bater nas APIs reais).
  */
 export async function ocrWithFallback(
   pdfBuffer: Buffer,
-  options: { geminiModel?: string; claudeModel?: string; timeoutMs?: number } = {},
+  options: { geminiModel?: string; claudeModel?: string; openaiModel?: string; timeoutMs?: number } = {},
   deps: OcrFallbackDeps = {},
 ): Promise<OcrResult> {
   const geminiFn = deps.gemini || ocrWithGemini;
   const claudeFn = deps.claude || ocrWithClaude;
+  const openaiFn = deps.openai || ocrWithOpenAI;
 
   const primary = await geminiFn(pdfBuffer, options);
   if (primary.success && primary.text.trim().length >= 100) {
     return primary;
   }
 
-  // Gemini falhou ou texto insuficiente. Só tenta Claude se houver chave.
+  // ── 2º nível: Claude (só se houver chave) ──
   const hasClaude = !!(process.env.ANTHROPIC_API_KEY || '');
-  if (!hasClaude) {
-    return primary;
+  let secondary: OcrResult | null = null;
+  if (hasClaude) {
+    secondary = await claudeFn(pdfBuffer, options);
+    if (secondary.success && secondary.text.trim().length >= 100) {
+      return secondary;
+    }
   }
 
-  const secondary = await claudeFn(pdfBuffer, options);
-  if (secondary.success && secondary.text.trim().length >= 100) {
-    return secondary;
+  // ── 3º nível: OpenAI gpt-4o (só se houver chave) ──
+  const hasOpenAI = !!(process.env.OPENAI_API_KEY || '');
+  let tertiary: OcrResult | null = null;
+  if (hasOpenAI) {
+    tertiary = await openaiFn(pdfBuffer, options);
+    if (tertiary.success && tertiary.text.trim().length >= 100) {
+      return tertiary;
+    }
   }
 
-  // Ambos falharam → preserva o erro mais informativo, sem fabricar dado.
+  // Todos falharam → preserva qualquer sucesso parcial; senão erro combinado.
   if (primary.success) return primary;
-  if (secondary.success) return secondary;
+  if (secondary?.success) return secondary;
+  if (tertiary?.success) return tertiary;
   return {
     ...primary,
-    error: `OCR falhou em ambos os provedores. Gemini: ${primary.error || 'falhou'} | Claude: ${secondary.error || 'falhou'}`,
+    error: `OCR falhou em todos os provedores. Gemini: ${primary.error || 'falhou'} | Claude: ${secondary?.error || (hasClaude ? 'falhou' : 'sem chave')} | OpenAI: ${tertiary?.error || (hasOpenAI ? 'falhou' : 'sem chave')}`,
   };
 }
 
