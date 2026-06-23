@@ -3,6 +3,20 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 23/06/2026
+- **Bloco**: Eixo 1 / Sub-bloco 1.4 — **Trilha de Auditoria do veredito ISF** (persiste o "porquê" reconstruível)
+- **Contexto**: 2º sub-bloco entregue do Eixo 1 (após 1.1 Proof Engine). Spec em `docs/superpowers/specs/2026-06-23-trilha-auditoria-veredito-design.md`.
+- **Problema (buraco B4)**: impossível reconstruir meses depois por que um ISF deu X (dimensões de JSON vs inferidas, travas e seus inputs). Defensabilidade jurídica exige rastro.
+- **Solução (aditiva — não altera o veredito)**:
+  - `src/lib/isf/isfVerdict.ts` — `buildVerdictRecord(input, verdict)` puro + tipo `ISFVerdictRecord` (schema_version, input, output-chave, proveniência). 2 testes (incl. *replay*: reexecutar o input reproduz o output).
+  - `route.ts` — captura `verdictInput`, monta `findings.isf_verdict = {...registro, computed_at}` e persiste (novo campo no JSONB findings; sem migration).
+  - `scripts/harvest-verdict-fixtures.mjs` — passa a **preferir `isf_verdict.input`** (exato) à reconstrução.
+- **Sinergia**: torna o harvest do Proof Engine **exato** (análise se autodescreve) e habilita **detectar vereditos defasados** comparando `computeISFVerdict(input)` atual com o `output` persistido (base do chip `task_596c2ba1`).
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **666** (+2). Deploy `vercel --prod --yes` **EFETUADO** (commit `06730823`).
+- **Próximo**: sub-bloco 1.3 (crítica semântica + contradições) ou 1.5 (observabilidade da cascata). 1.2 (eval LLM) adiado até crédito de IA OK.
+
+---
+
+- **Data**: 23/06/2026
 - **Bloco**: Eixo 1 / Sub-bloco 1.1 — **Proof Engine (Camada A)**: portão de regressão determinístico do veredito ISF (mata o falso-78 por regressão provada)
 - **Contexto**: 1º de um roadmap de blindagem do núcleo em 4 eixos (1-Confiança ← *aqui* · 2-Recorrência · 3-Vertical · 4-Consolidação). Eixo 1 decomposto em 5 sub-blocos; este é o 1.1. Spec/plano em `docs/superpowers/{specs,plans}/2026-06-23-proof-engine-camada-a*`.
 - **Problema**: cada correção de ISF (falso-78, achatamento-54, gravames) foi validada contra **1 matrícula no olho**. Sem rede de regressão, o fix N+1 regride o fix N em silêncio. Para um laudo jurídico, isso é existencial.
