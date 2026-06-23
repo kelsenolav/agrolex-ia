@@ -10,6 +10,7 @@ import { generateWithFallback, type FallbackResult, type AiProvider } from '@/li
 import { calcularComparacao } from '@/lib/isf/isfV2';
 import { calcularISFv2, classificarEixo, type ISFContext } from '@/lib/isf/isfEngine';
 import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2, normalizeFindingSeverity, detectarLitigioPropriedade, detectarGravameGrave, travaPorCriticos, classificarFaixaV2_2 } from '@/lib/isf/isfEngineV2_2';
+import { computeISFVerdict } from '@/lib/isf/isfVerdict';
 import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
 import {
   initializeProcessingStages,
@@ -2086,9 +2087,9 @@ ${ocrTextBlocks.join('\n\n')}
           if (!hasInheritedIsf) {
             try {
               // ── v2.2 (6 dimensões, sem Muito Seguro, com Inválido/Regular) ──
-              // Preferir pontuações explícitas fornecidas pela IA (matricula_individual.isf_dimensoes)
-              // para eliminar não-determinismo causado por inferência via keywords.
-              let pontuacoesV2_2: import('@/lib/isf/isfEngineV2_2').PontuacaoEntradaV2_2[];
+              // A cauda de julgamento determinística foi extraída para
+              // src/lib/isf/isfVerdict.ts (computeISFVerdict) — comportamento idêntico,
+              // testável por fixtures (Proof Engine / Eixo 1).
               // #1 — A cadeia dominial NÃO foi auditada em módulo dedicado. Mas a análise
               // de matrícula já lê a cadeia VISÍVEL no documento (R-N/AV-N), então mantemos
               // D2 (cadeia aparente) e, no fim, aplicamos um teto SUAVE de 84 (Regular) —
@@ -2096,112 +2097,34 @@ ${ocrTextBlocks.join('\n\n')}
               // rotulado "Alto Risco" só por falta do módulo de cadeia.
               const cadeiaNaoAuditada = !normalizedModules.includes('cadeia_dominial');
 
-              // ── Portão de SUFICIÊNCIA da extração (anti "falso-78") ──
-              // Causa raiz documentada: OCR parcial entregou só a página de identificação
-              // → a IA extraiu 0 atos registrais, proprietário "não consta", 0 problemas,
-              // e pontuou alto (D5=100) porque "não achou litígio". Ausência de evidência
-              // NÃO é evidência de ausência. Se o OCR veio incompleto OU o miolo registral
-              // está vazio, a análise não tem base → travar em Inválido (nunca alto).
-              const mijSuf: any = matriculaIndividualJsonParsed;
-              const ehMatriculaModule = normalizedModules.includes('matricula_individual') || normalizedModules.includes('cadeia_dominial');
-              const atosCountSuf = mijSuf && Array.isArray(mijSuf.atos_registrais) ? mijSuf.atos_registrais.length : null;
-              const propNomeSuf = String(mijSuf?.proprietario_atual?.nome || '').toLowerCase().trim();
-              const proprietarioAusente = !propNomeSuf || /n[ãa]o\s*consta|n[ãa]o\s*identificad|n[ãa]o\s*informad/.test(propNomeSuf);
-              const extractRegistralVazio = ehMatriculaModule && mijSuf != null && atosCountSuf === 0 && proprietarioAusente && parsedProblemas.length === 0;
-              const dadosInsuficientes = pdfExtractionDiags.ocr_incomplete || extractRegistralVazio;
-
-              const isfDimensoesFromAI = matriculaIndividualJsonParsed?.isf_dimensoes as Record<string, { pontuacao: number; justificativa?: string }> | undefined;
-              if (isfDimensoesFromAI && typeof isfDimensoesFromAI === 'object') {
-                // Usar scores explícitos da IA — determinísticos, rastreáveis por documento
-                pontuacoesV2_2 = ['D1','D2','D3','D4','D5','D6']
-                  .filter(d => isfDimensoesFromAI[d] && typeof isfDimensoesFromAI[d].pontuacao === 'number')
-                  .map(d => ({
-                    dimensaoId: d,
-                    pontuacao: Math.max(0, Math.min(100, Number(isfDimensoesFromAI[d].pontuacao))),
-                    itemSelecionado: isfDimensoesFromAI[d].justificativa,
-                  }));
-              } else {
-                // Fallback: inferência via keywords (não-determinístico — manter para módulos sem JSON)
-                const inferred = inferirPontuacoesDeAchados(parsedProblemas);
-                pontuacoesV2_2 = inferred.pontuacoes;
-                // Sincronizar criticidade com a inferida
-                for (const p of parsedProblemas) {
-                  const chave = (p.titulo || '').trim();
-                  if (!chave) continue;
-                  const inferida = inferred.criticidadeInferida.get(chave);
-                  if (inferida) {
-                    const atual = (p.criticidade || '').toLowerCase().trim();
-                    const isDefault = !atual || atual === 'medio' || atual === 'médio';
-                    const isLessSevere = (
-                      (atual.replace(/[.!?,;]+$/, '') === 'baixo' && (inferida === 'Crítico' || inferida === 'Alto')) ||
-                      (atual.replace(/[.!?,;]+$/, '') === 'alto' && inferida === 'Crítico')
-                    );
-                    if (isDefault || isLessSevere) {
-                      p.criticidade = inferida;
-                    }
-                  }
-                }
-              }
-
-              // ── Trava de litígio de propriedade (determinística) ──
-              // Ação de terceiro disputando a propriedade (usucapião, reivindicatória,
-              // ação real reipersecutória) averbada/em andamento = risco de PERDA do imóvel.
-              // Independente do que a IA pontuou, força D3/D5 ≤ 15 para acionar a
-              // TRAVA_D3_GRAVAME (teto 39 / Crítico). Espelha a regra: ação de terceiro = risco máximo.
-              if (detectarLitigioPropriedade(parsedProblemas)) {
-                for (const p of pontuacoesV2_2) {
-                  if (p.dimensaoId === 'D3' || p.dimensaoId === 'D5') {
-                    p.pontuacao = Math.min(p.pontuacao, 15);
-                    p.itemSelecionado = `${p.itemSelecionado ? p.itemSelecionado + ' ' : ''}[Trava: ação de terceiro disputando a propriedade]`;
-                  }
-                }
-              }
-
-              isfResultV2_2 = calcularISFV2_2(pontuacoesV2_2);
-
-              // ── Tetos externos (aplicados sobre o resultado, em ordem do mais grave) ──
-              // Reúne: gravames graves (#3 penhora/indisponibilidade), múltiplos críticos
-              // (#2 — também no caminho JSON) e teto suave de cadeia não auditada (#1).
-              const tetosExternos: { teto: number; motivo: string }[] = [];
-              const gravame = detectarGravameGrave(parsedProblemas);
-              if (gravame) tetosExternos.push(gravame);
-              const tCriticos = travaPorCriticos(parsedProblemas);
-              if (tCriticos) tetosExternos.push(tCriticos);
-              if (cadeiaNaoAuditada) {
-                tetosExternos.push({ teto: 84, motivo: 'TRAVA_CADEIA_NAO_AUDITADA: cadeia dominial não auditada em módulo dedicado — teto máximo 84 (Regular)' });
-              }
-              for (const c of tetosExternos) {
-                if (isfResultV2_2.isf_score > c.teto) {
-                  const fx = classificarFaixaV2_2(c.teto);
-                  isfResultV2_2 = {
-                    ...isfResultV2_2, isf_score: c.teto,
-                    faixa: fx.faixa, faixa_label: fx.label, faixa_desc: fx.desc,
-                    faixa_bg: fx.bg, faixa_color: fx.color, faixa_meter: fx.meter,
-                    travas_aplicadas: [...(isfResultV2_2.travas_aplicadas || []), c.motivo],
-                  };
-                }
-              }
-
-              // Guardrail: risk_level Crítico nunca deve produzir ISF > 54 (alto_risco)
-              if (riskLevel === 'Crítico' && isfResultV2_2.isf_score > 54) {
-                isfResultV2_2 = { ...isfResultV2_2, isf_score: 39, faixa: 'critico', faixa_label: 'Crítico', travas_aplicadas: [...(isfResultV2_2.travas_aplicadas || []), 'TRAVA_RISK_LEVEL_CRITICO'] };
-              }
-
-              // ── Trava de dados insuficientes (aplicada por ÚLTIMO — vence todas) ──
-              // Score não confiável → Inválido (faixa 0-24). Evita o "falso-78" quando a
-              // leitura do documento foi parcial ou a IA não capturou o miolo registral.
-              if (dadosInsuficientes) {
-                const motivo = pdfExtractionDiags.ocr_incomplete
-                  ? `TRAVA_DADOS_INSUFICIENTES: leitura incompleta do documento (${pdfExtractionDiags.ocr_pages ? `${pdfExtractionDiags.ocr_pages.transcribed}/${pdfExtractionDiags.ocr_pages.expected} páginas` : 'OCR parcial'}) — re-executar a leitura.`
-                  : 'TRAVA_DADOS_INSUFICIENTES: extração não capturou atos registrais nem proprietário — análise sem base. Re-executar a leitura.';
-                const fx = classificarFaixaV2_2(20);
-                isfResultV2_2 = {
-                  ...isfResultV2_2, isf_score: 20,
-                  faixa: fx.faixa, faixa_label: fx.label, faixa_desc: fx.desc,
-                  faixa_bg: fx.bg, faixa_color: fx.color, faixa_meter: fx.meter,
-                  travas_aplicadas: [...(isfResultV2_2.travas_aplicadas || []), motivo],
-                };
-              }
+              // Veredito determinístico extraído (ver src/lib/isf/isfVerdict.ts).
+              // computeISFVerdict encapsula portão de suficiência, inferência/sync de
+              // criticidade, trava de litígio, calcularISFV2_2, tetos externos,
+              // guardrail risk_level e trava de dados insuficientes — comportamento idêntico.
+              const verdict = computeISFVerdict({
+                isfDimensoesFromAI:
+                  (matriculaIndividualJsonParsed?.isf_dimensoes as
+                    | Record<string, { pontuacao: number; justificativa?: string }>
+                    | undefined) ?? null,
+                parsedProblemas,
+                ocrIncomplete: !!pdfExtractionDiags.ocr_incomplete,
+                ocrPages: pdfExtractionDiags.ocr_pages ?? null,
+                ehMatriculaModule:
+                  normalizedModules.includes('matricula_individual') ||
+                  normalizedModules.includes('cadeia_dominial'),
+                atosCount:
+                  matriculaIndividualJsonParsed &&
+                  Array.isArray(matriculaIndividualJsonParsed.atos_registrais)
+                    ? matriculaIndividualJsonParsed.atos_registrais.length
+                    : null,
+                proprietarioNome:
+                  (matriculaIndividualJsonParsed?.proprietario_atual?.nome as string | undefined) ?? null,
+                cadeiaNaoAuditada,
+                riskLevel,
+              });
+              isfResultV2_2 = verdict.result;
+              // Preserva a criticidade sincronizada para persistência (problemas) e ISF v2.1.
+              parsedProblemas = verdict.problemasSincronizados as typeof parsedProblemas;
 
               const payloadV2_2 = prepararPayloadV2_2(isfResultV2_2);
 
