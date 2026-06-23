@@ -1,4 +1,4 @@
-import { computeISFVerdict, type ISFVerdictInput } from '../isfVerdict';
+import { computeISFVerdict, buildVerdictRecord, type ISFVerdictInput } from '../isfVerdict';
 
 function baseInput(overrides: Partial<ISFVerdictInput> = {}): ISFVerdictInput {
   return {
@@ -79,5 +79,37 @@ describe('computeISFVerdict — pureza e equivalência', () => {
     const a = computeISFVerdict(input);
     const b = computeISFVerdict(input);
     expect(JSON.stringify(a.result)).toBe(JSON.stringify(b.result));
+  });
+});
+
+describe('buildVerdictRecord — trilha de auditoria', () => {
+  it('registra input + output-chave + proveniência, reexecutável', () => {
+    const input = baseInput({
+      ocrIncomplete: true,
+      ocrPages: { expected: 6, transcribed: 1 },
+    });
+    const verdict = computeISFVerdict(input);
+    const rec = buildVerdictRecord(input, verdict);
+
+    expect(rec.schema_version).toBe(1);
+    expect(rec.input).toEqual(input);
+    expect(rec.output.isf_score).toBe(verdict.result.isf_score);
+    expect(rec.output.faixa).toBe(verdict.result.faixa);
+    expect(rec.output.isf_score_bruto).toBe(verdict.result.isf_score_bruto);
+    expect(rec.output.travas_aplicadas).toEqual(verdict.result.travas_aplicadas);
+    expect(rec.dimensoes_source).toBe(verdict.dimensoesSource);
+    expect(rec.insufficient_data).toBe(verdict.insufficientData);
+  });
+
+  it('o input gravado reproduz o output ao reexecutar computeISFVerdict (auditável)', () => {
+    const input = baseInput({
+      isfDimensoesFromAI: null,
+      parsedProblemas: [{ titulo: 'Penhora fiscal', criticidade: 'alto', descricao: 'penhora em execução' }],
+    });
+    const rec = buildVerdictRecord(input, computeISFVerdict(input));
+    const replay = computeISFVerdict(rec.input);
+    expect(replay.result.isf_score).toBe(rec.output.isf_score);
+    expect(replay.result.faixa).toBe(rec.output.faixa);
+    expect(replay.result.travas_aplicadas).toEqual(rec.output.travas_aplicadas);
   });
 });

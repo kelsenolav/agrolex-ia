@@ -39,6 +39,23 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
 function reconstructInput(findings) {
   const v22 = findings?.isf_v2_2;
   if (!v22 || typeof v22.isf_score !== 'number') return { skip: 'sem isf_v2_2 persistido' };
+
+  // Caminho exato (sub-bloco 1.4): a análise persistiu o registro de veredito
+  // auto-contido. Usa input + output diretamente, sem reconstrução.
+  const rec = findings?.isf_verdict;
+  if (rec && rec.input && rec.output && typeof rec.output.isf_score === 'number') {
+    return {
+      input: rec.input,
+      expected: {
+        isf_score: rec.output.isf_score,
+        faixa: rec.output.faixa,
+        travas_includes: Array.isArray(rec.output.travas_aplicadas)
+          ? rec.output.travas_aplicadas.map((t) => String(t).split(':')[0].trim()).filter(Boolean).slice(0, 3)
+          : [],
+      },
+    };
+  }
+
   const mij = findings?.matricula_individual_json;
   const dims = mij?.isf_dimensoes && typeof mij.isf_dimensoes === 'object' ? mij.isf_dimensoes : null;
   const problemas = Array.isArray(findings?.problemas) ? findings.problemas : [];

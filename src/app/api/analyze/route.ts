@@ -10,7 +10,7 @@ import { generateWithFallback, type FallbackResult, type AiProvider } from '@/li
 import { calcularComparacao } from '@/lib/isf/isfV2';
 import { calcularISFv2, classificarEixo, type ISFContext } from '@/lib/isf/isfEngine';
 import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2, normalizeFindingSeverity, detectarLitigioPropriedade, detectarGravameGrave, travaPorCriticos, classificarFaixaV2_2 } from '@/lib/isf/isfEngineV2_2';
-import { computeISFVerdict } from '@/lib/isf/isfVerdict';
+import { computeISFVerdict, buildVerdictRecord } from '@/lib/isf/isfVerdict';
 import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
 import {
   initializeProcessingStages,
@@ -2074,6 +2074,7 @@ ${ocrTextBlocks.join('\n\n')}
           let isfPayload: Record<string, unknown> = {};
           let isfError: string | null = null;
           let isfResultV2_2: any = null;    // resultado do motor v2.2 (primário)
+          let isfVerdictRecord: Record<string, unknown> | null = null;  // trilha de auditoria (sub-bloco 1.4)
           let isfResultV2_1: any = null;    // resultado do motor v2.1 (compatibilidade)
           let comparison: any = null;
           const ISF_VERSION_STRING = '2.2';  // versão canônica como string
@@ -2101,7 +2102,7 @@ ${ocrTextBlocks.join('\n\n')}
               // computeISFVerdict encapsula portão de suficiência, inferência/sync de
               // criticidade, trava de litígio, calcularISFV2_2, tetos externos,
               // guardrail risk_level e trava de dados insuficientes — comportamento idêntico.
-              const verdict = computeISFVerdict({
+              const verdictInput = {
                 isfDimensoesFromAI:
                   (matriculaIndividualJsonParsed?.isf_dimensoes as
                     | Record<string, { pontuacao: number; justificativa?: string }>
@@ -2121,8 +2122,14 @@ ${ocrTextBlocks.join('\n\n')}
                   (matriculaIndividualJsonParsed?.proprietario_atual?.nome as string | undefined) ?? null,
                 cadeiaNaoAuditada,
                 riskLevel,
-              });
+              };
+              const verdict = computeISFVerdict(verdictInput);
               isfResultV2_2 = verdict.result;
+              // Trilha de auditoria (1.4): registro auto-contido e reexecutável do veredito.
+              isfVerdictRecord = {
+                ...buildVerdictRecord(verdictInput, verdict),
+                computed_at: new Date().toISOString(),
+              };
               // Preserva a criticidade sincronizada para persistência (problemas) e ISF v2.1.
               parsedProblemas = verdict.problemasSincronizados as typeof parsedProblemas;
 
@@ -2206,6 +2213,7 @@ ${ocrTextBlocks.join('\n\n')}
             ...(caseFileExtractError ? { case_file_extract_error: caseFileExtractError } : {}),
             ...isfPayload,
             ...(isfResultV2_2 ? { isf_v2_2: isfResultV2_2 } : {}),
+            ...(isfVerdictRecord ? { isf_verdict: isfVerdictRecord } : {}),
             ...(isfResultV2_1 ? { isf_v2: isfResultV2_1 } : {}),
             ...(isfError ? { isf_v2_error: isfError } : {}),
             ...(matriculaRulesResult ? { matricula_rules: matriculaRulesResult } : {}),

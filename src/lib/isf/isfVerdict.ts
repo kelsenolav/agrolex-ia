@@ -43,6 +43,40 @@ export interface ISFVerdict {
 }
 
 /**
+ * Registro de auditoria do veredito (sub-bloco 1.4). Auto-contido: o `input`
+ * reexecutado por computeISFVerdict reproduz o `output` — torna o "porquê" de
+ * um ISF reconstruível e verificável meses depois. Persistido em
+ * findings.isf_verdict (o `computed_at` é acrescentado no route.ts).
+ */
+export interface ISFVerdictRecord {
+  schema_version: 1;
+  input: ISFVerdictInput;
+  output: {
+    isf_score: number;
+    faixa: string;
+    isf_score_bruto: number;
+    travas_aplicadas: string[];
+  };
+  dimensoes_source: 'ai_json' | 'inferred';
+  insufficient_data: boolean;
+}
+
+export function buildVerdictRecord(input: ISFVerdictInput, verdict: ISFVerdict): ISFVerdictRecord {
+  return {
+    schema_version: 1,
+    input,
+    output: {
+      isf_score: verdict.result.isf_score,
+      faixa: verdict.result.faixa,
+      isf_score_bruto: verdict.result.isf_score_bruto,
+      travas_aplicadas: verdict.result.travas_aplicadas,
+    },
+    dimensoes_source: verdict.dimensoesSource,
+    insufficient_data: verdict.insufficientData,
+  };
+}
+
+/**
  * Veredito determinístico do ISF v2.2 — função pura extraída de
  * src/app/api/analyze/route.ts (cauda de julgamento, comportamento idêntico).
  *
