@@ -719,9 +719,9 @@ export default function NovaAnalisePage() {
                             <span className={`text-sm font-bold ${!compat.enabled ? 'text-gray-400' : isMaster ? 'text-white' : 'text-gray-900'}`}>
                               {mod.name}
                             </span>
-                            {isMaster && <span className="text-[10px] font-black bg-brand-gold text-brand-green px-2 py-0.5 rounded uppercase tracking-wider">MASTER</span>}
+                            {isMaster && <span className="text-xs font-black bg-brand-gold text-brand-green px-2 py-0.5 rounded uppercase tracking-wider">MASTER</span>}
                             {compat.recommended && !isSelected && compat.enabled && (
-                              <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded uppercase tracking-wider border border-green-200">recomendado</span>
+                              <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded uppercase tracking-wider border border-green-200">recomendado</span>
                             )}
                           </div>
                           <p className={`text-xs mt-0.5 line-clamp-1 ${!compat.enabled ? 'text-gray-500' : isMaster ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -763,7 +763,7 @@ export default function NovaAnalisePage() {
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
                 {selectedModules.length === 0 ? (
-                  <p className="text-sm text-gray-400 font-medium">Selecione ao menos um módulo</p>
+                  <p className="text-sm text-gray-600 font-medium">Selecione ao menos um módulo</p>
                 ) : isTrialFree ? (
                   <>
                     <p className="text-base font-black text-brand-green">🎁 Primeira auditoria gratuita</p>

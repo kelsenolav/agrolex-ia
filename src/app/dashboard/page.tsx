@@ -1040,7 +1040,7 @@ export default function DashboardPage() {
                         {/* Nome + localização + tipo */}
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                            <h3 className="font-bold text-gray-900 text-base leading-tight">{analise.properties?.name}</h3>
+                            <h3 className="font-bold text-gray-900 text-base leading-tight line-clamp-2">{analise.properties?.name}</h3>
                             {depthLabel && (
                               <span className="px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
                                 {depthLabel}

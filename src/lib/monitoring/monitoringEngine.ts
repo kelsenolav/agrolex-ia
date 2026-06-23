@@ -216,38 +216,38 @@ export function getStatusConfig(status: PropertyCheckResult['overallStatus']) {
     case 'critico':
       return {
         label: 'CRÍTICO',
-        color: 'text-red-400',
-        bg: 'bg-red-950',
-        border: 'border-red-500',
+        color: 'text-red-700',
+        bg: 'bg-red-50',
+        border: 'border-red-200',
         dot: 'bg-red-500',
-        badgeBg: 'bg-red-900/60 text-red-300 border border-red-700',
+        badgeBg: 'bg-red-100 text-red-700 border border-red-200',
       };
     case 'atencao':
       return {
         label: 'ATENÇÃO',
-        color: 'text-amber-400',
-        bg: 'bg-amber-950',
-        border: 'border-amber-500',
-        dot: 'bg-amber-400',
-        badgeBg: 'bg-amber-900/60 text-amber-300 border border-amber-700',
+        color: 'text-amber-700',
+        bg: 'bg-amber-50',
+        border: 'border-amber-200',
+        dot: 'bg-amber-500',
+        badgeBg: 'bg-amber-100 text-amber-700 border border-amber-200',
       };
     case 'seguro':
       return {
         label: 'SEGURO',
-        color: 'text-emerald-400',
-        bg: 'bg-emerald-950',
-        border: 'border-emerald-500',
-        dot: 'bg-emerald-400',
-        badgeBg: 'bg-emerald-900/60 text-emerald-300 border border-emerald-700',
+        color: 'text-emerald-700',
+        bg: 'bg-emerald-50',
+        border: 'border-emerald-200',
+        dot: 'bg-emerald-500',
+        badgeBg: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
       };
     default:
       return {
         label: 'SEM ANÁLISE',
-        color: 'text-gray-400',
-        bg: 'bg-gray-900',
-        border: 'border-gray-600',
-        dot: 'bg-gray-500',
-        badgeBg: 'bg-gray-800 text-gray-400 border border-gray-600',
+        color: 'text-gray-500',
+        bg: 'bg-gray-50',
+        border: 'border-gray-200',
+        dot: 'bg-gray-400',
+        badgeBg: 'bg-gray-100 text-gray-600 border border-gray-200',
       };
   }
 }
@@ -257,26 +257,26 @@ export function getSeverityConfig(severity: AlertSeverity) {
     case 'critical':
       return {
         icon: '🔴',
-        color: 'text-red-400',
-        bg: 'bg-red-950/50 border border-red-800',
+        color: 'text-red-700',
+        bg: 'bg-red-50 border border-red-200',
         label: 'Crítico',
         dot: 'bg-red-500 animate-pulse',
       };
     case 'warning':
       return {
         icon: '🟡',
-        color: 'text-amber-400',
-        bg: 'bg-amber-950/40 border border-amber-800',
+        color: 'text-amber-700',
+        bg: 'bg-amber-50 border border-amber-200',
         label: 'Atenção',
-        dot: 'bg-amber-400',
+        dot: 'bg-amber-500',
       };
     default:
       return {
         icon: '🔵',
-        color: 'text-blue-400',
-        bg: 'bg-blue-950/40 border border-blue-800',
+        color: 'text-blue-700',
+        bg: 'bg-blue-50 border border-blue-200',
         label: 'Info',
-        dot: 'bg-blue-400',
+        dot: 'bg-blue-500',
       };
   }
 }
