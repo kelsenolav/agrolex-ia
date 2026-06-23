@@ -3,6 +3,23 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 20/06/2026
+- **Bloco**: Auditoria de UX (parte 2) — conversão do Radar para o padrão branco + ajustes finos
+- **Pedido do usuário**: "Faça o resto da auditoria UX" + apontamento direto: "a página do radar não segue o padrão fundo branco do site".
+- **Causa**: o radar foi feito como "dark ops center" (bg `#0a0d14`, glows, neon) — destoava do padrão branco do resto do app.
+- **Arquivos alterados**:
+  - `src/lib/monitoring/monitoringEngine.ts` — `getStatusConfig()`/`getSeverityConfig()` (usadas **só** no radar) migradas de classes escuras (`bg-red-950`, `text-red-400`) para tema claro (`bg-red-50`, `text-red-700`, badges `*-100/*-700`).
+  - `src/app/dashboard/radar/page.tsx` — reescrita visual completa: fundo `gray-50`, navbar `brand-green` (igual dashboard), cards brancos `shadow-sm`, KPIs brancos, severidades em tons claros, upsell como card `brand-green` com CTA dourado, modal branco. **Toda a lógica/handlers preservada byte-a-byte.**
+  - `src/app/dashboard/nova-analise/page.tsx` — feedback "Selecione ao menos um módulo" `gray-400`→`gray-600`; badges MASTER/recomendado `text-[10px]`→`text-xs`.
+  - `src/app/dashboard/page.tsx` — nome de propriedade com `line-clamp-2` (evita overflow).
+- **Verificação visual (autenticado no browser)**: confirmado por estilos computados + screenshot — fundo `lab(98.26)`≈branco, navbar `rgb(6,78,59)`=brand-green, texto escuro, upsell brand-green com CTA dourado. PASS.
+- **Método de auth p/ verificar telas gated**: a proteção é **cookie httpOnly** via `POST /api/auth/session`. Fluxo: mintar sessão (magiclink→verifyOtp via service_role) → `setSession` no browser → POST `/api/auth/session` p/ cookie → navegar. Scripts: `scripts/mint-session.mjs`, `scripts/find-cadeia-analysis.mjs`.
+- **Validação**: `tsc` OK, `build` OK, `jest` 639/639, `lint` 0 erros.
+- **Deploy em produção**: **EFETUADO** (commit `f3326df2`, `vercel --prod --yes`).
+- **Descartado conscientemente (falso-positivo/subjetivo)**: badges sobre navbar verde-escura (contraste OK); `justify` institucional do laudo (deliberado); `text-gray-700` (alto contraste, agente errou); `text-gray-500` sobre branco (passa AA 4.6:1); remover emojis / reordenar CTAs / debounce telemetria (decisões de produto).
+
+---
+
+- **Data**: 20/06/2026
 - **Bloco**: Robustez do pipeline — OCR de fallback multi-provedor (Gemini→Claude) + verificação visual do fix de CSS de tela
 - **Frente 1 (verificação visual, deploy `8a285fa3`)**: subido dev server local, autenticado no browser (a proteção é **cookie httpOnly** via `POST /api/auth/session` — não localStorage), aberta análise real. Confirmado por **estilos computados** que as seções **Cadeia Dominial** e **Checklist Documental** (cujo CSS só existia em `@media print`) agora renderizam estilizadas na tela: checklist com ícone circular 28px red-100/red-800 + badge; cadeia com dot verde-marca 40px, connector gradiente, card radius-12. Verdict: PASS. (Screenshot JPEG falhou por timeout — página pesada; estilo computado é prova de runtime mais precisa.)
 - **Frente 2 (gap de robustez)**: o OCR (etapa que **precede** a análise) era **Gemini-only** — a cascata interna do `ocrWithGemini` só percorre modelos flash do Gemini. Num apagão total do Gemini (todos os flash em 503), o OCR retornava `failed` e a análise **nem chegava** à cascata multi-IA (Gemini→Claude→OpenAI→Groq). Durante pico de sobrecarga do Gemini, a análise falhava mesmo com Claude/OpenAI disponíveis.
