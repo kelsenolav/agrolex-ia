@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   Shield, ArrowLeft, AlertTriangle, CheckCircle2, Clock,
   RefreshCw, Bell, BellOff, Eye, Zap, Radio, Activity,
-  ChevronRight, XCircle, Info, Edit3, Save, Database, Globe,
+  ChevronRight, XCircle, Info, Edit3, Save, Database, Globe, Plus,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getStatusConfig, getSeverityConfig } from '@/lib/monitoring/monitoringEngine';
@@ -363,11 +363,25 @@ function RadarContent() {
               <span className="text-xs text-gray-500">{monitoredProperties.length} ativas</span>
             </div>
 
-            {monitoredProperties.length === 0 && (
+            {monitoredProperties.length === 0 && properties.length === 0 && (
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 text-center">
+                <Radio size={32} className="mx-auto text-gray-300 mb-3" />
+                <p className="text-gray-700 text-sm font-medium">Você ainda não tem propriedades cadastradas.</p>
+                <p className="text-gray-500 text-xs mt-1 mb-4">Crie uma análise para cadastrar sua primeira propriedade — ela aparece aqui automaticamente para você ativar o monitoramento.</p>
+                <Link
+                  href="/dashboard/nova-analise"
+                  className="inline-flex items-center gap-2 bg-brand-green text-white text-xs font-bold px-4 py-2.5 rounded-lg hover:brightness-110 transition-all shadow-sm"
+                >
+                  <Plus size={14} /> Cadastrar propriedade
+                </Link>
+              </div>
+            )}
+
+            {monitoredProperties.length === 0 && properties.length > 0 && (
               <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 text-center">
                 <Radio size={32} className="mx-auto text-gray-300 mb-3" />
                 <p className="text-gray-600 text-sm">Nenhuma propriedade no radar.</p>
-                <p className="text-gray-500 text-xs mt-1">Ative o monitoramento abaixo.</p>
+                <p className="text-gray-500 text-xs mt-1">Ative o monitoramento nas propriedades abaixo.</p>
               </div>
             )}
 
