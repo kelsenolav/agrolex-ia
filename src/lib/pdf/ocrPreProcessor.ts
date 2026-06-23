@@ -461,18 +461,21 @@ export async function ocrDocumentComplete(
   const perPageTimeout = Math.min(options.timeoutMs || 60000, 60000);
   const MAX_PAGES = 40; // guarda contra documentos absurdamente longos
 
-  if (realPages <= 1) {
-    const r = await ocrWithFallback(pdfBuffer, options, deps);
-    return { ...r, pagesExpected: realPages };
+  // 1) Tenta o documento INTEIRO primeiro (1 chamada — gentil com rate limits e
+  //    suficiente para a maioria dos documentos). Só paga o custo do per-page se
+  //    o modelo TRUNCAR (transcrever menos páginas do que o PDF realmente tem).
+  const whole = await ocrWithFallback(pdfBuffer, options, deps);
+  if (realPages <= 1 || (whole.success && (whole.pageCount || 0) >= realPages)) {
+    return { ...whole, pagesExpected: realPages };
   }
 
+  // 2) Transcrição parcial detectada → fatia e transcreve página a página.
   let pageBuffers: Buffer[];
   try {
     pageBuffers = await splitPdfIntoPageBuffers(pdfBuffer);
   } catch {
-    // Fatiamento falhou → tenta o documento inteiro (comportamento legado).
-    const r = await ocrWithFallback(pdfBuffer, options, deps);
-    return { ...r, pagesExpected: realPages };
+    // Fatiamento falhou → devolve o que o documento inteiro conseguiu.
+    return { ...whole, pagesExpected: realPages };
   }
 
   const pagesToProcess = Math.min(pageBuffers.length, MAX_PAGES);
@@ -483,7 +486,7 @@ export async function ocrDocumentComplete(
   // série mataram a função. Em paralelo (lote de CONCURRENCY), a latência total
   // ≈ a de uma página × (nº de lotes). O cap evita disparar dezenas de chamadas
   // simultâneas (429) em documentos longos; a cascata interna já reabsorve 503/429.
-  const CONCURRENCY = 5;
+  const CONCURRENCY = 3;
   const results: (OcrResult | null)[] = new Array(pagesToProcess).fill(null);
   let cursor = 0;
   async function worker(): Promise<void> {
