@@ -2,6 +2,20 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 23/06/2026
+- **Bloco**: CORREÇÃO CRÍTICA — "falso-78" (matrícula com nulidades pontuando ISF 78/Regular)
+- **Sintoma**: matrícula 2.705 (Fazenda Santa Bárbara — com cancelamento por coisa julgada, restabelecimento administrativo do CNJ, 2 penhoras fiscais e ação federal) recebeu **ISF 78 (Regular)**. Análise manual (forense) deu 30/100 (Crítico).
+- **Causa raiz (diagnóstico com dados reais da análise `72c13e14`, sem chute)**: o OCR transcrevia o PDF inteiro numa **única** chamada ao modelo, que **truncava** em documentos longos — entregava só a **1ª página** (memorial/identificação). A IA, fielmente, extraiu `atos_registrais=0`, `proprietario="não consta"`, `0 problemas`, e pontuou alto (`D5 litigioso=100`) porque "não achou litígio". O motor calculou 78 corretamente a partir de inputs benignos. **Garbage in → garbage out** — nem o motor nem o raciocínio da IA estavam errados; a entrada é que era **1 de 6 páginas**. A Trava CTO nunca disparou (depende de achado crítico; com 0 achados, não há o que vetar).
+- **Correções (commits `e2be23c6`, `d600e165`, `6d18be64`)**:
+  - `src/lib/pdf/ocrPreProcessor.ts` — `ocrDocumentComplete()`: tenta o documento inteiro (1 chamada); se o modelo truncar (`pageCount < páginas reais` via pdf-lib), **fatia e transcreve página a página em paralelo** (concorrência 3, cascata Gemini→Claude por página). `OcrResult.pagesExpected` permite detectar transcrição parcial.
+  - `src/app/api/analyze/route.ts` — portão de **completude** (`ocr_incomplete` quando transcritas < reais) + portão de **suficiência** antes de pontuar: se OCR incompleto OU extract sem atos/proprietário → trava em **Inválido (20, TRAVA_DADOS_INSUFICIENTES)** em vez de score alto. Ausência de evidência deixa de ser tratada como evidência de ausência.
+- **PROVA (E2E em produção na própria 2.705)**: mesmo com **toda a cascata de OCR fora do ar** (Gemini 3.5/2.5=503, 2.0=429; **Claude=400 "credit balance too low"**), o pipeline falhou limpo para `error`/Inválido — **NUNCA mais 78**. O falso-78 está eliminado.
+- **PENDÊNCIA OPERACIONAL (não-código)**: a chave **`ANTHROPIC_API_KEY` está SEM CRÉDITO** → o fallback Claude (a rede de resiliência para apagões do Gemini) está **inoperante**. Enquanto o Gemini estiver em 503/429 e o Claude sem saldo, nenhuma análise de matrícula completa. **Recomendar recarregar o crédito Anthropic.**
+- **Descartado**: "fix da faixa" (78→`atencao`) NÃO era bug — `mapFaixaV2_2ToColumn` mapeia `regular→atencao` porque a coluna não tem 'regular'; o label real ('Regular') fica em `findings.isf_v2_2`.
+- **Validação**: tsc OK, build OK, jest 639/639.
+
+---
+
 - **Data**: 20/06/2026
 - **Bloco**: CORREÇÃO CRÍTICA — schema do Radar nunca aplicado em produção (radar quebrado desde o lançamento)
 - **Sintoma reportado**: usuário não conseguia cadastrar/puxar propriedade para o radar; radar mostrava "0 propriedades" mesmo com análises feitas. Apontamento do usuário: "tem que ter opção de puxar dados de propriedade já cadastrada e analisada".
