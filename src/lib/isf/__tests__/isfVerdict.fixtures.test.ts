@@ -13,31 +13,59 @@ interface Fixture {
 
 const FIXTURES_DIR = path.join(__dirname, '..', '__fixtures__', 'verdict');
 
-function loadFixtures(): Fixture[] {
+/**
+ * REGEN: `REGEN_FIXTURES=1 npx jest ...isfVerdict.fixtures` recomputa o `expected`
+ * das fixtures "characterization" (fixa o comportamento ATUAL do motor) e NUNCA
+ * toca nas "golden" (verdade forense abençoada à mão). Útil após colher novas
+ * fixtures de produção, cujos vereditos persistidos podem ser de versões antigas.
+ */
+const REGEN = process.env.REGEN_FIXTURES === '1';
+
+function loadFixtures(): { file: string; fixture: Fixture }[] {
   if (!fs.existsSync(FIXTURES_DIR)) return [];
   return fs
     .readdirSync(FIXTURES_DIR)
     .filter((f) => f.endsWith('.json'))
-    .map((f) => JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, f), 'utf-8')) as Fixture);
+    .map((file) => ({
+      file,
+      fixture: JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, file), 'utf-8')) as Fixture,
+    }));
+}
+
+function travasPrefixes(travas: string[]): string[] {
+  return travas.map((t) => t.split(':')[0].trim()).filter(Boolean).slice(0, 3);
 }
 
 describe('Proof Engine — portão de regressão (fixtures de veredito)', () => {
-  const fixtures = loadFixtures();
+  const all = loadFixtures();
 
   it('há pelo menos as 3 fixtures golden semeadas', () => {
-    const golden = fixtures.filter((f) => f.label === 'golden');
+    const golden = all.filter((x) => x.fixture.label === 'golden');
     expect(golden.length).toBeGreaterThanOrEqual(3);
   });
 
-  for (const fx of fixtures) {
-    // Falha em fixture "golden" = REGRESSÃO DE VERDADE FORENSE; em "characterization" = mudança de comportamento.
+  for (const { file, fixture: fx } of all) {
+    // Falha em "golden" = REGRESSÃO DE VERDADE FORENSE; em "characterization" = mudança de comportamento.
     it(`[${fx.label}] ${fx.id} → ${fx.expected.isf_score}/${fx.expected.faixa}`, () => {
       const v = computeISFVerdict(fx.input);
+
+      if (REGEN && fx.label === 'characterization') {
+        const updated: Fixture = {
+          ...fx,
+          expected: {
+            isf_score: v.result.isf_score,
+            faixa: v.result.faixa,
+            travas_includes: travasPrefixes(v.result.travas_aplicadas),
+          },
+        };
+        fs.writeFileSync(path.join(FIXTURES_DIR, file), JSON.stringify(updated, null, 2) + '\n');
+        return; // modo regen: regrava e não crava
+      }
+
       expect(v.result.isf_score).toBe(fx.expected.isf_score);
       expect(v.result.faixa).toBe(fx.expected.faixa);
       for (const t of fx.expected.travas_includes ?? []) {
         const hit = v.result.travas_aplicadas.some((x) => x.startsWith(t));
-        // Mensagem de diagnóstico em caso de falha (trava esperada ausente).
         if (!hit) {
           throw new Error(
             `[${fx.label}] ${fx.id}: trava esperada "${t}" ausente. ` +

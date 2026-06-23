@@ -78,3 +78,7 @@ scripts/test-hml-*.mjs
 scripts/backfill-isf-v2-2.mjs
 scripts/backtest-isf-v2-2.mjs
 scripts/backtest_inventario.mjs
+
+# Proof Engine: fixtures de caracterização colhidas de produção contêm PII de
+# clientes (nomes, processos) — mantidas locais; reproduzíveis via scripts/harvest-verdict-fixtures.mjs
+src/lib/isf/__fixtures__/verdict/prod-*.json

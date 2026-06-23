@@ -1,0 +1,29 @@
+{
+  "id": "2705-prod-72c13e14-falso78",
+  "source": "prod:72c13e14-6776-488b-8b66-1f00af55d3ef",
+  "label": "golden",
+  "note": "INPUT REAL DE PRODUÇÃO que gerou o falso-78. A IA pontuou D5=100 ('não achou litígio') com atos=0, proprietário 'não consta', 0 problemas — garbage in. A produção persistiu 78/regular (o bug). O motor corrigido dá 20/invalido via extractRegistralVazio → TRAVA_DADOS_INSUFICIENTES, MESMO sem o flag ocrIncomplete. Prova definitiva do falso-78 morto no input que o causou.",
+  "input": {
+    "isfDimensoesFromAI": {
+      "D1": { "pontuacao": 70, "justificativa": "Base em fato documental concreto da matrícula — ex: título originário presente e cadeia íntegra desde 1980" },
+      "D2": { "pontuacao": 85, "justificativa": "Base em fato documental concreto" },
+      "D3": { "pontuacao": 70, "justificativa": "Base em fato documental concreto" },
+      "D4": { "pontuacao": 65, "justificativa": "Base em fato documental concreto" },
+      "D5": { "pontuacao": 100, "justificativa": "Base em fato documental concreto" },
+      "D6": { "pontuacao": 100, "justificativa": "Base em fato documental concreto" }
+    },
+    "parsedProblemas": [],
+    "ocrIncomplete": false,
+    "ocrPages": null,
+    "ehMatriculaModule": true,
+    "atosCount": 0,
+    "proprietarioNome": "não consta no documento",
+    "cadeiaNaoAuditada": false,
+    "riskLevel": "Baixo"
+  },
+  "expected": {
+    "isf_score": 20,
+    "faixa": "invalido",
+    "travas_includes": ["TRAVA_DADOS_INSUFICIENTES"]
+  }
+}
