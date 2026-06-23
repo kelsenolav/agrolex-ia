@@ -3,6 +3,25 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 23/06/2026
+- **Bloco**: Eixo 1 / Sub-bloco 1.1 — **Proof Engine (Camada A)**: portão de regressão determinístico do veredito ISF (mata o falso-78 por regressão provada)
+- **Contexto**: 1º de um roadmap de blindagem do núcleo em 4 eixos (1-Confiança ← *aqui* · 2-Recorrência · 3-Vertical · 4-Consolidação). Eixo 1 decomposto em 5 sub-blocos; este é o 1.1. Spec/plano em `docs/superpowers/{specs,plans}/2026-06-23-proof-engine-camada-a*`.
+- **Problema**: cada correção de ISF (falso-78, achatamento-54, gravames) foi validada contra **1 matrícula no olho**. Sem rede de regressão, o fix N+1 regride o fix N em silêncio. Para um laudo jurídico, isso é existencial.
+- **Causa estrutural**: a cauda de julgamento determinística (portão de suficiência → trava de litígio → `calcularISFV2_2` → tetos externos → guardrail risk_level → trava de dados insuficientes) vivia **inline** em `route.ts:2099-2204`, intercalada com parsing — **impossível de testar** sem subir OCR+IA+Supabase. O falso-78 morava nessa orquestração, **não** no `calcularISFV2_2` puro.
+- **Solução (5 commits)**:
+  - `src/lib/isf/isfVerdict.ts` *(novo)* — `computeISFVerdict(input)`: função **pura** (sem I/O, sem async, sem mutar entrada) que encapsula 2099-2204. Retorna `{result, dimensoesSource, insufficientData, problemasSincronizados}`. 7 testes unitários.
+  - `route.ts:2099-2204` — substituído por chamada drop-in (−77 linhas no arquivo crítico; comportamento idêntico, reatribui `parsedProblemas` ao retorno sincronizado).
+  - `src/lib/isf/__fixtures__/verdict/*.json` — corpus `{input, expected}`. **4 golden**: 2.705 (20/invalido), 27.180 (39/critico), 26.839 (54/alto_risco) + **`72c13e14` = input REAL de prod do falso-78**.
+  - `src/lib/isf/__tests__/isfVerdict.fixtures.test.ts` *(novo)* — runner com glob + **modo REGEN** (`REGEN_FIXTURES=1`) que refaz `expected` das characterization sem tocar nas golden. Bloqueante no CI (já roda em `npm test`).
+  - `scripts/harvest-verdict-fixtures.mjs` *(novo)* — colhe análises de prod (**read-only**, isf_version=22). Fixtures `prod-*.json` ficam **locais** (gitignore — contêm PII de clientes); reproduzíveis pelo harvest.
+- **ACHADO CRÍTICO do harvest**: o input reconstruído da análise `72c13e14` (que persistiu **78** em prod) dá **20/Inválido** no motor corrigido via `extractRegistralVazio` — **mesmo sem o flag `ocrIncomplete`**. Prova definitiva do falso-78 morto no próprio input que o causou. **Sinal operacional**: há análises antigas em produção com vereditos defasados (incl. a 78 da 72c13e14) — recomendável re-analisá-las.
+- **Prova red/green**: quebrar a trava de suficiência (score 20→78) deixa os golden do falso-78 **vermelhos** no CI; revert restaura verde.
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **664** (era 642 — +22). Refactor comportamento-preservante coberto pela suíte inteira.
+- **Deploy em produção**: **EFETUADO** (push + `vercel --prod --yes` — memória autoriza deploy autônomo). Refactor comportamento-idêntico, baixo risco.
+- **Próximo**: sub-bloco 1.2 (Camada B — eval LLM) ou 1.4 (trilha de auditoria / persistir `isf_verdict`). Eixos 2-4 depois.
+
+---
+
+- **Data**: 23/06/2026
 - **Bloco**: Radar — reescrita da consulta DataJud (CNJ) para o motor de checagem externa
 - **Sintoma**: a consulta a tribunais (`consultarTribunais` em `src/lib/monitoring/externalDataProviders.ts`) buscava por `numeroDocumentoPrincipal` (CPF/CNPJ) na API pública do DataJud. Essa API **não expõe partes/CPF/CNPJ** (dados sigilosos), então a busca **nunca retornava nada** — o radar reportava "0 processos" mesmo em propriedades litigiosas.
 - **Correção (commit `848b10db`)**: nova estratégia em 2 frentes, executadas em paralelo (`Promise.allSettled`):
