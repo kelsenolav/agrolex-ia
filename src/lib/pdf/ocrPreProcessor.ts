@@ -146,10 +146,12 @@ export async function ocrWithGemini(
     // Cascata de modelos: se o modelo principal estiver sobrecarregado (503),
     // tenta o próximo. Resolve o problema de "alta demanda" do Gemini que
     // antes fazia o OCR desistir e cair no fallback binário (que alucina).
-    const modelCandidates = Array.from(
-      new Set([modelName, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']),
-    );
-    const maxRetriesPerModel = 3;
+    // Cascata enxuta: 2 modelos, 2 tentativas cada. A resiliência REAL agora é a
+    // cascata de PROVEDORES (Gemini→Claude→OpenAI) no ocrWithFallback — então o
+    // Gemini deve FALHAR RÁPIDO sob apagão (503) em vez de gastar ~minuto em 4
+    // modelos × 3 retries, o que, multiplicado por página, estourava o maxDuration.
+    const modelCandidates = Array.from(new Set([modelName, 'gemini-2.0-flash']));
+    const maxRetriesPerModel = 2;
 
     // Retorna o TEXTO já validado. Re-tenta o próximo modelo tanto em exceção
     // (503/429/500) quanto quando a resposta vem vazia/curta (sem exceção) — esta
@@ -186,7 +188,7 @@ export async function ocrWithGemini(
             const status = err?.status;
             const isOverloaded = status === 503 || status === 429 || status === 500;
             if (isOverloaded && attempt < maxRetriesPerModel - 1) {
-              const waitMs = (attempt + 1) * 5000;
+              const waitMs = (attempt + 1) * 2500;
               await new Promise((r) => setTimeout(r, waitMs));
               continue;
             }
@@ -606,13 +608,25 @@ export async function ocrDocumentComplete(
   // série mataram a função. Em paralelo (lote de CONCURRENCY), a latência total
   // ≈ a de uma página × (nº de lotes). O cap evita disparar dezenas de chamadas
   // simultâneas (429) em documentos longos; a cascata interna já reabsorve 503/429.
+  // Aprende com a tentativa do documento inteiro qual provedor está VIVO e usa-o
+  // DIRETO por página — evita re-sondar Gemini/Claude mortos a cada uma das N
+  // páginas (cada re-sondagem custava ~o timeout, e ×N páginas estourava o
+  // maxDuration=300s sob apagão do Gemini). Se o Gemini estava vivo (só truncou)
+  // ou se tudo falhou, mantém a cascata completa por página.
+  const perPageOcr = (buf: Buffer): Promise<OcrResult> => {
+    const opt = { ...options, timeoutMs: perPageTimeout };
+    if (whole.success && whole.method === 'openai_ocr') return (deps.openai || ocrWithOpenAI)(buf, opt);
+    if (whole.success && whole.method === 'claude_ocr') return (deps.claude || ocrWithClaude)(buf, opt);
+    return ocrWithFallback(buf, opt, deps);
+  };
+
   const CONCURRENCY = 3;
   const results: (OcrResult | null)[] = new Array(pagesToProcess).fill(null);
   let cursor = 0;
   async function worker(): Promise<void> {
     while (cursor < pagesToProcess) {
       const i = cursor++;
-      results[i] = await ocrWithFallback(pageBuffers[i], { ...options, timeoutMs: perPageTimeout }, deps);
+      results[i] = await perPageOcr(pageBuffers[i]);
     }
   }
   await Promise.all(
