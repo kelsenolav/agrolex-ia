@@ -82,6 +82,57 @@ describe('computeISFVerdict — pureza e equivalência', () => {
   });
 });
 
+describe('guardas semânticas (1.3) no veredito', () => {
+  it('NEGAÇÃO: "não há usucapião" NÃO dispara a trava de litígio (score não rebaixa a 39)', () => {
+    const semNegacao = computeISFVerdict(baseInput({
+      isfDimensoesFromAI: null,
+      parsedProblemas: [{ titulo: 'Usucapião', descricao: 'Usucapião por terceiro em andamento', criticidade: 'alto' }],
+    }));
+    const comNegacao = computeISFVerdict(baseInput({
+      isfDimensoesFromAI: null,
+      parsedProblemas: [{ titulo: 'Usucapião', descricao: 'Não há usucapião averbada ou em curso', criticidade: 'baixo' }],
+    }));
+    // O litígio REAL rebaixa; a negação NÃO rebaixa (deixa de inflar indevidamente o risco).
+    expect(semNegacao.result.isf_score).toBeLessThanOrEqual(39);
+    expect(comNegacao.result.isf_score).toBeGreaterThan(semNegacao.result.isf_score);
+    expect(comNegacao.naoPontuantes).toHaveLength(1);
+  });
+
+  it('ARMADILHA cancelado: MATRÍCULA cancelada penaliza, HIPOTECA cancelada não (contraste)', () => {
+    const baseline = computeISFVerdict(baseInput({ isfDimensoesFromAI: null, parsedProblemas: [] }));
+    const matriculaCancelada = computeISFVerdict(baseInput({
+      isfDimensoesFromAI: null,
+      parsedProblemas: [{ titulo: 'Cancelamento', descricao: 'Matrícula cancelada por coisa julgada', criticidade: 'critico' }],
+    }));
+    const hipotecaCancelada = computeISFVerdict(baseInput({
+      isfDimensoesFromAI: null,
+      parsedProblemas: [{ titulo: 'Hipoteca', descricao: 'Hipoteca cedular cancelada (R-5)', criticidade: 'alto' }],
+    }));
+    // Matrícula cancelada = problema grave → penaliza (score < baseline), NÃO suprimida.
+    expect(matriculaCancelada.naoPontuantes).toHaveLength(0);
+    expect(matriculaCancelada.result.isf_score).toBeLessThan(baseline.result.isf_score);
+    // Hipoteca cancelada = favorável → suprimida (não penaliza, score == baseline).
+    expect(hipotecaCancelada.naoPontuantes).toHaveLength(1);
+    expect(hipotecaCancelada.result.isf_score).toBe(baseline.result.isf_score);
+  });
+
+  it('DEDUP: achado duplicado não penaliza duas vezes', () => {
+    const umAchado = computeISFVerdict(baseInput({
+      isfDimensoesFromAI: null,
+      parsedProblemas: [{ titulo: 'Penhora fiscal', descricao: 'penhora registrada', criticidade: 'alto' }],
+    }));
+    const duplicado = computeISFVerdict(baseInput({
+      isfDimensoesFromAI: null,
+      parsedProblemas: [
+        { titulo: 'Penhora fiscal', descricao: 'penhora registrada', criticidade: 'alto' },
+        { titulo: 'Penhora fiscal', descricao: 'penhora registrada', criticidade: 'alto' },
+      ],
+    }));
+    expect(duplicado.removidos).toHaveLength(1);
+    expect(duplicado.result.isf_score).toBe(umAchado.result.isf_score);
+  });
+});
+
 describe('buildVerdictRecord — trilha de auditoria', () => {
   it('registra input + output-chave + proveniência, reexecutável', () => {
     const input = baseInput({

@@ -8,6 +8,7 @@ import {
   type ISFResultV2_2,
   type PontuacaoEntradaV2_2,
 } from './isfEngineV2_2';
+import { critiqueAchados, classificarAchadoSemantico, type AchadoLike } from './semanticGuards';
 
 /** Forma local permissiva — ProblemaLike não é exportado pelo motor. Superset assignável. */
 export type VerdictProblema = {
@@ -38,8 +39,12 @@ export interface ISFVerdict {
   result: ISFResultV2_2;
   dimensoesSource: 'ai_json' | 'inferred';
   insufficientData: boolean;
-  /** Problemas com criticidade sincronizada (cópia — entrada nunca é mutada). */
+  /** Achados validados (pós-crítica), com criticidade sincronizada. Entrada nunca é mutada. */
   problemasSincronizados: VerdictProblema[];
+  /** Achados removidos pela crítica determinística (duplicado / recomendação-disfarçada). */
+  removidos: Array<{ achado: AchadoLike; motivo: string }>;
+  /** Achados classificados como ausência/favorável — preservados, mas não pontuam. */
+  naoPontuantes: VerdictProblema[];
 }
 
 /**
@@ -88,18 +93,33 @@ export function buildVerdictRecord(input: ISFVerdictInput, verdict: ISFVerdict):
  */
 export function computeISFVerdict(input: ISFVerdictInput): ISFVerdict {
   // Cópia defensiva — a função é pura, nunca muta o array de entrada.
-  const problemas: VerdictProblema[] = input.parsedProblemas.map((p) => ({ ...p }));
+  const problemasOriginais: VerdictProblema[] = input.parsedProblemas.map((p) => ({ ...p }));
 
-  // ── Portão de SUFICIÊNCIA (anti "falso-78") ──
+  // ── Guarda 2 (1.3): crítica determinística — remove duplicados e
+  // recomendação-disfarçada-de-achado. Conservadora (não remove por base vaga). ──
+  const critica = critiqueAchados(problemasOriginais as AchadoLike[]);
+  const validados = critica.validados as VerdictProblema[];
+
+  // ── Guarda 1 (1.3): negação/ausência — achados que NÃO são problema
+  // (ausência inequívoca / litígio favorável) não pontuam. Preservados no laudo. ──
+  const scoringProblemas: VerdictProblema[] = [];
+  const naoPontuantes: VerdictProblema[] = [];
+  for (const p of validados) {
+    if (classificarAchadoSemantico(p as AchadoLike) === 'problema') scoringProblemas.push(p);
+    else naoPontuantes.push(p);
+  }
+
+  // ── Portão de SUFICIÊNCIA (anti "falso-78") — usa a contagem ORIGINAL
+  // (não tocar o gatilho do falso-78; as guardas afetam só a pontuação). ──
   const propNome = String(input.proprietarioNome || '').toLowerCase().trim();
   const proprietarioAusente =
     !propNome || /n[ãa]o\s*consta|n[ãa]o\s*identificad|n[ãa]o\s*informad/.test(propNome);
   // atosCount === 0 já implica que o JSON da matrícula existe com atos_registrais vazio.
   const extractRegistralVazio =
-    input.ehMatriculaModule && input.atosCount === 0 && proprietarioAusente && problemas.length === 0;
+    input.ehMatriculaModule && input.atosCount === 0 && proprietarioAusente && problemasOriginais.length === 0;
   const insufficientData = input.ocrIncomplete || extractRegistralVazio;
 
-  // ── Dimensões: explícitas (IA) ou inferidas por keyword ──
+  // ── Dimensões: explícitas (IA) ou inferidas por keyword (só dos "problema") ──
   let pontuacoes: PontuacaoEntradaV2_2[];
   let dimensoesSource: 'ai_json' | 'inferred';
   const dimsAI = input.isfDimensoesFromAI;
@@ -114,9 +134,9 @@ export function computeISFVerdict(input: ISFVerdictInput): ISFVerdict {
       }));
   } else {
     dimensoesSource = 'inferred';
-    const inferred = inferirPontuacoesDeAchados(problemas as never);
+    const inferred = inferirPontuacoesDeAchados(scoringProblemas as never);
     pontuacoes = inferred.pontuacoes;
-    for (const p of problemas) {
+    for (const p of scoringProblemas) {
       const chave = (p.titulo || '').trim();
       if (!chave) continue;
       const inferida = inferred.criticidadeInferida.get(chave);
@@ -134,7 +154,8 @@ export function computeISFVerdict(input: ISFVerdictInput): ISFVerdict {
   }
 
   // ── Trava de litígio de propriedade (determinística) → D3/D5 ≤ 15 ──
-  if (detectarLitigioPropriedade(problemas as never)) {
+  // Usa só os "problema" — "não há usucapião" não dispara mais a trava.
+  if (detectarLitigioPropriedade(scoringProblemas as never)) {
     for (const p of pontuacoes) {
       if (p.dimensaoId === 'D3' || p.dimensaoId === 'D5') {
         p.pontuacao = Math.min(p.pontuacao, 15);
@@ -145,11 +166,11 @@ export function computeISFVerdict(input: ISFVerdictInput): ISFVerdict {
 
   let result = calcularISFV2_2(pontuacoes);
 
-  // ── Tetos externos (do mais grave para o menos grave) ──
+  // ── Tetos externos (do mais grave para o menos grave) — só os "problema" ──
   const tetosExternos: { teto: number; motivo: string }[] = [];
-  const gravame = detectarGravameGrave(problemas as never);
+  const gravame = detectarGravameGrave(scoringProblemas as never);
   if (gravame) tetosExternos.push(gravame);
-  const tCriticos = travaPorCriticos(problemas as never);
+  const tCriticos = travaPorCriticos(scoringProblemas as never);
   if (tCriticos) tetosExternos.push(tCriticos);
   if (input.cadeiaNaoAuditada) {
     tetosExternos.push({
@@ -204,5 +225,12 @@ export function computeISFVerdict(input: ISFVerdictInput): ISFVerdict {
     };
   }
 
-  return { result, dimensoesSource, insufficientData, problemasSincronizados: problemas };
+  return {
+    result,
+    dimensoesSource,
+    insufficientData,
+    problemasSincronizados: validados,
+    removidos: critica.removidos,
+    naoPontuantes,
+  };
 }
