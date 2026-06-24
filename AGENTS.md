@@ -3,6 +3,18 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 24/06/2026
+- **Bloco**: Eixo 2 / Sub-bloco 2.2 — **Funil de ativação do Radar** (CRO — telemetria + conversão)
+- **Contexto**: 2º sub-bloco do Eixo 2. O funil do Radar (trial scan → modal → checkout) tinha a mecânica mas **zero telemetria** — impossível medir conversão.
+- **Solução (1 commit, só `dashboard/radar/page.tsx`)**:
+  - **Telemetria fire-and-forget** via endpoint existente `/api/marketing/leads` (action `track_event` → `trackTrialEvent`). Eventos: `radar_view`, `radar_scan_started`, `radar_scan_completed` (com `alerts_found`), `radar_scan_blocked`, `radar_subscribe_modal_open`, `radar_checkout_started`. Helper `trackRadarEvent` (captura userId/email da sessão).
+  - **Gatilho de aversão à perda** no modal de assinatura (custo de NÃO monitorar — "um novo gravame só é descoberto quando já virou problema").
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **691**. Deploy `vercel --prod --yes` **EFETUADO** (commit `fb09254d`).
+- **Nota de verificação**: mudanças são telemetria (fire-and-forget, não-visual) + 1 linha de copy estática. Verificado por tsc/lint/build; preview ao vivo do modal não rodado (gated por auth — custo alto p/ texto estático). Homologação visual recomendada.
+- **Próximo (Eixo 2)**: 2.3 dunning/retenção; 2.4 conversão trial→pago. Auto-débito real (MP Preapproval) quando o usuário habilitar.
+
+---
+
+- **Data**: 24/06/2026
 - **Bloco**: Eixo 2 / Sub-bloco 2.1 — **Recorrência do Radar** (cobrança que se repete + lembrete de renovação) — início do Eixo 2 (MRR)
 - **Contexto**: Eixo 1 completo. Âncora de MRR escolhida pelo usuário = **Radar/monitoramento** (R$49,90/propriedade/mês). Diagnóstico: o produto "parecia SaaS mas cobrava como balcão" — tudo era *preference* (pagamento único), nada recorria.
 - **🔴 BUG ESTRUTURAL corrigido (keystone)**: o webhook MP só tratava `plan_`/`pack_` — pagamentos `radar_` **caíam no silêncio**, então em MP real uma assinatura de Radar aprovava mas **nunca ativava** (MRR quebrado; só funcionava via fallback de simulação). Adicionado handler `radar_` que **ativa E renova** (estende `expires_at` sem perder tempo restante na renovação antecipada).
