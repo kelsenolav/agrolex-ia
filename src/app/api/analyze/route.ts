@@ -9,8 +9,9 @@ import { buildRecommendedModules } from '@/lib/recommendations';
 import { generateWithFallback, type FallbackResult, type AiProvider } from '@/lib/aiProviders';
 import { calcularComparacao } from '@/lib/isf/isfV2';
 import { calcularISFv2, classificarEixo, type ISFContext } from '@/lib/isf/isfEngine';
-import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2, normalizeFindingSeverity, detectarLitigioPropriedade, detectarGravameGrave, travaPorCriticos, classificarFaixaV2_2 } from '@/lib/isf/isfEngineV2_2';
+import { calcularISFV2_2, inferirPontuacoesDeAchados, prepararPayloadV2_2, normalizeFindingSeverity, detectarLitigioPropriedade, detectarGravameGrave, travaPorCriticos, classificarFaixaV2_2, faixaParaRiskLevel } from '@/lib/isf/isfEngineV2_2';
 import { computeISFVerdict, buildVerdictRecord } from '@/lib/isf/isfVerdict';
+import { detectContradicoes } from '@/lib/isf/semanticGuards';
 import { gerarPayloadISFCompleto } from '@/lib/isf/persistenciaISF';
 import {
   initializeProcessingStages,
@@ -2084,6 +2085,11 @@ ${ocrTextBlocks.join('\n\n')}
           let isfError: string | null = null;
           let isfResultV2_2: any = null;    // resultado do motor v2.2 (primário)
           let isfVerdictRecord: Record<string, unknown> | null = null;  // trilha de auditoria (sub-bloco 1.4)
+          // Guardas semânticas (sub-bloco 1.3) — metadados de auditoria e reconciliação.
+          let isfRemovidos: Array<{ achado: unknown; motivo: string }> = [];
+          let isfNaoPontuantes: unknown[] = [];
+          let isfContradicoes: Array<{ tipo: string; descricao: string }> = [];
+          let reconciledRiskLevel: string | null = null;
           let isfResultV2_1: any = null;    // resultado do motor v2.1 (compatibilidade)
           let comparison: any = null;
           const ISF_VERSION_STRING = '2.2';  // versão canônica como string
@@ -2139,6 +2145,19 @@ ${ocrTextBlocks.join('\n\n')}
                 ...buildVerdictRecord(verdictInput, verdict),
                 computed_at: new Date().toISOString(),
               };
+              // Guardas semânticas (1.3): metadados + reconciliação de risk_level.
+              isfRemovidos = verdict.removidos;
+              isfNaoPontuantes = verdict.naoPontuantes;
+              reconciledRiskLevel = faixaParaRiskLevel(verdict.result.isf_score);
+              isfContradicoes = detectContradicoes({
+                riskLevel,
+                faixaRiskLevel: reconciledRiskLevel,
+                isfScore: verdict.result.isf_score,
+                documentosFaltantes: Array.isArray(parsedDocumentosFaltantes)
+                  ? parsedDocumentosFaltantes.map((d: any) => String(d?.documento || d?.titulo || d || ''))
+                  : [],
+                problemas: verdict.problemasSincronizados,
+              });
               // Preserva a criticidade sincronizada para persistência (problemas) e ISF v2.1.
               parsedProblemas = verdict.problemasSincronizados as typeof parsedProblemas;
 
@@ -2223,6 +2242,10 @@ ${ocrTextBlocks.join('\n\n')}
             ...isfPayload,
             ...(isfResultV2_2 ? { isf_v2_2: isfResultV2_2 } : {}),
             ...(isfVerdictRecord ? { isf_verdict: isfVerdictRecord } : {}),
+            // Guardas semânticas (1.3): auditoria e transparência no laudo.
+            ...(isfContradicoes.length > 0 ? { contradicoes: isfContradicoes } : {}),
+            ...(isfRemovidos.length > 0 ? { achados_removidos: isfRemovidos } : {}),
+            ...(isfNaoPontuantes.length > 0 ? { achados_nao_pontuantes: isfNaoPontuantes } : {}),
             ai_cascade: {
               provider_used: providerUsed,
               fallback_triggered: fallbackTriggered,
@@ -2267,6 +2290,8 @@ ${ocrTextBlocks.join('\n\n')}
             .from('analyses')
             .update({
               findings: patchedFindings,
+              // Reconciliação (1.3): risk_level segue a faixa do ISF (fonte única; nunca infla).
+              ...(reconciledRiskLevel ? { risk_level: reconciledRiskLevel } : {}),
               ...(effectiveISFResult ? {
                 isf_score: effectiveISFResult.isf_score,
                 // Para v2.2: mapear faixa para valor compatível com CHECK constraint; o label real está em findings.isf_v2_2.faixa_label
