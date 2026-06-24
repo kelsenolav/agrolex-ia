@@ -3,6 +3,19 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 23/06/2026
+- **Bloco**: Eixo 1 / Sub-bloco 1.5 — **Observabilidade da cascata de IA** (fim da falha silenciosa dos provedores)
+- **Contexto**: 3º sub-bloco do Eixo 1 (após 1.1 e 1.4). Buraco B6: a cascata Gemini→Claude→OpenAI→Groq falhava em silêncio (Claude sem crédito quebrou a rede e ninguém soube até o apagão).
+- **Solução (3 peças, aditivas — não mudam veredito)**:
+  - `route.ts` — persiste `findings.ai_cascade` (provider_used + fallback + **log provedor-a-provedor** sanitizado, capturando `result.attempts` que antes era descartado). Só no caminho de sucesso (no erro, `providerUsed` está em `try` interno fora de escopo — hoistar seria refactor maior, adiado).
+  - `scripts/ai-cascade-health.mjs` *(novo)* — **read-only**: agrega saúde por tráfego real (vencedor, ok/fail por provedor, motivos de fallback) + veredito heurístico. Sem gastar IA.
+  - `scripts/ai-cascade-preflight.mjs` *(novo)* — **chamada mínima ao vivo** por provedor configurado (~1 token); pega "credit balance too low" na hora. Flag ⚠️ CRÉDITO.
+- **🔴 ACHADO OPERACIONAL (preflight ao vivo em 23/06)**: **Gemini=429 (quota/billing)** e **Claude=400 (credit balance too low)** — os DOIS provedores primários MORTOS. Cascata viva **só por OpenAI + Groq** (backups). Análises completam, mas sem margem: um hiccup de OpenAI/Groq = parada. **AÇÃO: recarregar crédito Anthropic + verificar billing/quota Gemini.**
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` 666. Deploy `vercel --prod --yes` **EFETUADO** (commit `a49ea8e9`).
+- **Eixo 1 — status**: 1.1 ✅, 1.4 ✅, 1.5 ✅ entregues. Restam **1.3** (crítica semântica — muda veredito, requer input jurídico do usuário) e **1.2** (eval LLM — adiado até crédito de IA OK).
+
+---
+
+- **Data**: 23/06/2026
 - **Bloco**: Eixo 1 / Sub-bloco 1.4 — **Trilha de Auditoria do veredito ISF** (persiste o "porquê" reconstruível)
 - **Contexto**: 2º sub-bloco entregue do Eixo 1 (após 1.1 Proof Engine). Spec em `docs/superpowers/specs/2026-06-23-trilha-auditoria-veredito-design.md`.
 - **Problema (buraco B4)**: impossível reconstruir meses depois por que um ISF deu X (dimensões de JSON vs inferidas, travas e seus inputs). Defensabilidade jurídica exige rastro.
