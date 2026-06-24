@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getPayment, verifyWebhookSignature } from '@/lib/payments/mercadopago';
 import { activateSubscription, type PlanType } from '@/lib/subscriptions';
+import { computeRenewalExpiry, parseRadarPropertyCount } from '@/lib/monitoring/radarRenewal';
 
 export async function POST(req: Request) {
   try {
@@ -142,7 +143,7 @@ export async function POST(req: Request) {
             .select('credits_available')
             .eq('user_id', order.user_id)
             .maybeSingle();
-            
+
           if (sub) {
             await supabaseAdmin
               .from('subscriptions')
@@ -154,6 +155,31 @@ export async function POST(req: Request) {
             console.log(`✅ Adicionado ${pagesToAdd} páginas avulsas para o usuário ${order.user_id} via Webhook`);
           }
         }
+      } else if (paymentMethod.startsWith('radar_')) {
+        // RADAR (Eixo 2 / 2.1): ativa OU renova a assinatura de monitoramento.
+        // Antes deste handler, pagamentos de Radar caíam no silêncio (MRR quebrado).
+        const count = parseRadarPropertyCount(paymentMethod);
+        const { data: currentSub } = await supabaseAdmin
+          .from('radar_subscriptions')
+          .select('expires_at')
+          .eq('user_id', order.user_id)
+          .maybeSingle();
+        // Renovação antecipada estende a partir do expires_at vigente (não perde tempo restante).
+        const newExpiry = computeRenewalExpiry(currentSub?.expires_at ?? null, Date.now());
+        await supabaseAdmin
+          .from('radar_subscriptions')
+          .upsert(
+            {
+              user_id: order.user_id,
+              status: 'active',
+              max_properties: count,
+              price_per_property: 49.90,
+              expires_at: newExpiry,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id' },
+          );
+        console.log(`✅ Radar do usuário ${order.user_id} ativado/renovado (${count} props) até ${newExpiry} via Webhook`);
       }
     }
 
