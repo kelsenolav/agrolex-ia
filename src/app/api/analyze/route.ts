@@ -1615,6 +1615,8 @@ ${ocrTextBlocks.join('\n\n')}
         let providerUsed: AiProvider = 'gemini';
         let fallbackTriggered = false;
         let fallbackReason: string | null = null;
+        // Observabilidade da cascata (sub-bloco 1.5): log provedor-a-provedor (sanitizado).
+        let cascadeAttempts: Array<{ provider: string; success: boolean; error?: string; duration_ms?: number }> = [];
 
         if (geminiParts.length > 1 || anyOcrUsed) {
           await supabaseAdmin
@@ -1640,6 +1642,13 @@ ${ocrTextBlocks.join('\n\n')}
           providerUsed = result.provider_used;
           fallbackTriggered = result.fallback_triggered;
           fallbackReason = result.fallback_reason;
+          // Captura o histórico provedor-a-provedor, sanitizando URLs/segredos das mensagens de erro.
+          cascadeAttempts = (result.attempts || []).map((a) => ({
+            provider: a.provider,
+            success: a.success,
+            ...(a.error ? { error: String(a.error).replace(/https?:\/\/\S+/gi, '[REDACTED_URL]').slice(0, 300) } : {}),
+            ...(typeof a.duration_ms === 'number' ? { duration_ms: a.duration_ms } : {}),
+          }));
         } else {
           markdownResponse = `### PARECER TÉCNICO GEOESPACIAL (APENAS GEOMETRIA KML/GPX)\n\nFoi efetuado o upload de arquivo de geometria de limites físicos e georreferenciamento em formato digital nativo. Não foram inseridas matrículas textuais em PDF para análise textual.\n\n* **Limite Físico Importado:** ${polygonCoords.length} pontos de curva detectados.\n* **Status de Integração:** Geometria disponível no visualizador de mapas 3D.`;
         }
@@ -2214,6 +2223,12 @@ ${ocrTextBlocks.join('\n\n')}
             ...isfPayload,
             ...(isfResultV2_2 ? { isf_v2_2: isfResultV2_2 } : {}),
             ...(isfVerdictRecord ? { isf_verdict: isfVerdictRecord } : {}),
+            ai_cascade: {
+              provider_used: providerUsed,
+              fallback_triggered: fallbackTriggered,
+              fallback_reason: fallbackReason,
+              attempts: cascadeAttempts,
+            },
             ...(isfResultV2_1 ? { isf_v2: isfResultV2_1 } : {}),
             ...(isfError ? { isf_v2_error: isfError } : {}),
             ...(matriculaRulesResult ? { matricula_rules: matriculaRulesResult } : {}),
