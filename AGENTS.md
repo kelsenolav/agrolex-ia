@@ -3,6 +3,22 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 24/06/2026
+- **Bloco**: Eixo 2 / Sub-bloco 2.1 — **Recorrência do Radar** (cobrança que se repete + lembrete de renovação) — início do Eixo 2 (MRR)
+- **Contexto**: Eixo 1 completo. Âncora de MRR escolhida pelo usuário = **Radar/monitoramento** (R$49,90/propriedade/mês). Diagnóstico: o produto "parecia SaaS mas cobrava como balcão" — tudo era *preference* (pagamento único), nada recorria.
+- **🔴 BUG ESTRUTURAL corrigido (keystone)**: o webhook MP só tratava `plan_`/`pack_` — pagamentos `radar_` **caíam no silêncio**, então em MP real uma assinatura de Radar aprovava mas **nunca ativava** (MRR quebrado; só funcionava via fallback de simulação). Adicionado handler `radar_` que **ativa E renova** (estende `expires_at` sem perder tempo restante na renovação antecipada).
+- **Solução (3 commits)**:
+  - `src/lib/monitoring/radarRenewal.ts` *(novo, puro)* — `computeRenewalExpiry` (estende vs novo), `daysUntilExpiry`, `isExpiringSoon`, `parseRadarPropertyCount`. 9 testes.
+  - `webhook/mercadopago/route.ts` — handler `radar_` (upsert `radar_subscriptions` com novo `expires_at`).
+  - `scripts`→ não; `src/app/api/cron/renewals/route.ts` *(novo)* — cron **diário** (`vercel.json` 08h UTC, auth `CRON_SECRET`) que detecta assinaturas expirando e envia lembrete por e-mail nos dias-marco {7,3,1,0,-1} (sem spam diário, sem coluna nova).
+  - `notificationService.ts` — `sendRadarRenewalReminder` + template (Resend, degrada p/ log_only).
+  - `dashboard/radar/page.tsx` — banner de renovação (≤7d âmbar / expirado vermelho) com CTA que abre o checkout. `getRadarStatus` já retornava `expires_at`.
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **691** (+9). Deploy `vercel --prod --yes` **EFETUADO** (commit `20c48040`).
+- **⚠️ DEPENDÊNCIAS OPERACIONAIS (não-código) para o MRR funcionar de verdade**: (1) `RESEND_API_KEY` no Vercel p/ os lembretes saírem (sem ela = log_only); (2) **Mercado Pago em modo PRODUÇÃO** (hoje sandbox — `MP_SANDBOX`) + `MERCADOPAGO_ACCESS_TOKEN` de prod p/ cobrar de verdade; (3) `CRON_SECRET` no Vercel.
+- **Próximo (Eixo 2)**: 2.2 funil de ativação do Radar; 2.3 dunning/retenção; 2.4 conversão trial→pago. Auto-débito real (MP Preapproval) quando o usuário habilitar preapproval na conta MP.
+
+---
+
+- **Data**: 24/06/2026
 - **Bloco**: Eixo 1 / Sub-bloco 1.3 — **Guardas Semânticas** (crítica determinística + contradições + negação) — **fecha o Eixo 1**
 - **Contexto**: último sub-bloco do Eixo 1 (1.1, 1.4, 1.5 já entregues). Buracos B2 (caminho JSON pulava a crítica) e B5 (3 contradições não detectadas). Spec em `docs/superpowers/specs/2026-06-23-guardas-semanticas-design.md`.
 - **Postura (decisão jurídica do usuário)**: **corrigir conservador** — nunca deixar inconsistência INFLAR o laudo; desfazer rebaixamento INDEVIDO (bug de negativa). Cada mudança de veredito coberta por teste.
