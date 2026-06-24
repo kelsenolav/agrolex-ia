@@ -2,6 +2,21 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 24/06/2026
+- **Bloco**: Eixo 1 / Sub-bloco 1.3 — **Guardas Semânticas** (crítica determinística + contradições + negação) — **fecha o Eixo 1**
+- **Contexto**: último sub-bloco do Eixo 1 (1.1, 1.4, 1.5 já entregues). Buracos B2 (caminho JSON pulava a crítica) e B5 (3 contradições não detectadas). Spec em `docs/superpowers/specs/2026-06-23-guardas-semanticas-design.md`.
+- **Postura (decisão jurídica do usuário)**: **corrigir conservador** — nunca deixar inconsistência INFLAR o laudo; desfazer rebaixamento INDEVIDO (bug de negativa). Cada mudança de veredito coberta por teste.
+- **Solução (3 commits)**:
+  - `src/lib/isf/semanticGuards.ts` *(novo, puro)* — **G1 negação/ausência** (`classificarAchadoSemantico`: whitelist de ausência + litígio-favorável + **armadilha "cancelado"**: ônus cancelado=favorável, **matrícula cancelada=grave**; negação que governa termo grave via janela de 30 chars). **G2 crítica determinística** (`critiqueAchados`: dedup + recomendação-disfarçada, conservadora — sem LLM). **G3** (`detectContradicoes`: risk_level×faixa, doc-faltante×achado-presente). 13 testes.
+  - `isfVerdict.ts` — `computeISFVerdict` aplica G1+G2: achados `ausencia`/`favoravel` **não pontuam** (inferência/litígio/gravame/críticos usam só os `problema`); portão de suficiência mantém **contagem ORIGINAL** (falso-78 intacto). `ISFVerdict` ganha `removidos`+`naoPontuantes`.
+  - `route.ts` — persiste `findings.{contradicoes,achados_removidos,achados_nao_pontuantes}`; **reconcilia `risk_level` = `faixaParaRiskLevel(isf_score)`** no update final.
+- **Bug pego pelos testes**: `\b` em JS é ASCII-only → `h[áa]\b` matava "não há" após letra acentuada. Corrigido com lookahead.
+- **Garantia**: 4 golden originais + characterization locais **INALTERADOS** (guardas não mexem em problema real). Testes provam: negação NÃO rebaixa vs litígio real rebaixa; matrícula-cancelada penaliza vs hipoteca-cancelada não; dedup não dobra.
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **682** (+39 no Eixo 1). Deploy `vercel --prod --yes` **EFETUADO** (commit `eefeb633`).
+- **✅ EIXO 1 (Blindar o núcleo) COMPLETO**: 1.1 Proof Engine, 1.3 Guardas Semânticas, 1.4 Trilha de Auditoria, 1.5 Observabilidade — todos em produção. **1.2 (eval LLM) adiado** até crédito de IA voltar (Gemini 429 + Claude sem crédito, ver bloco 1.5). Próximo: **Eixo 2 (Recorrência/MRR)**.
+
+---
+
 - **Data**: 23/06/2026
 - **Bloco**: Eixo 1 / Sub-bloco 1.5 — **Observabilidade da cascata de IA** (fim da falha silenciosa dos provedores)
 - **Contexto**: 3º sub-bloco do Eixo 1 (após 1.1 e 1.4). Buraco B6: a cascata Gemini→Claude→OpenAI→Groq falhava em silêncio (Claude sem crédito quebrou a rede e ninguém soube até o apagão).
