@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getStatusConfig, getSeverityConfig } from '@/lib/monitoring/monitoringEngine';
+import { daysUntilExpiry } from '@/lib/monitoring/radarRenewal';
 import type { PropertyCheckResult } from '@/lib/monitoring/monitoringEngine';
 import Logo from '@/components/Logo';
 
@@ -91,6 +92,7 @@ function RadarContent() {
     has_active_subscription: boolean;
     trial_used: boolean;
     trial_available: boolean;
+    expires_at?: string | null;
   } | null>(null);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
@@ -351,6 +353,35 @@ function RadarContent() {
             </div>
           ))}
         </div>
+
+        {/* Banner de renovação (Eixo 2 / 2.1): aviso quando a assinatura expira em ≤7 dias ou já expirou. */}
+        {(() => {
+          if (!radarStatus?.has_active_subscription || !radarStatus.expires_at) return null;
+          const dias = daysUntilExpiry(radarStatus.expires_at, Date.now());
+          if (dias === null || dias > 7) return null;
+          const expirou = dias < 0;
+          return (
+            <div className={`rounded-xl border p-4 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${expirou ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+              <div className="flex items-start gap-3">
+                {expirou ? <XCircle size={20} className="text-red-600 mt-0.5" /> : <Clock size={20} className="text-amber-600 mt-0.5" />}
+                <div>
+                  <p className={`font-bold ${expirou ? 'text-red-900' : 'text-amber-900'}`}>
+                    {expirou ? 'Sua proteção do Radar expirou' : dias === 0 ? 'Sua proteção do Radar expira hoje' : `Sua proteção do Radar expira em ${dias} dia${dias !== 1 ? 's' : ''}`}
+                  </p>
+                  <p className={`text-xs mt-0.5 ${expirou ? 'text-red-700' : 'text-amber-700'}`}>
+                    {expirou ? 'O monitoramento contínuo foi interrompido — você deixa de ser avisado sobre novos gravames, penhoras e ações.' : 'Renove para não deixar nenhuma janela de vigilância descoberta.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSubscribeModal(true)}
+                className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white ${expirou ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}
+              >
+                <RefreshCw size={14} /> {expirou ? 'Reativar Radar' : 'Renovar agora'}
+              </button>
+            </div>
+          );
+        })()}
 
         <div className="grid lg:grid-cols-5 gap-6">
 
