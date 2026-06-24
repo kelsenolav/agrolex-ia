@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -96,10 +96,12 @@ function RadarContent() {
   } | null>(null);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
+  const [userInfo, setUserInfo] = useState<{ id: string; email?: string } | null>(null);
 
   const fetchData = useCallback(async (sessionToken: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { router.push('/login'); return; }
+    setUserInfo({ id: session.user.id, email: session.user.email ?? undefined });
 
     const [propsRes, alertsRes, statusRes] = await Promise.all([
       supabase.from('properties').select('id, name, city, state, area, is_monitoring, last_radar_check_at, last_radar_isf_score, car_code, ccir, sigef_code, cpf_cnpj, matricula_number, registry_office').eq('user_id', session.user.id).order('name'),
@@ -113,6 +115,16 @@ function RadarContent() {
     setLoading(false);
   }, [router]);
 
+  // Telemetria do funil de ativação do Radar (Eixo 2 / 2.2) — fire-and-forget.
+  const trackRadarEvent = useCallback((eventType: string, meta?: Record<string, unknown>) => {
+    if (!userInfo?.id) return;
+    fetch('/api/marketing/leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'track_event', userId: userInfo.id, email: userInfo.email, eventType, meta }),
+    }).catch(() => {});
+  }, [userInfo]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) { router.push('/login'); return; }
@@ -121,9 +133,24 @@ function RadarContent() {
     });
   }, [router, fetchData]);
 
+  // Telemetria: visualização do Radar (uma vez por carga).
+  const radarViewFired = useRef(false);
+  useEffect(() => {
+    if (userInfo?.id && !radarViewFired.current) {
+      radarViewFired.current = true;
+      trackRadarEvent('radar_view');
+    }
+  }, [userInfo, trackRadarEvent]);
+
+  // Telemetria: abertura do modal de assinatura (qualquer gatilho).
+  useEffect(() => {
+    if (showSubscribeModal) trackRadarEvent('radar_subscribe_modal_open');
+  }, [showSubscribeModal, trackRadarEvent]);
+
   const runCheck = useCallback(async (propertyId: string) => {
     if (!token) return;
     setScanning(s => ({ ...s, [propertyId]: true }));
+    trackRadarEvent('radar_scan_started', { propertyId });
     try {
       const res = await fetch('/api/monitoring/check', {
         method: 'POST',
@@ -132,11 +159,14 @@ function RadarContent() {
       });
       const data = await res.json();
       if (data.scan_blocked) {
+        trackRadarEvent('radar_scan_blocked', { propertyId });
         setShowSubscribeModal(true);
         return;
       }
       if (data.result) {
         setCheckResults(r => ({ ...r, [propertyId]: data.result }));
+        const alertsFound = Array.isArray(data.result?.alerts) ? data.result.alerts.length : 0;
+        trackRadarEvent('radar_scan_completed', { propertyId, alerts_found: alertsFound });
       }
       if (data.external_check) {
         setExternalResults(r => ({ ...r, [propertyId]: data.external_check }));
@@ -145,7 +175,7 @@ function RadarContent() {
     } finally {
       setScanning(s => ({ ...s, [propertyId]: false }));
     }
-  }, [token, fetchData]);
+  }, [token, fetchData, trackRadarEvent]);
 
   const runAllChecks = useCallback(async () => {
     const monitored = properties.filter(p => p.is_monitoring);
@@ -219,8 +249,9 @@ function RadarContent() {
   const handleSubscribeRadar = useCallback(async () => {
     if (!token) return;
     setSubscribing(true);
+    const count = Math.max(1, properties.filter(p => p.is_monitoring).length);
+    trackRadarEvent('radar_checkout_started', { property_count: count });
     try {
-      const count = Math.max(1, properties.filter(p => p.is_monitoring).length);
       const res = await fetch('/api/monitoring/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -238,7 +269,7 @@ function RadarContent() {
     } finally {
       setSubscribing(false);
     }
-  }, [token, properties, fetchData]);
+  }, [token, properties, fetchData, trackRadarEvent]);
 
   const monitoredProperties = properties.filter(p => p.is_monitoring);
   const unmonitoredProperties = properties.filter(p => !p.is_monitoring);
@@ -771,6 +802,14 @@ function RadarContent() {
                   {f}
                 </div>
               ))}
+            </div>
+
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+              <AlertTriangle size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800">
+                Sem monitoramento contínuo, um novo gravame, penhora ou ação de terceiro só é
+                descoberto quando <strong>já virou problema</strong>. O Radar te avisa no momento em que muda.
+              </p>
             </div>
 
             <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-5 text-center">
