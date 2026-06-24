@@ -100,3 +100,86 @@ export async function sendRadarNotification(payload: NotificationPayload): Promi
   console.log(`[Radar Notification] E-mail não enviado (RESEND_API_KEY não configurada). ${payload.alerts.length} alertas para ${payload.user_email} — propriedade "${payload.property_name}"`);
   return { sent: false, method: 'log_only', error: 'RESEND_API_KEY não configurada' };
 }
+
+// ─── Lembrete de renovação do Radar (Eixo 2 / 2.1) ───────────────────────────
+
+export interface RenewalReminderPayload {
+  user_email: string;
+  user_name?: string;
+  /** Dias até expirar (negativo = já expirou). */
+  days_until_expiry: number;
+  renew_url: string;
+}
+
+function buildRenewalEmailHtml(p: RenewalReminderPayload): string {
+  const nome = p.user_name || 'Proprietário';
+  const expirou = p.days_until_expiry < 0;
+  const titulo = expirou
+    ? 'Sua proteção do Radar expirou'
+    : p.days_until_expiry === 0
+      ? 'Sua proteção do Radar expira hoje'
+      : `Sua proteção do Radar expira em ${p.days_until_expiry} dia${p.days_until_expiry !== 1 ? 's' : ''}`;
+  const corpo = expirou
+    ? 'O monitoramento contínuo das suas propriedades foi <strong>interrompido</strong>. Sem o Radar ativo, você deixa de ser avisado sobre novos gravames, penhoras, ações judiciais e mudanças registrais.'
+    : 'Para manter a vigilância contínua das suas propriedades — alertas de gravames, penhoras, ações e mudanças registrais — renove antes do vencimento e não deixe nenhuma janela descoberta.';
+  const cta = expirou ? 'Reativar o Radar →' : 'Renovar o Radar →';
+
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Roboto,sans-serif;background:#f3f4f6;">
+  <div style="max-width:600px;margin:0 auto;padding:24px;">
+    <div style="background:#064e3b;padding:20px 24px;border-radius:12px 12px 0 0;">
+      <h1 style="margin:0;color:#fff;font-size:18px;">🛡️ AgrolexI — Radar Fundiário</h1>
+    </div>
+    <div style="background:#fff;padding:24px;border:1px solid #e5e7eb;border-top:none;">
+      <p style="margin:0 0 8px;color:#111827;font-size:17px;font-weight:700;">${titulo}</p>
+      <p style="margin:0 0 16px;color:#374151;">Olá, ${nome}.</p>
+      <p style="margin:0 0 16px;color:#374151;">${corpo}</p>
+      <div style="text-align:center;margin-top:24px;">
+        <a href="${p.renew_url}" style="display:inline-block;padding:12px 32px;background:${expirou ? '#dc2626' : '#059669'};color:#fff;font-weight:700;text-decoration:none;border-radius:8px;font-size:14px;">
+          ${cta}
+        </a>
+      </div>
+      <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;text-align:center;">
+        A partir de R$ 49,90/propriedade ao mês. Cancele quando quiser.
+      </p>
+    </div>
+    <div style="padding:12px 24px;text-align:center;border-radius:0 0 12px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-top:none;">
+      <p style="margin:0;font-size:11px;color:#9ca3af;">© ${new Date().getFullYear()} AgrolexI — Inteligência Fundiária</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export async function sendRadarRenewalReminder(
+  payload: RenewalReminderPayload,
+): Promise<{ sent: boolean; method: string; error?: string }> {
+  const resendKey = process.env.RESEND_API_KEY;
+  const expirou = payload.days_until_expiry < 0;
+  const subject = expirou
+    ? '🛡️ Seu Radar AgrolexI expirou — reative a proteção'
+    : `🛡️ Seu Radar AgrolexI expira em ${Math.max(0, payload.days_until_expiry)} dia(s) — renove`;
+  if (resendKey) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM_EMAIL || 'AgrolexI Radar <radar@agrolex.dev>',
+          to: [payload.user_email],
+          subject,
+          html: buildRenewalEmailHtml(payload),
+        }),
+      });
+      if (res.ok) return { sent: true, method: 'resend' };
+      return { sent: false, method: 'resend', error: `HTTP ${res.status}: ${await res.text()}` };
+    } catch (err: unknown) {
+      return { sent: false, method: 'resend', error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  console.log(`[Radar Renewal] E-mail não enviado (sem RESEND_API_KEY) — ${payload.user_email}, expira em ${payload.days_until_expiry}d`);
+  return { sent: false, method: 'log_only', error: 'RESEND_API_KEY não configurada' };
+}
