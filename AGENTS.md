@@ -3,6 +3,16 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 24/06/2026
+- **Bloco**: Eixo 2 / Sub-bloco 2.4 — **Conversão trial→pago (ponte análise→Radar)** — **fecha o Eixo 2**
+- **Contexto**: último sub-bloco do Eixo 2. Topo do funil: transformar quem fez a análise grátis em assinante do Radar. O momento de maior valor realizado (laudo com riscos) não tinha CTA de Radar.
+- **Solução (1 commit, só `dashboard/resultado/page.tsx`)**: card de conversão exibido quando `problemas.length > 0` — conecta o laudo ("foto do hoje") ao Radar ("vigia e avisa antes de virar problema"). CTA → `/dashboard/radar`. Telemetria `radar_conversion_view` (risk_count) + `radar_conversion_click` (property_id). Reusa `analiseSafe.property_id` + userId/email já presentes.
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **693**. Deploy `vercel --prod --yes` **EFETUADO** (commit `82179f03`).
+- **✅ EIXO 2 (Recorrência/MRR) COMPLETO**: 2.1 cobrança recorrente + lembrete · 2.2 funil/telemetria · 2.3 dunning/graça/fim-do-vazamento · 2.4 conversão trial→pago — todos em produção. **Pendência única (ação do usuário)**: auto-débito real exige **MP Preapproval** habilitado na conta MP de produção (hoje sandbox). Sem isso, a renovação é por lembrete+re-pagamento (já funciona). Próximo: **Eixo 3 (Vertical)** ou consolidação.
+- **Nota de verificação (2.2/2.4)**: mudanças visuais em telas gated por auth (resultado/radar) — verificadas por tsc/lint/build; homologação visual ao vivo recomendada.
+
+---
+
+- **Data**: 24/06/2026
 - **Bloco**: Eixo 2 / Sub-bloco 2.3 — **Dunning, graça e fim do vazamento de monitoramento grátis**
 - **Contexto**: 3º sub-bloco do Eixo 2. Dois buracos de lifecycle: (a) nada marcava assinaturas como `expired` — ficavam `active` para sempre; (b) `getRadarStatus` checava só `status='active'`, sem `expires_at` → vencida parecia ativa **e o cron de monitoramento varria `is_monitoring` cegamente** = monitoramento grátis pós-expiração (vazamento de receita).
 - **Solução (1 commit)**:
