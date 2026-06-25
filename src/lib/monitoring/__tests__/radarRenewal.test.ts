@@ -4,6 +4,8 @@ import {
   isExpiringSoon,
   isExpired,
   parseRadarPropertyCount,
+  radarLifecycleState,
+  isEffectivelyActive,
 } from '../radarRenewal';
 
 const NOW = Date.parse('2026-06-24T12:00:00.000Z');
@@ -48,6 +50,24 @@ describe('daysUntilExpiry / isExpiringSoon / isExpired', () => {
   it('isExpired', () => {
     expect(isExpired(new Date(NOW - 1 * DIA).toISOString(), NOW)).toBe(true);
     expect(isExpired(new Date(NOW + 1 * DIA).toISOString(), NOW)).toBe(false);
+  });
+});
+
+describe('radarLifecycleState / isEffectivelyActive', () => {
+  const at = (dias: number) => new Date(NOW + dias * DIA).toISOString();
+  it('classifica os estados do ciclo de vida (graça=3, soon=7)', () => {
+    expect(radarLifecycleState(at(20), NOW)).toBe('active');
+    expect(radarLifecycleState(at(5), NOW)).toBe('expiring_soon');
+    expect(radarLifecycleState(at(0), NOW)).toBe('expiring_soon'); // vence hoje, ainda não passou
+    expect(radarLifecycleState(at(-1), NOW)).toBe('grace'); // venceu, dentro da graça
+    expect(radarLifecycleState(at(-3), NOW)).toBe('grace'); // limite da graça
+    expect(radarLifecycleState(at(-4), NOW)).toBe('expired'); // passou da graça
+    expect(radarLifecycleState(null, NOW)).toBe('active'); // sem data → não cortar
+  });
+  it('isEffectivelyActive: ativa durante graça, inativa após', () => {
+    expect(isEffectivelyActive(at(-2), NOW)).toBe(true); // graça
+    expect(isEffectivelyActive(at(-5), NOW)).toBe(false); // expirada
+    expect(isEffectivelyActive(at(10), NOW)).toBe(true);
   });
 });
 

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { runPropertyCheck } from '@/lib/monitoring/monitoringEngine';
 import { runExternalChecks, type PropertyParams, type AnalysisFindings } from '@/lib/monitoring/externalDataProviders';
 import { sendRadarNotification } from '@/lib/monitoring/notificationService';
+import { isEffectivelyActive } from '@/lib/monitoring/radarRenewal';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -35,6 +36,21 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: propsError?.message || 'Erro ao buscar propriedades' }, { status: 500 });
   }
 
+  // Gate de assinatura (Eixo 2 / 2.3): só varre propriedades de usuários com
+  // assinatura efetivamente ativa (graça inclusa). Fecha o vazamento de
+  // monitoramento automático grátis pós-expiração. Batch-fetch (sem N queries).
+  const { data: activeSubs } = await adminClient
+    .from('radar_subscriptions')
+    .select('user_id, expires_at')
+    .eq('status', 'active');
+  const nowMs = Date.now();
+  const usuariosAtivos = new Set<string>(
+    (activeSubs || [])
+      .filter((s: { user_id: string; expires_at: string | null }) => isEffectivelyActive(s.expires_at, nowMs))
+      .map((s: { user_id: string }) => s.user_id),
+  );
+  let semAssinatura = 0;
+
   const results: Array<{
     property_id: string;
     property_name: string;
@@ -46,6 +62,11 @@ export async function GET(req: Request) {
   }> = [];
 
   for (const prop of monitoredProps) {
+    // Sem assinatura efetivamente ativa → não varre (monitoramento contínuo é pago).
+    if (!usuariosAtivos.has(prop.user_id)) {
+      semAssinatura++;
+      continue;
+    }
     try {
       const { data: analyses } = await adminClient
         .from('analyses')
@@ -177,6 +198,7 @@ export async function GET(req: Request) {
     ok: true,
     timestamp: new Date().toISOString(),
     properties_scanned: results.length,
+    skipped_no_subscription: semAssinatura,
     total_alerts_created: results.reduce((s, r) => s + r.alerts_created, 0),
     results,
   });

@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { daysUntilExpiry } from '@/lib/monitoring/radarRenewal';
+import { daysUntilExpiry, radarLifecycleState } from '@/lib/monitoring/radarRenewal';
 import { sendRadarRenewalReminder } from '@/lib/monitoring/notificationService';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
-// Dias-marco em que o lembrete é enviado (cron diário; cada assinatura cruza
-// cada marco uma vez → sem spam diário, sem precisar de coluna nova).
+// Dias-marco do lembrete/dunning (cron diário; cada assinatura cruza cada marco
+// uma vez → sem spam diário, sem coluna nova). Positivos = pré-vencimento;
+// negativos = dunning durante a graça.
 const MILESTONES = new Set([7, 3, 1, 0, -1]);
 
 export async function GET(req: Request) {
@@ -27,10 +28,11 @@ export async function GET(req: Request) {
   });
 
   const now = Date.now();
-  const janelaInicio = new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString();
+  // Janela ampla (−45d … +8d) p/ alcançar tanto pré-vencimento quanto expiradas
+  // que ainda estão marcadas 'active' e precisam ser fechadas.
+  const janelaInicio = new Date(now - 45 * 24 * 60 * 60 * 1000).toISOString();
   const janelaFim = new Date(now + 8 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Assinaturas ativas cuja expiração cai na janela de lembrete (−2d … +8d).
   const { data: subs, error } = await admin
     .from('radar_subscriptions')
     .select('user_id, expires_at, status')
@@ -44,31 +46,59 @@ export async function GET(req: Request) {
 
   const renewUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://agrolex-ia-qx32.vercel.app'}/dashboard/radar?checkout=true`;
   let enviados = 0;
+  let expiradas = 0;
   let pulados = 0;
   const falhas: string[] = [];
 
   for (const sub of subs || []) {
     const dias = daysUntilExpiry(sub.expires_at, now);
-    if (dias === null || !MILESTONES.has(dias)) {
+    const estado = radarLifecycleState(sub.expires_at, now);
+    const ehMilestone = dias !== null && MILESTONES.has(dias);
+
+    // Fora de marco e ainda não expirou de fato → nada a fazer.
+    if (estado !== 'expired' && !ehMilestone) {
       pulados++;
       continue;
     }
+
+    // Resolve e-mail/nome (necessário tanto para lembrete quanto para win-back).
     const { data: authUser } = await admin.auth.admin.getUserById(sub.user_id);
     const email = authUser?.user?.email;
+    const { data: profile } = email
+      ? await admin.from('profiles').select('full_name').eq('id', sub.user_id).maybeSingle()
+      : { data: null };
+
+    if (estado === 'expired') {
+      // Passou da graça: fecha a assinatura (status='expired') — fim do vazamento
+      // de monitoramento grátis — e envia win-back (uma vez; o flip evita reprocesso).
+      await admin
+        .from('radar_subscriptions')
+        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .eq('user_id', sub.user_id)
+        .eq('status', 'active');
+      expiradas++;
+      if (email) {
+        const r = await sendRadarRenewalReminder({
+          user_email: email,
+          user_name: profile?.full_name || undefined,
+          days_until_expiry: dias ?? -1,
+          renew_url: renewUrl,
+        });
+        if (r.sent || r.method === 'log_only') enviados++;
+        else falhas.push(`${sub.user_id}: ${r.error}`);
+      }
+      continue;
+    }
+
+    // Marco de lembrete/dunning (pré-vencimento ou dentro da graça).
     if (!email) {
       pulados++;
       continue;
     }
-    const { data: profile } = await admin
-      .from('profiles')
-      .select('full_name')
-      .eq('id', sub.user_id)
-      .maybeSingle();
-
     const r = await sendRadarRenewalReminder({
       user_email: email,
       user_name: profile?.full_name || undefined,
-      days_until_expiry: dias,
+      days_until_expiry: dias as number,
       renew_url: renewUrl,
     });
     if (r.sent || r.method === 'log_only') enviados++;
@@ -79,6 +109,7 @@ export async function GET(req: Request) {
     success: true,
     avaliadas: subs?.length || 0,
     enviados,
+    expiradas,
     pulados,
     ...(falhas.length ? { falhas } : {}),
   });

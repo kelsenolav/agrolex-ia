@@ -1,3 +1,5 @@
+import { isEffectivelyActive } from './radarRenewal';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseAdmin = any;
 
@@ -35,7 +37,10 @@ export async function getRadarStatus(
 
   const trialUsed = (trialRecord && trialRecord.length > 0) || false;
 
-  if (sub) {
+  // Grace-aware (Eixo 2 / 2.3): uma assinatura status='active' mas vencida ALÉM da
+  // graça NÃO conta como ativa (fecha o vazamento de monitoramento grátis pós-expiração).
+  // Durante a graça segue ativa — sem corte abrupto.
+  if (sub && isEffectivelyActive(sub.expires_at, Date.now())) {
     return {
       has_active_subscription: true,
       trial_used: trialUsed,

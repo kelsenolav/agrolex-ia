@@ -44,6 +44,37 @@ export function isExpired(expiresAt: string | null | undefined, nowMs: number): 
   return d !== null && d < 0;
 }
 
+export type RadarLifecycle = 'active' | 'expiring_soon' | 'grace' | 'expired';
+
+/**
+ * Estado do ciclo de vida da assinatura. `grace` = venceu mas dentro do período
+ * de tolerância (mantém o valor enquanto cobra a renovação, sem corte abrupto).
+ * `expired` = passou da graça (efetivamente inativa). `null`/sem data → 'active'
+ * (não cortar quem tem registro ativo sem data de expiração).
+ */
+export function radarLifecycleState(
+  expiresAt: string | null | undefined,
+  nowMs: number,
+  graceDays = 3,
+  soonDays = 7,
+): RadarLifecycle {
+  const d = daysUntilExpiry(expiresAt, nowMs);
+  if (d === null) return 'active';
+  if (d < -graceDays) return 'expired';
+  if (d < 0) return 'grace';
+  if (d <= soonDays) return 'expiring_soon';
+  return 'active';
+}
+
+/** Assinatura efetivamente ativa (ativa, expirando ou em graça — NÃO expirada de fato). */
+export function isEffectivelyActive(
+  expiresAt: string | null | undefined,
+  nowMs: number,
+  graceDays = 3,
+): boolean {
+  return radarLifecycleState(expiresAt, nowMs, graceDays) !== 'expired';
+}
+
 /** Extrai a quantidade de propriedades de um payment_method "radar_3_properties" → 3. */
 export function parseRadarPropertyCount(paymentMethod: string | null | undefined): number {
   const m = /^radar_(\d+)_properties$/.exec(String(paymentMethod || ''));
