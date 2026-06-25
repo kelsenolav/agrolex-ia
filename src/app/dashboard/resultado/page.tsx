@@ -498,6 +498,25 @@ function ResultadoContent() {
     return { achadosCriticos: criticos, achadosAltos: altos, achadosMedios: medios };
   }, [problemas]);
 
+  // Conversão trial→pago (Eixo 2 / 2.4): telemetria de visualização da ponte
+  // análise→Radar (mostrada quando o laudo tem achados de risco).
+  const radarConvViewFired = useRef(false);
+  const radarRiskCount = achadosCriticos + achadosAltos;
+  useEffect(() => {
+    if (problemas.length > 0 && userId && !radarConvViewFired.current) {
+      radarConvViewFired.current = true;
+      fetch('/api/marketing/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'track_event', userId, email: userEmail,
+          eventType: 'radar_conversion_view',
+          meta: { risk_count: radarRiskCount, total_achados: problemas.length },
+        }),
+      }).catch(() => {});
+    }
+  }, [problemas.length, userId, userEmail, radarRiskCount]);
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-brand-green" size={48} /></div>;
   }
@@ -767,6 +786,47 @@ function ResultadoContent() {
             )}
           </div>
         </div>
+
+        {/* Ponte de conversão análise → Radar (Eixo 2 / 2.4) */}
+        {problemas.length > 0 && (
+          <div className="mb-8 rounded-xl border border-brand-green/30 bg-gradient-to-br from-emerald-50 to-white p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-xl bg-brand-green/10 border border-brand-green/20 flex items-center justify-center flex-shrink-0">
+                <ShieldCheck size={22} className="text-brand-green" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-gray-900 text-lg">
+                  {radarRiskCount > 0
+                    ? `Esta matrícula tem ${radarRiskCount} pendência${radarRiskCount !== 1 ? 's' : ''} de risco`
+                    : 'Esta matrícula tem pontos a acompanhar'}
+                </h3>
+                <p className="text-sm text-gray-600 mt-1 leading-relaxed">
+                  Um laudo é uma <strong>foto do hoje</strong>. Gravames, penhoras e ações de terceiros mudam com o tempo.
+                  O <strong>Radar</strong> vigia esta propriedade automaticamente e te avisa <strong>antes</strong> de
+                  uma mudança virar problema — varredura periódica em cartório, SIGEF, CAR e tribunais + alertas por e-mail.
+                </p>
+                <button
+                  onClick={() => {
+                    fetch('/api/marketing/leads', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'track_event', userId, email: userEmail,
+                        eventType: 'radar_conversion_click',
+                        meta: { risk_count: radarRiskCount, property_id: (analiseSafe as { property_id?: string })?.property_id },
+                      }),
+                    }).catch(() => {});
+                    router.push('/dashboard/radar');
+                  }}
+                  className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-brand-green text-white font-bold text-sm hover:brightness-110 transition-all shadow-sm"
+                >
+                  <ShieldCheck size={15} /> Monitorar com o Radar <ArrowUpRight size={15} />
+                </button>
+                <p className="text-xs text-gray-500 mt-2">A partir de R$ 49,90/mês · 1ª varredura gratuita · cancele quando quiser</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* B. Análises Complementares */}
         {childAnalyses.map((child, idx) => {
