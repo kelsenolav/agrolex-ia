@@ -3,6 +3,20 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 24/06/2026
+- **Bloco**: Eixo 2 / Sub-bloco 2.3 — **Dunning, graça e fim do vazamento de monitoramento grátis**
+- **Contexto**: 3º sub-bloco do Eixo 2. Dois buracos de lifecycle: (a) nada marcava assinaturas como `expired` — ficavam `active` para sempre; (b) `getRadarStatus` checava só `status='active'`, sem `expires_at` → vencida parecia ativa **e o cron de monitoramento varria `is_monitoring` cegamente** = monitoramento grátis pós-expiração (vazamento de receita).
+- **Solução (1 commit)**:
+  - `radarRenewal.ts` — `radarLifecycleState` (active/expiring_soon/grace/expired, graça=3d) + `isEffectivelyActive`. +2 testes (total 11).
+  - `getRadarStatus` — **grace-aware**: vencida além da graça deixa de contar como ativa (canRunScan/UI refletem a realidade).
+  - `cron/renewals` — marca pós-graça como `'expired'` (fim do vazamento no estado) + **win-back**; dunning nos marcos {7,3,1,0,-1}; janela ampliada p/ −45d.
+  - `cron/monitoring` — **GATE de assinatura**: só varre propriedades de usuários com assinatura efetivamente ativa (graça inclusa). Batch-fetch (sem N queries); resposta expõe `skipped_no_subscription`.
+- **⚠️ MUDANÇA DE COMPORTAMENTO**: após a graça, usuário sem assinatura paga **deixa de receber varredura automática** (dunning + win-back dão o pouso suave). Postura SaaS correta p/ MRR.
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **693**. Deploy `vercel --prod --yes` **EFETUADO** (commit `62c9b945`).
+- **Próximo (Eixo 2)**: 2.4 conversão trial→pago. Auto-débito real (MP Preapproval) quando o usuário habilitar.
+
+---
+
+- **Data**: 24/06/2026
 - **Bloco**: Eixo 2 / Sub-bloco 2.2 — **Funil de ativação do Radar** (CRO — telemetria + conversão)
 - **Contexto**: 2º sub-bloco do Eixo 2. O funil do Radar (trial scan → modal → checkout) tinha a mecânica mas **zero telemetria** — impossível medir conversão.
 - **Solução (1 commit, só `dashboard/radar/page.tsx`)**:
