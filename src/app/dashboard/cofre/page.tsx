@@ -30,24 +30,6 @@ export default function CofrePage() {
     setLoading(false);
   };
 
-  const handleUploadFake = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-
-    // Simular upload de arquivo para MVP
-    const fileName = prompt("Nome do Documento (Ex: Contrato de Compra e Venda):");
-    if (!fileName) return;
-
-    await supabase.from('documents').insert({
-      user_id: session.user.id,
-      document_type: fileName,
-      file_path: `/storage/fake/${Date.now()}.pdf`,
-      is_data_room: true
-    });
-
-    fetchFiles();
-  };
-
   const handleShare = (id: string) => {
     const url = `${window.location.origin}/cofre/view/${id}`;
     navigator.clipboard.writeText(url);
@@ -70,9 +52,21 @@ export default function CofrePage() {
           <Link href="/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors font-medium">
             <ArrowLeft size={20} /> Voltar
           </Link>
-          <button onClick={handleUploadFake} className="flex items-center gap-2 bg-purple-700 text-white px-5 py-2 rounded-lg font-bold hover:bg-purple-800 transition-all shadow">
-            <Upload size={18} /> Novo Documento Seguro
-          </button>
+          <Link href="/dashboard/nova-analise" className="flex items-center gap-2 bg-purple-700 text-white px-5 py-2 rounded-lg font-bold hover:bg-purple-800 transition-all shadow">
+            <Upload size={18} /> Enviar documento (Nova Análise)
+          </Link>
+        </div>
+
+        {/* Honestidade (Eixo 4): o armazenamento/upload seguro dedicado está em desenvolvimento.
+            Hoje os documentos entram pelo fluxo real de Nova Análise. */}
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+          <Shield size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800">
+            <strong>Cofre seguro dedicado — em desenvolvimento.</strong> O upload e o compartilhamento
+            criptografado de documentos chegam em breve. Por enquanto, envie seus documentos pelo fluxo
+            de <Link href="/dashboard/nova-analise" className="underline font-semibold">Nova Análise</Link>,
+            onde já ficam armazenados com segurança.
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border p-6 min-h-[400px]">

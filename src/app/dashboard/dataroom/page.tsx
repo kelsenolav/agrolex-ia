@@ -250,6 +250,16 @@ export default function DataRoomPage() {
           <ArrowLeft size={20} /> Painel Principal
         </Link>
 
+        {/* Honestidade (Eixo 4): demonstração — os documentos e alertas abaixo são exemplos. */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+          <p className="text-sm text-amber-800">
+            <strong>Prévia de demonstração.</strong> O Data Room está em desenvolvimento — os documentos e
+            alertas exibidos abaixo são <strong>exemplos ilustrativos</strong>, não os seus dados. O armazenamento
+            e o compartilhamento seguros chegam em breve. Para enviar documentos de verdade, use a{' '}
+            <Link href="/dashboard/nova-analise" className="underline font-semibold">Nova Análise</Link>.
+          </p>
+        </div>
+
         {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>

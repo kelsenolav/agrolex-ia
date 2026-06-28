@@ -79,14 +79,16 @@ export default function CalendarioPage() {
 
     if (error) {
       console.error(error);
-      alert("Erro ao salvar no banco! Você rodou o novo script SQL (v4_features.sql)?\nErro: " + error.message);
+      alert("Não foi possível salvar a obrigação agora. Tente novamente em instantes.");
       return;
     }
 
     setIsModalOpen(false);
     fetchTasks();
-    if(notify) {
-      alert(`Alerta programado! Você será avisado por E-mail e WhatsApp sobre o vencimento de "${newTaskTitle}".`);
+    if (notify) {
+      // Honestidade (Eixo 4): a obrigação fica registrada na agenda; os lembretes
+      // automáticos por e-mail/WhatsApp ainda estão em desenvolvimento.
+      alert(`Obrigação "${newTaskTitle}" registrada na sua agenda. Os lembretes automáticos por e-mail/WhatsApp chegam em breve — por ora, acompanhe pelo calendário.`);
     }
   };
 
@@ -278,8 +280,8 @@ export default function CalendarioPage() {
               <label className="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} className="w-5 h-5 text-orange-600 rounded" />
                 <div className="flex flex-col">
-                  <span className="font-bold text-orange-900 flex items-center gap-1"><Bell size={16}/> Receber Alertas</span>
-                  <span className="text-xs text-orange-700">Avisos via WhatsApp e E-mail próximos ao vencimento.</span>
+                  <span className="font-bold text-orange-900 flex items-center gap-1"><Bell size={16}/> Receber Alertas <span className="text-[10px] bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full font-bold">EM BREVE</span></span>
+                  <span className="text-xs text-orange-700">Avisos automáticos via WhatsApp e E-mail próximos ao vencimento (em desenvolvimento).</span>
                 </div>
               </label>
             </div>
