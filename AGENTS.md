@@ -9,8 +9,9 @@
   - **Cofre** (`dashboard/cofre`) — era o pior: `handleUploadFake` inseria documentos-fantasma (`file_path:/storage/fake/...`). Removido; botão agora leva ao fluxo REAL (Nova Análise) + banner "em desenvolvimento".
   - **Data Room** (`dashboard/dataroom`) — banner de "prévia de demonstração" (docs/alertas exibidos são exemplos hardcoded, não dados reais).
   - **Calendário** (`dashboard/calendario`) — CRUD de `environmental_tasks` é REAL; corrigido o `alert` que prometia notificação WhatsApp/E-mail inexistente (+ badge EM BREVE no checkbox) e removida a mensagem de dev (script SQL) vazada ao usuário.
-- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **693**. Deploy `vercel --prod --yes` **EFETUADO** (commit `4daf64b5`).
-- **Pendências de consolidação (próximas)**: `admin/page.tsx` usa array de leads **mockado** (hardcoded) enquanto existe `leads/page.tsx` REAL — redundância/confusão (admin-only, baixo risco). Data Room/Cofre seguem como protótipos (agora honestos) até ganharem Storage real.
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **693**. Deploy `vercel --prod --yes` **EFETUADO** (commits `4daf64b5` honestidade + `292acdf1` admin).
+- **Admin consolidado (commit `292acdf1`)**: `/dashboard/admin` era mock (leads hardcoded, export/refresh fake, sem gate de role). Substituído por **redirect → `/dashboard/leads`** (painel comercial REAL com dados via `/api/marketing/leads`, KPIs e gate de admin). `MetricsGrid.tsx` (mock, só usado pelo admin) removido. **−447 linhas**.
+- **Pendências de consolidação (próximas)**: Data Room/Cofre seguem como protótipos (agora honestos) até ganharem Supabase Storage real.
 - **Roadmap**: Eixo 1 ✅, Eixo 2 ✅, Eixo 4 iniciado. Eixo 3 (Vertical) pendente de escolha do usuário.
 
 ---
