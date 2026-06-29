@@ -3,6 +3,16 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 29/06/2026
+- **Bloco**: Vendabilidade / Funil — **CTA consistente + correção de funil quebrado no cadastro** (diretriz: tornar o sistema atrativo/funcional/vendável)
+- **Contexto**: diretriz permanente do usuário ("pare de perguntar e faça tudo p/ o sistema ser atrativo/funcional/vendável"). Auditoria visual da landing (pública → verificável no preview): **landing forte** (hero profissional, sem erros de runtime). Achados concretos corrigidos:
+  - **CTA inconsistente**: navbar dizia "Verificar Minha Propriedade" e o funil "Fazer Análise Gratuita". Alinhados (navbar+hero+CTA final) → "Fazer Análise Gratuita" + rota de trial. Link "Entrar" adicionado ao navbar.
+  - **🔴 BUG DE FUNIL (alto impacto)**: o `/cadastro` **descartava** o `?next=/dashboard/nova-analise&trial=true` do CTA — o usuário cadastrava e **não caía no fluxo de análise** (a promessa do CTA não entregava). Corrigido: cadastro preserva `next` até o `/login` (que já o honra com validação de path interno). Funil íntegro: CTA → cadastro → login → nova-análise. Heading/botão/microcopy de conversão aquecidos.
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **693**. Deploys `vercel --prod --yes` **EFETUADOS** (commits `25ed7d7e` landing + `4caedf21` funil).
+- **Próximo (vendabilidade)**: seguir polindo o funil/UX; pendências que dependem do usuário continuam (crédito de IA, MP Preapproval, RESEND_API_KEY no Vercel).
+
+---
+
+- **Data**: 29/06/2026
 - **Bloco**: Eixo 3 / Verticalização — **Data Room com Supabase Storage real** (protótipo honesto → feature de verdade)
 - **Contexto**: 1ª vertical do Eixo 3. Escolhido o Data Room porque é puro Storage/CRUD — **zero dependência de IA** (Gemini/Claude seguem sem crédito), construível e verificável agora. Spec em `docs/superpowers/specs/2026-06-29-data-room-storage-real-design.md`.
 - **Solução (1 commit, `/dashboard/cofre`)**:
