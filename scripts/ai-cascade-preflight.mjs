@@ -27,7 +27,7 @@ const short = (s) => String(s).replace(/https?:\/\/\S+/gi, '[url]').replace(/\s+
 async function checkGemini() {
   const key = env.GEMINI_API_KEY;
   if (!key) return { skip: true };
-  const model = env.GEMINI_MODEL || 'gemini-2.0-flash';
+  const model = env.GEMINI_MODEL || 'gemini-3.5-flash'; // mesmo default do app (aiProviders.ts)
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
   const res = await fetch(url, {
     method: 'POST',
