@@ -46,8 +46,11 @@ export default function CadastroPage() {
         user_id: signUpData?.user?.id ?? null,
       });
 
-      // Substituído alert() por redirecionamento com toast integrado
-      router.push('/login?cadastro=sucesso');
+      // Preserva o destino do funil (ex.: ?next=/dashboard/nova-analise&trial=true)
+      // para o usuário cair na análise gratuita após o login. O /login honra `next`.
+      const next = new URLSearchParams(window.location.search).get('next');
+      const target = '/login?cadastro=sucesso' + (next ? `&next=${encodeURIComponent(next)}` : '');
+      router.push(target);
     }
   };
 
@@ -58,9 +61,12 @@ export default function CadastroPage() {
           <Logo size="lg" />
         </Link>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Crie sua conta
+          Crie sua conta gratuita
         </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
+        <p className="mt-2 text-center text-sm text-gray-700">
+          Comece com <span className="font-bold text-brand-green">1 análise de matrícula gratuita</span> — sem cartão, sem compromisso.
+        </p>
+        <p className="mt-1 text-center text-sm text-gray-600">
           Já tem uma conta?{' '}
           <Link href="/login" className="font-medium text-brand-gold hover:text-brand-green transition-colors">
             Faça login
@@ -148,8 +154,11 @@ export default function CadastroPage() {
                 disabled={loading}
                 className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-bold text-white bg-brand-green hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all disabled:opacity-70"
               >
-                {loading ? 'Cadastrando...' : 'Cadastrar'}
+                {loading ? 'Criando sua conta...' : 'Criar conta e analisar grátis'}
               </button>
+              <p className="mt-3 text-center text-xs text-gray-500">
+                Leva menos de 1 minuto · Seus dados ficam privados · Cancele quando quiser
+              </p>
             </div>
           </form>
         </div>
