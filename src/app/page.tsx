@@ -153,9 +153,12 @@ export default function Home() {
             <Link href="#como-funciona" className="text-gray-300 hover:text-brand-gold transition-colors font-medium text-sm tracking-wide">COMO FUNCIONA</Link>
             <Link href="#faq" className="text-gray-300 hover:text-brand-gold transition-colors font-medium text-sm tracking-wide">FAQ</Link>
           </nav>
-          <div className="flex gap-4">
-            <Link href="/cadastro" className="px-6 py-2.5 bg-gradient-to-r from-brand-gold to-yellow-600 text-brand-dark rounded-full hover:shadow-[0_0_15px_rgba(212,175,55,0.4)] transition-all font-bold text-sm">
-              Verificar Minha Propriedade
+          <div className="flex gap-4 items-center">
+            <Link href="/login" className="hidden sm:inline-flex text-gray-300 hover:text-white transition-colors font-medium text-sm">
+              Entrar
+            </Link>
+            <Link href="/cadastro?next=/dashboard/nova-analise&trial=true" className="px-6 py-2.5 bg-gradient-to-r from-brand-gold to-yellow-600 text-brand-dark rounded-full hover:shadow-[0_0_15px_rgba(212,175,55,0.4)] transition-all font-bold text-sm">
+              Fazer Análise Gratuita
             </Link>
           </div>
         </div>
@@ -842,10 +845,10 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-6">
             <Link
-              href="/cadastro"
+              href="/cadastro?next=/dashboard/nova-analise&trial=true"
               className="group inline-flex items-center gap-3 px-10 py-5 bg-gradient-to-r from-brand-gold to-yellow-600 text-brand-dark rounded-full text-xl font-bold hover:scale-105 shadow-[0_0_30px_rgba(212,175,55,0.3)] transition-all"
             >
-              Verificar Minha Propriedade
+              Fazer Análise Gratuita
               <ArrowRight size={24} className="group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
