@@ -1632,11 +1632,30 @@ ${ocrTextBlocks.join('\n\n')}
           // Timeout adaptativo: 110s para documentos densos, 90s para documentos simples
           const aiTimeoutMs = isDenseDocument ? 110000 : 90000;
 
-          const result: FallbackResult = await generateWithFallback(geminiParts, {
-            geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-            maxOutputTokens: isFastChainOfTitleOnly ? 4096 : 8192,
-            timeoutMs: aiTimeoutMs,
-          });
+          // ── Guarda de orçamento de tempo (anti-órfã) ──
+          // A função Vercel morre em maxDuration=300s. O cascata pode tentar até 4
+          // provedores × timeout; se ultrapassar o limite, a função é MORTA antes do
+          // catch rodar e a análise orfaniza em 'processing' (sem erro, sem retry).
+          // Limitamos a chamada ao tempo restante (menos margem p/ pós-processamento +
+          // persistência) e falhamos LIMPO (erro re-tentável) se não houver tempo.
+          const MAX_FN_MS = 300000;
+          const POST_MARGIN_MS = 45000; // pós-processamento (ISF/crítica) + escrita no banco
+          const remainingBudgetMs = MAX_FN_MS - (Date.now() - startedAt) - POST_MARGIN_MS;
+          if (remainingBudgetMs < 20000) {
+            throw new Error('ai_timeout: tempo insuficiente para concluir a análise nesta tentativa (documento denso) — re-tentar.');
+          }
+          // Cada provedor da cascata fica limitado a ~metade do orçamento (2 tentativas cabem).
+          const perProviderTimeoutMs = Math.max(20000, Math.min(aiTimeoutMs, Math.floor(remainingBudgetMs / 2)));
+
+          const result: FallbackResult = await withTimeout(
+            generateWithFallback(geminiParts, {
+              geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+              maxOutputTokens: isFastChainOfTitleOnly ? 4096 : 8192,
+              timeoutMs: perProviderTimeoutMs,
+            }),
+            remainingBudgetMs,
+            'analysis_total_budget',
+          );
 
           markdownResponse = result.text;
           geminiMs = result.duration_ms;
