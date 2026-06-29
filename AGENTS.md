@@ -2,6 +2,19 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 29/06/2026
+- **Bloco**: Eixo 3 / Verticalização — **Data Room com Supabase Storage real** (protótipo honesto → feature de verdade)
+- **Contexto**: 1ª vertical do Eixo 3. Escolhido o Data Room porque é puro Storage/CRUD — **zero dependência de IA** (Gemini/Claude seguem sem crédito), construível e verificável agora. Spec em `docs/superpowers/specs/2026-06-29-data-room-storage-real-design.md`.
+- **Solução (1 commit, `/dashboard/cofre`)**:
+  - **Upload real** ao bucket privado `documents` (espelha a Nova Análise) + insert em `documents` (`is_data_room=true`, `status='completed'`, `document_type`=nome do arquivo — sem migration).
+  - **Download** e **compartilhamento** via **signed URL temporário** (7 dias). Achado de design: a RLS de `documents` exige `user_id=auth.uid()`, então a página `/cofre/view/[id]` **não serviria** a um destinatário externo (banco/comprador) — o **signed URL** é a forma correta de share seguro (pré-autorizado, com prazo, sem login). **Delete** remove do Storage + tabela.
+  - **Consolidação**: `/dashboard/dataroom` (mock) → **redirect** p/ `/dashboard/cofre`. Card "Data Room" adicionado à navbar (deixa de ser órfão).
+- **🔴 ACHADO de infra (verificado ao vivo)**: o bucket `documents` aceita **só `application/pdf`** (limite 50MB) e é **compartilhado com o pipeline de análise**. Por isso o Data Room valida **PDF/50MB no client** em vez de alargar o bucket (alargar deixaria não-PDFs entrarem no OCR). `scripts/check-dataroom.mjs` prova upload+signed URL+download+cleanup end-to-end (✅).
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **693**. Deploy `vercel --prod --yes` **EFETUADO** (commit `9b87edfd`). Homologação visual (tela gated) recomendada.
+- **Roadmap**: Eixo 1 ✅, Eixo 2 ✅, Eixo 4 (consolidação) boa parte ✅, **Eixo 3 iniciado** (Data Room ✅). Próximas verticais possíveis: Crédito Rural (depende de IA), Calendário.
+
+---
+
 - **Data**: 28/06/2026
 - **Bloco**: Eixo 4 / Consolidação — **Honestidade dos módulos simulados** (proteger a credibilidade blindada no Eixo 1)
 - **Contexto**: início do Eixo 4. Auditoria classificou o dashboard: **núcleo 100% REAL** (análise, crédito-rural, radar, planos, leads); 3 módulos com ações **simuladas**. Achado importante: os 3 já estavam **órfãos** (grep não achou link no navbar/componentes) — expostos só por URL direta (risco baixo, mas corrigido por honestidade).
