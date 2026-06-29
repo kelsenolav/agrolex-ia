@@ -683,6 +683,10 @@ export default function DashboardPage() {
               <span className="w-2 h-2 rounded-full bg-green-400" />
               Crédito Rural
             </Link>
+            <Link href="/dashboard/cofre" className="flex items-center gap-1.5 text-sm bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-lg font-medium transition-colors">
+              <span className="w-2 h-2 rounded-full bg-purple-300" />
+              Data Room
+            </Link>
             <span className="text-sm font-medium">Olá, {userName}</span>
             <button onClick={handleLogout} className="text-sm hover:text-brand-gold transition-colors font-medium">Sair</button>
           </div>
