@@ -1493,7 +1493,11 @@ export async function POST(req: Request) {
                 // orfanizando em 'processing'. Limitamos o OCR ao tempo disponível,
                 // reservando margem para a análise + pós-processamento, e falhamos LIMPO
                 // (ai_timeout re-tentável) se não couber.
-                const OCR_RESERVE_MS = 130000; // reserva p/ análise + pós-processamento + persistência
+                // O OCR é PRIORIDADE: sem o texto não há cache, e sem cache o retry
+                // recomeça do zero. Reservamos pouco (35s) só para gravar o checkpoint
+                // do OCR + tentar a análise; se a análise não couber nesta passada, ela
+                // falha limpo e o retry (auto-chain) reaproveita o OCR já transcrito.
+                const OCR_RESERVE_MS = 35000;
                 const ocrBudgetMs = 300000 - (Date.now() - startedAt) - OCR_RESERVE_MS;
                 if (ocrBudgetMs < 25000) {
                   throw new Error('ai_timeout: tempo insuficiente para a leitura (OCR) do documento nesta tentativa — re-tentar.');
