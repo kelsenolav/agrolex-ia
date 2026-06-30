@@ -288,7 +288,7 @@ async function generateWithClaude(
   const { Anthropic } = await import('@anthropic-ai/sdk');
   const anthropic = new Anthropic({ apiKey: claudeKey });
   
-  const modelName = getEnvVar('CLAUDE_MODEL', 'claude-3-5-sonnet-20241022');
+  const modelName = getEnvVar('CLAUDE_MODEL', 'claude-haiku-4-5-20251001');
   const timeoutMs = options.timeoutMs || 90000;
   const maxTokens = options.maxOutputTokens || 8192;
   

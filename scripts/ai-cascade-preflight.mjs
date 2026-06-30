@@ -41,7 +41,7 @@ async function checkGemini() {
 async function checkClaude() {
   const key = env.ANTHROPIC_API_KEY;
   if (!key) return { skip: true };
-  const model = env.ANTHROPIC_MODEL || 'claude-3-5-haiku-20241022';
+  const model = env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001'; // Haiku 4.5 (atual; mesmo default do app)
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },

@@ -287,7 +287,7 @@ export async function ocrWithClaude(
 
     const { Anthropic } = await import('@anthropic-ai/sdk');
     const anthropic = new Anthropic({ apiKey: claudeKey });
-    const modelName = options.claudeModel || process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022';
+    const modelName = options.claudeModel || process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
     const timeoutMs = options.timeoutMs || 60000;
 
     const base64Data = pdfBuffer.toString('base64');
