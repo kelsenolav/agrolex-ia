@@ -1422,8 +1422,36 @@ export async function POST(req: Request) {
         let anyOcrUsed = false;
         const ocrTextBlocks: string[] = [];
 
+        // ── Cache de OCR resumível (anti-timeout) ──
+        // Se uma invocação anterior já transcreveu o OCR (persistido em
+        // findings.ocr_cache), reaproveita — um retry pula a parte cara e a análise
+        // roda com o orçamento de tempo quase inteiro. Garante que matrículas densas
+        // concluam em ≤2 passos (o auto-chain re-dispara). O texto é o mesmo, então o
+        // portão de suficiência e o computeISFVerdict produzem o veredito idêntico.
+        let ocrFromCache = false;
+        const ocrCache = (findings as any)?.ocr_cache;
+        if (ocrCache?.done && Array.isArray(ocrCache.blocks) && ocrCache.blocks.length > 0) {
+          ocrFromCache = true;
+          anyOcrUsed = true;
+          for (const block of ocrCache.blocks as string[]) {
+            ocrTextBlocks.push(block);
+            try {
+              const fp = extractPdfFingerprint(block);
+              if (fp.matriculaNumbers.length > 0) pdfSourceFingerprints.push(fp);
+            } catch { /* ignore */ }
+          }
+          const d = ocrCache.diagnostics || {};
+          pdfExtractionDiags.ocr_incomplete = !!d.ocr_incomplete;
+          pdfExtractionDiags.ocr_pages = d.ocr_pages || null;
+          pdfExtractionDiags.markdown_success = d.markdown_success || ocrCache.blocks.length;
+          pdfExtractionDiags.total_pdfs = d.total_pdfs || ocrCache.blocks.length;
+          if (Array.isArray(d.warnings)) pdfExtractionDiags.warnings.push(...d.warnings);
+          console.log(`[OCR] Reaproveitado do cache: ${ocrCache.blocks.length} bloco(s) — pulando transcrição.`);
+        }
+
         // Os downloads já foram feitos na Fase P2, reaproveitando buffers:
         for (const { doc } of downloadResults) {
+          if (ocrFromCache) break; // OCR já veio do cache — pula a transcrição (e geo, raro em matrícula densa)
           const buffer = (doc as any)._prefetchedBuffer;
           if (!buffer) continue;
 
@@ -1557,6 +1585,41 @@ export async function POST(req: Request) {
                 }
               } catch (_) { /* ignore */ }
             }
+          }
+        }
+
+        // ── Checkpoint do OCR (anti-timeout) ──
+        // Persiste o texto transcrito ANTES da análise. Se a análise morrer/timeout
+        // depois, o retry (auto-chain) reaproveita este cache e pula direto p/ a análise.
+        // Só grava quando houve OCR NOVO (não veio do cache) e há texto real.
+        if (!ocrFromCache && anyOcrUsed && ocrTextBlocks.length > 0) {
+          const ocrCacheObj = {
+            done: true,
+            blocks: ocrTextBlocks,
+            diagnostics: {
+              ocr_incomplete: pdfExtractionDiags.ocr_incomplete,
+              ocr_pages: pdfExtractionDiags.ocr_pages,
+              markdown_success: pdfExtractionDiags.markdown_success,
+              total_pdfs: pdfExtractionDiags.total_pdfs,
+              warnings: pdfExtractionDiags.warnings,
+            },
+            cached_at: new Date().toISOString(),
+          };
+          // (1) Acrescenta ao updatedFindings em memória — o caminho de ERRO espalha
+          // updatedFindings, então o cache sobrevive a uma falha da análise (e ao retry).
+          (updatedFindings as any).ocr_cache = ocrCacheObj;
+          // (2) Checkpoint imediato no banco — persiste o OCR ANTES da análise, sobrevive
+          // até a um hard-kill da função. Lê o findings atual e só ACRESCENTA ocr_cache.
+          try {
+            const { data: curRow } = await supabaseAdmin
+              .from('analyses').select('findings').eq('id', analysisId).single();
+            const baseFindings = (curRow?.findings as Record<string, unknown>) || updatedFindings;
+            await supabaseAdmin.from('analyses').update({
+              findings: { ...baseFindings, ocr_cache: ocrCacheObj },
+            }).eq('id', analysisId);
+            console.log(`[OCR] Checkpoint salvo: ${ocrTextBlocks.length} bloco(s) em ocr_cache.`);
+          } catch (cacheErr) {
+            console.warn('[OCR] Falha ao salvar checkpoint do OCR (não-fatal):', cacheErr);
           }
         }
 
