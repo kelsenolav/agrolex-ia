@@ -586,7 +586,13 @@ export async function ocrDocumentComplete(
   // 1) Tenta o documento INTEIRO primeiro (1 chamada — gentil com rate limits e
   //    suficiente para a maioria dos documentos). Só paga o custo do per-page se
   //    o modelo TRUNCAR (transcrever menos páginas do que o PDF realmente tem).
-  const whole = await ocrWithFallback(pdfBuffer, options, deps);
+  //    Cap de 35s: em densos isto SEMPRE trunca e é descartado, então não pode
+  //    consumir o orçamento todo — se demorar, parte direto p/ o per-page.
+  const whole = await ocrWithFallback(
+    pdfBuffer,
+    { ...options, timeoutMs: Math.min(options.timeoutMs || 60000, 35000) },
+    deps,
+  );
   if (realPages <= 1 || (whole.success && (whole.pageCount || 0) >= realPages)) {
     return { ...whole, pagesExpected: realPages };
   }
@@ -620,7 +626,9 @@ export async function ocrDocumentComplete(
     return ocrWithFallback(buf, opt, deps);
   };
 
-  const CONCURRENCY = 3;
+  // Concorrência 5: com os provedores vivos, transcreve ~todas as páginas numa
+  // onda (6 págs ≈ 1–2 lotes), cortando o tempo total do OCR para caber no orçamento.
+  const CONCURRENCY = 5;
   const results: (OcrResult | null)[] = new Array(pagesToProcess).fill(null);
   let cursor = 0;
   async function worker(): Promise<void> {
