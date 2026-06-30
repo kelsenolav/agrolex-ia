@@ -1459,10 +1459,25 @@ export async function POST(req: Request) {
                 // modelo lê a 1ª página e para), entregando uma matrícula incompleta à
                 // análise — a causa raiz do "falso-78". O ocrDocumentComplete fatia o PDF
                 // e transcreve cada página, garantindo que TODOS os atos registrais cheguem.
-                const ocrResult = await ocrDocumentComplete(buffer, {
-                  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-                  timeoutMs: 60000,
-                });
+                // ── Guarda de orçamento de tempo no OCR (anti-órfã) ──
+                // Em matrículas densas (6+ páginas), o OCR página-a-página pode consumir
+                // todo o maxDuration=300s e a função é morta AQUI (antes da análise),
+                // orfanizando em 'processing'. Limitamos o OCR ao tempo disponível,
+                // reservando margem para a análise + pós-processamento, e falhamos LIMPO
+                // (ai_timeout re-tentável) se não couber.
+                const OCR_RESERVE_MS = 130000; // reserva p/ análise + pós-processamento + persistência
+                const ocrBudgetMs = 300000 - (Date.now() - startedAt) - OCR_RESERVE_MS;
+                if (ocrBudgetMs < 25000) {
+                  throw new Error('ai_timeout: tempo insuficiente para a leitura (OCR) do documento nesta tentativa — re-tentar.');
+                }
+                const ocrResult = await withTimeout(
+                  ocrDocumentComplete(buffer, {
+                    geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+                    timeoutMs: 60000,
+                  }),
+                  ocrBudgetMs,
+                  'ocr_budget',
+                );
                 pdfExtractionDiags.extraction_total_ms += ocrResult.durationMs;
 
                 // Portão de completude: se a transcrição cobriu MENOS páginas do que o
