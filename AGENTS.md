@@ -2,6 +2,15 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 30/06/2026
+- **Bloco**: IA restaurada + **fim do órfão em `processing`** (guardas de orçamento de tempo no OCR e na análise)
+- **Contexto**: usuário recarregou crédito **Gemini** (✅ vivo; `gemini-3.5-flash`/`2.5-flash`/`flash-latest` respondem). Preflight tinha falso-negativo (default velho `gemini-2.0-flash` 404) → corrigido p/ `gemini-3.5-flash` (commit `678742fe`). Rede: **Gemini ✅ · OpenAI ✅ · Groq ✅ · Claude ❌** (crédito caiu em org diferente da chave `sk-ant-api03-3EIsC…oAAA` — não bloqueia, 3 provedores vivos).
+- **🔴 BUG achado por e2e real (2.705, 6 páginas) e CORRIGIDO**: o cascata de IA + OCR página-a-página podia passar de `maxDuration=300s`; a função Vercel era **morta antes do `catch`** → análise **orfanizava em `processing`** (sem erro, sem retry — spinner infinito). Correção (commits `fd94f650` análise + `ba5f72ad` OCR): **guardas de orçamento de tempo** (`withTimeout`) no `ocrDocumentComplete` (reserva 130s p/ análise) e no `generateWithFallback` (limita ao tempo restante − 45s). Se não couber, falha **LIMPO** (o catch do OCR vira `ai_unavailable` re-tentável; análise vira `ai_timeout`). **Provado ao vivo**: a 2.705 agora atinge **`error` terminal aos 180s** em vez de orfanizar.
+- **⚠️ Limite arquitetural restante (não-órfão)**: a 2.705 (extrema) consome ~134s só de OCR → sobra pouco p/ analisar 6 páginas → erra (`processing_failed`) sem render laudo completo. Matrículas **normais (1–3 pág.) funcionam bem e rápido** com Gemini de volta. Para densas concluírem 100%, falta **processamento em etapas** (OCR e análise em invocações separadas) — próximo item arquitetural.
+- **Validação**: `tsc` 0, `lint` 0 erros, `build` OK, `jest` **693**. Deploys efetuados.
+
+---
+
 - **Data**: 29/06/2026
 - **Bloco**: Vendabilidade / Funil — **CTA consistente + correção de funil quebrado no cadastro** (diretriz: tornar o sistema atrativo/funcional/vendável)
 - **Contexto**: diretriz permanente do usuário ("pare de perguntar e faça tudo p/ o sistema ser atrativo/funcional/vendável"). Auditoria visual da landing (pública → verificável no preview): **landing forte** (hero profissional, sem erros de runtime). Achados concretos corrigidos:
