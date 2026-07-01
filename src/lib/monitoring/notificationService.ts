@@ -79,7 +79,7 @@ export async function sendRadarNotification(payload: NotificationPayload): Promi
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: process.env.RESEND_FROM_EMAIL || 'AgrolexI Radar <radar@agrolex.dev>',
+          from: process.env.RESEND_FROM_EMAIL || 'AgrolexI Radar <radar@agrolexi.com.br>',
           to: [payload.user_email],
           subject: `🛡️ Radar AgrolexI — ${payload.alerts.length} alerta(s) para "${payload.property_name}"`,
           html: buildEmailHtml(payload),
@@ -168,7 +168,7 @@ export async function sendRadarRenewalReminder(
         method: 'POST',
         headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: process.env.RESEND_FROM_EMAIL || 'AgrolexI Radar <radar@agrolex.dev>',
+          from: process.env.RESEND_FROM_EMAIL || 'AgrolexI Radar <radar@agrolexi.com.br>',
           to: [payload.user_email],
           subject,
           html: buildRenewalEmailHtml(payload),
@@ -242,7 +242,7 @@ export async function sendTrialReminderEmail(
         method: 'POST',
         headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: process.env.RESEND_FROM_EMAIL || 'AgrolexI <contato@agrolex.dev>',
+          from: process.env.RESEND_FROM_EMAIL || 'AgrolexI <contato@agrolexi.com.br>',
           to: [payload.user_email],
           subject,
           html: buildTrialReminderEmailHtml(payload),
