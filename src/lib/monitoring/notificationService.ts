@@ -183,3 +183,77 @@ export async function sendRadarRenewalReminder(
   console.log(`[Radar Renewal] E-mail não enviado (sem RESEND_API_KEY) — ${payload.user_email}, expira em ${payload.days_until_expiry}d`);
   return { sent: false, method: 'log_only', error: 'RESEND_API_KEY não configurada' };
 }
+
+// ─── Lembrete de trial abandonado (funil de ativação) ────────────────────────
+
+export interface TrialReminderPayload {
+  user_email: string;
+  user_name?: string;
+  segmento: 'nunca_iniciou' | 'iniciou_sem_concluir';
+  cta_url: string;
+}
+
+function buildTrialReminderEmailHtml(p: TrialReminderPayload): string {
+  const nome = p.user_name || 'Produtor';
+  const titulo = p.segmento === 'iniciou_sem_concluir'
+    ? 'Sua análise gratuita não foi concluída'
+    : 'Sua análise gratuita ainda está disponível';
+  const corpo = p.segmento === 'iniciou_sem_concluir'
+    ? 'Notamos que você começou uma análise, mas ela não chegou a ser concluída — provavelmente por uma instabilidade técnica pontual. Sua análise gratuita continua disponível, sem custo adicional. Que tal tentar novamente?'
+    : 'Você se cadastrou no AgrolexI, mas ainda não usou sua análise gratuita de matrícula. Leva poucos minutos: envie o PDF da matrícula e receba um Índice de Segurança Fundiária (ISF) com os principais riscos da propriedade.';
+
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Roboto,sans-serif;background:#f3f4f6;">
+  <div style="max-width:600px;margin:0 auto;padding:24px;">
+    <div style="background:#064e3b;padding:20px 24px;border-radius:12px 12px 0 0;">
+      <h1 style="margin:0;color:#fff;font-size:18px;">🌾 AgrolexI</h1>
+    </div>
+    <div style="background:#fff;padding:24px;border:1px solid #e5e7eb;border-top:none;">
+      <p style="margin:0 0 8px;color:#111827;font-size:17px;font-weight:700;">${titulo}</p>
+      <p style="margin:0 0 16px;color:#374151;">Olá, ${nome}.</p>
+      <p style="margin:0 0 16px;color:#374151;">${corpo}</p>
+      <div style="text-align:center;margin-top:24px;">
+        <a href="${p.cta_url}" style="display:inline-block;padding:12px 32px;background:#059669;color:#fff;font-weight:700;text-decoration:none;border-radius:8px;font-size:14px;">
+          Fazer minha análise gratuita →
+        </a>
+      </div>
+    </div>
+    <div style="padding:12px 24px;text-align:center;border-radius:0 0 12px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-top:none;">
+      <p style="margin:0;font-size:11px;color:#9ca3af;">© ${new Date().getFullYear()} AgrolexI — Inteligência Fundiária</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export async function sendTrialReminderEmail(
+  payload: TrialReminderPayload,
+): Promise<{ sent: boolean; method: string; error?: string }> {
+  const resendKey = process.env.RESEND_API_KEY;
+  const subject = payload.segmento === 'iniciou_sem_concluir'
+    ? '🌾 Sua análise gratuita no AgrolexI não foi concluída'
+    : '🌾 Você ainda não usou sua análise gratuita no AgrolexI';
+  if (resendKey) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM_EMAIL || 'AgrolexI <contato@agrolex.dev>',
+          to: [payload.user_email],
+          subject,
+          html: buildTrialReminderEmailHtml(payload),
+        }),
+      });
+      if (res.ok) return { sent: true, method: 'resend' };
+      return { sent: false, method: 'resend', error: `HTTP ${res.status}: ${await res.text()}` };
+    } catch (err: unknown) {
+      return { sent: false, method: 'resend', error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  console.log(`[Trial Reminder] E-mail não enviado (sem RESEND_API_KEY) — ${payload.user_email}, segmento=${payload.segmento}`);
+  return { sent: false, method: 'log_only', error: 'RESEND_API_KEY não configurada' };
+}

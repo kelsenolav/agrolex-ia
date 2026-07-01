@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { daysUntilExpiry, radarLifecycleState } from '@/lib/monitoring/radarRenewal';
 import { sendRadarRenewalReminder } from '@/lib/monitoring/notificationService';
+import { runTrialReminderJob } from '@/lib/trial/trialReminderJob';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -105,6 +106,35 @@ export async function GET(req: Request) {
     else falhas.push(`${sub.user_id}: ${r.error}`);
   }
 
+  // Lembrete de trial abandonado (funil de ativação) — reaproveita este cron
+  // diário em vez de registrar um 3º job em vercel.json (evita depender do
+  // limite de crons do plano Vercel). Falha aqui não afeta o resultado do
+  // Radar acima (bloco isolado, sempre reportado à parte).
+  //
+  // GATE EXPLÍCITO: só envia de verdade com TRIAL_REMINDER_ENABLED=true. Sem
+  // essa flag, o código roda (deploy seguro) mas não dispara nenhum e-mail —
+  // decisão consciente para não começar a mandar e-mail automático a leads
+  // reais só porque o código foi implantado. Ativar exige o operador setar a
+  // env var no Vercel (mesmo padrão de RESEND_API_KEY/CRON_SECRET/MP prod).
+  const trialReminderEnabled = process.env.TRIAL_REMINDER_ENABLED === 'true';
+  let trialReminders: (Awaited<ReturnType<typeof runTrialReminderJob>> & { enabled: boolean }) | null = null;
+  if (!trialReminderEnabled) {
+    trialReminders = { avaliados: 0, enviados: 0, pulados: 0, falhas: [], enabled: false };
+  } else {
+    try {
+      const jobResult = await runTrialReminderJob(admin);
+      trialReminders = { ...jobResult, enabled: true };
+    } catch (err: unknown) {
+      trialReminders = {
+        avaliados: 0,
+        enviados: 0,
+        pulados: 0,
+        falhas: [err instanceof Error ? err.message : String(err)],
+        enabled: true,
+      };
+    }
+  }
+
   return NextResponse.json({
     success: true,
     avaliadas: subs?.length || 0,
@@ -112,5 +142,6 @@ export async function GET(req: Request) {
     expiradas,
     pulados,
     ...(falhas.length ? { falhas } : {}),
+    trial_reminders: trialReminders,
   });
 }
