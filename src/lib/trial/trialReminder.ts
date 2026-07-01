@@ -38,3 +38,36 @@ export function proximoMarcoLembrete(diasCadastro: number, marcosJaEnviados: num
   }
   return null;
 }
+
+// ─── WhatsApp manual (admin clica, sem API) ──────────────────────────────────
+// Funções client-safe (sem `process.env`/Node) — usadas tanto pelo cron de
+// e-mail quanto pela página /dashboard/leads.
+
+/**
+ * Normaliza um telefone brasileiro salvo em qualquer formato pro padrão que o
+ * wa.me exige (só dígitos, com código do país). Nunca lança erro nem tenta
+ * "corrigir" números tortos (ex: faltando o 9) — só garante o prefixo 55.
+ * Retorna `null` só quando não há dígito nenhum pra normalizar.
+ */
+export function normalizePhoneForWhatsApp(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+  return digits.startsWith('55') ? digits : `55${digits}`;
+}
+
+/**
+ * Mesmo texto usado no e-mail (sendTrialReminderEmail), em versão texto puro
+ * pronta pro wa.me — sem HTML, com saudação mais direta de conversa.
+ */
+export function getWhatsAppReminderMessage(
+  segmento: TrialReminderSegment,
+  nome: string | undefined,
+  ctaUrl: string
+): string {
+  const primeiroNome = (nome ?? '').trim().split(/\s+/)[0] || 'tudo bem';
+  const corpo = segmento === 'iniciou_sem_concluir'
+    ? 'Notei que você começou uma análise gratuita no AgrolexI, mas ela não chegou a terminar — provavelmente foi uma instabilidade técnica pontual. Sua análise gratuita continua disponível, sem custo. Quer tentar de novo?'
+    : 'Você se cadastrou no AgrolexI, mas ainda não usou sua análise gratuita de matrícula. Leva poucos minutos: envie o PDF da matrícula e receba um Índice de Segurança Fundiária (ISF) com os principais riscos da propriedade.';
+  return `Oi, ${primeiroNome}! ${corpo} É só entrar aqui: ${ctaUrl}`;
+}

@@ -1,4 +1,11 @@
-import { classificarSegmentoTrial, diasDesde, proximoMarcoLembrete, MILESTONES_DIAS } from '../trialReminder';
+import {
+  classificarSegmentoTrial,
+  diasDesde,
+  proximoMarcoLembrete,
+  MILESTONES_DIAS,
+  normalizePhoneForWhatsApp,
+  getWhatsAppReminderMessage,
+} from '../trialReminder';
 
 describe('classificarSegmentoTrial', () => {
   it('sem nenhum evento → nunca_iniciou', () => {
@@ -58,5 +65,61 @@ describe('proximoMarcoLembrete', () => {
 
   it('cron atrasado (30 dias, nenhum marco enviado) → recupera o marco mais antigo primeiro, não pula direto pro último', () => {
     expect(proximoMarcoLembrete(30, [])).toBe(MILESTONES_DIAS[0]);
+  });
+});
+
+describe('normalizePhoneForWhatsApp', () => {
+  it('sem código do país → adiciona 55', () => {
+    expect(normalizePhoneForWhatsApp('63999783534')).toBe('5563999783534');
+  });
+
+  it('já com 55 → não duplica', () => {
+    expect(normalizePhoneForWhatsApp('5563999783534')).toBe('5563999783534');
+  });
+
+  it('remove parênteses/traço/espaço', () => {
+    expect(normalizePhoneForWhatsApp('(63) 99978-3534')).toBe('5563999783534');
+  });
+
+  it('número torto (10 dígitos, faltando o 9) → normaliza sem tentar corrigir, nunca lança erro', () => {
+    expect(normalizePhoneForWhatsApp('6381001043')).toBe('556381001043');
+  });
+
+  it('null/undefined/vazio → null (sem botão pra mostrar)', () => {
+    expect(normalizePhoneForWhatsApp(null)).toBeNull();
+    expect(normalizePhoneForWhatsApp(undefined)).toBeNull();
+    expect(normalizePhoneForWhatsApp('')).toBeNull();
+  });
+
+  it('string sem nenhum dígito → null', () => {
+    expect(normalizePhoneForWhatsApp('abc')).toBeNull();
+  });
+});
+
+describe('getWhatsAppReminderMessage', () => {
+  const URL = 'https://agrolexi.com.br/dashboard/nova-analise';
+
+  it('segmento iniciou_sem_concluir menciona que a análise não terminou', () => {
+    const msg = getWhatsAppReminderMessage('iniciou_sem_concluir', 'Angelo Luiz', URL);
+    expect(msg).toContain('Oi, Angelo!');
+    expect(msg.toLowerCase()).toContain('não chegou a terminar');
+    expect(msg).toContain(URL);
+  });
+
+  it('segmento nunca_iniciou menciona que ainda não usou a análise gratuita', () => {
+    const msg = getWhatsAppReminderMessage('nunca_iniciou', 'Maria', URL);
+    expect(msg).toContain('Oi, Maria!');
+    expect(msg.toLowerCase()).toContain('ainda não usou');
+  });
+
+  it('sem nome → saudação genérica, sem quebrar', () => {
+    const msg = getWhatsAppReminderMessage('nunca_iniciou', undefined, URL);
+    expect(msg).toContain('Oi, tudo bem!');
+  });
+
+  it('usa só o primeiro nome, mesmo com nome completo', () => {
+    const msg = getWhatsAppReminderMessage('nunca_iniciou', 'Angelo Luiz Papa Parmejane', URL);
+    expect(msg).toContain('Oi, Angelo!');
+    expect(msg).not.toContain('Papa Parmejane');
   });
 });

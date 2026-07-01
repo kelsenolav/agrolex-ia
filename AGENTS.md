@@ -3,6 +3,20 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 01/07/2026
+- **Bloco**: Botão "WhatsApp" manual em `/dashboard/leads` (sem API — deep-link `wa.me`)
+- **Contexto**: usuário queria reengajar o Angelo por WhatsApp além do e-mail. Rodado `/product-brainstorming` (WhatsApp de verdade via API oficial exige verificação de Business Manager + aprovação de template — inviável agora, e o cron/reminders antigo só simulava com `console.log`, nunca existiu envio real) e `/brainstorming` (4 perguntas fechadas com o usuário: reusar texto do e-mail, mostrar só pra quem precisa de lembrete, sempre normalizar telefone sem esconder botão, registrar telemetria) antes de implementar — usuário autorizou pular a etapa formal de spec/plano dado o tamanho pequeno da feature.
+- **Implementação (zero API, zero backend novo de verdade)**:
+  - `trialReminder.ts` ganhou `normalizePhoneForWhatsApp` (só dígitos + prefixo 55, nunca tenta "corrigir" número torto, nunca lança erro) e `getWhatsAppReminderMessage` (mesmo texto do e-mail, versão texto puro, abre com "Oi, {primeiro nome}!").
+  - `api/marketing/leads/route.ts` — nova ação `track_lead_event`: registra o evento no metadata do **lead** contatado (não do admin que clicou) — mesmo padrão de append já usado por `update_interest_status`.
+  - `dashboard/leads/page.tsx` — botão "WhatsApp" na coluna Atividade, só aparece pra quem tem conta + não converteu + zero análise concluída (reaplicado o MESMO gate duplo do lembrete por e-mail: `trial_completed` no histórico bloqueia mesmo se a tabela `analyses` não tiver nenhuma linha concluída hoje — achado real). Clique dispara telemetria fire-and-forget e abre `wa.me/<numero>?text=<mensagem>` em nova aba.
+- **🔴 Achado real durante a verificação ao vivo (não hipotético)**: minha primeira versão do botão aplicava só o gate simples (`analises_concluidas === 0`), sem o gate duplo — testado ao vivo (autenticado como admin real, produção real) e confirmei que o lead `teste1@gmail.com` (que tem `trial_completed` no histórico mas 0 análises na tabela hoje — mesmo caso já achado no bloco do e-mail) recebia o botão incorretamente. Corrigido antes do deploy: reaplica a mesma exclusão por `trial_completed` histórico.
+- **Verificado ao vivo em produção real**: botão aparece só pro Angelo (não pro admin com 3 análises concluídas, não pro lead sem conta, não pro teste1 após a correção); clique gerou `whatsapp_contact_sent` no metadata do próprio Angelo (confirmado no banco), não no do admin.
+- **Validação**: `tsc` 0, `lint` 0 erros, `jest` **735** (+10 novos), `build` OK.
+- **Deploy em produção**: **EFETUADO**.
+
+---
+
+- **Data**: 01/07/2026
 - **Bloco**: Domínio `agrolexi.com.br` verificado no Resend — e-mail transacional do sistema volta a funcionar de verdade
 - **Contexto**: seguimento do bloco anterior (domínio conectado ao Vercel). O usuário criou a caixa `contato@agrolexi.com.br` na Hostinger — oportunidade de resolver de vez o bloqueio de e-mail achado ao ativar `TRIAL_REMINDER_ENABLED` (domínio antigo `agrolex.dev` nunca verificava — provavelmente nunca foi de fato do usuário).
 - **Execução**: domínio `agrolexi.com.br` cadastrado no Resend pelo usuário; DNS (TXT `resend._domainkey`, MX+TXT `send` para SPF, `_dmarc`) adicionado na mesma Hostinger onde já estava o A/CNAME do Vercel — **sem conflito** com o e-mail que a própria Hostinger já gerencia pro `contato@agrolexi.com.br` (o MX/SPF do Resend fica no subdomínio `send.`, o da Hostinger fica na raiz `@`; confirmado visualmente na tabela de DNS depois de configurado). `RESEND_FROM_EMAIL=AgrolexI <contato@agrolexi.com.br>` adicionada no Vercel; fallback hardcoded em `notificationService.ts` (3 ocorrências: `sendRadarNotification`, `sendRadarRenewalReminder`, `sendTrialReminderEmail`) trocado de `@agrolex.dev` pra `@agrolexi.com.br` (nunca mais cai de volta num domínio não-verificável se a env var sumir).

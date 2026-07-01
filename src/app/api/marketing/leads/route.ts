@@ -312,6 +312,47 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    // ─── ACTION: track_lead_event ────────────────────────────────────────────
+    // Registra um evento no histórico do PRÓPRIO lead (não do admin que clicou)
+    // — ex: admin mandou WhatsApp manual pra esse lead. Mesmo padrão de append
+    // em metadata.commercial_events já usado por update_interest_status.
+    if (action === 'track_lead_event') {
+      const { email, eventType } = body;
+
+      if (!email || typeof email !== 'string') {
+        return NextResponse.json({ error: 'E-mail obrigatório.' }, { status: 400 });
+      }
+      if (!eventType || typeof eventType !== 'string') {
+        return NextResponse.json({ error: 'eventType obrigatório.' }, { status: 400 });
+      }
+
+      const { data: existingLead } = await supabaseAdmin
+        .from('marketing_leads')
+        .select('id, metadata')
+        .eq('email', email.trim().toLowerCase())
+        .maybeSingle();
+
+      if (!existingLead) {
+        return NextResponse.json({ error: 'Lead não encontrado.' }, { status: 404 });
+      }
+
+      const baseMetadata = (existingLead.metadata as Record<string, unknown> | null) ?? {};
+      const currentEvents = Array.isArray(baseMetadata.commercial_events) ? baseMetadata.commercial_events : [];
+      const updatedEvents = [...currentEvents, { type: eventType, timestamp: new Date().toISOString() }];
+
+      const { error } = await supabaseAdmin
+        .from('marketing_leads')
+        .update({ metadata: { ...baseMetadata, commercial_events: updatedEvents } })
+        .eq('email', email.trim().toLowerCase());
+
+      if (error) {
+        console.warn('[marketing/leads] track_lead_event falhou (não bloqueante):', error.message);
+        return NextResponse.json({ ok: false, warning: 'Erro ao registrar evento (ignorado).' }, { status: 200 });
+      }
+
+      return NextResponse.json({ ok: true });
+    }
+
     // ─── ACTION: get_trial_status ───────────────────────────────────────────
     if (action === 'get_trial_status') {
       const { userId, email } = body;

@@ -15,10 +15,12 @@ import {
   Zap,
   Filter,
   Flame,
+  MessageCircle,
 } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { supabase } from '@/lib/supabase';
 import { calculateInterestScore, getCommercialScoreBadge } from '@/lib/commercial/scoring';
+import { classificarSegmentoTrial, normalizePhoneForWhatsApp, getWhatsAppReminderMessage } from '@/lib/trial/trialReminder';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -87,6 +89,31 @@ function getActivityLabel(atividade?: AtividadeLead | null): { resumo: string; d
   }
   if (u?.data) detalhe += ` · ${new Date(u.data).toLocaleDateString('pt-BR')}`;
   return { resumo, detalhe, temAnalise: true };
+}
+
+const NOVA_ANALISE_URL = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://agrolexi.com.br'}/dashboard/nova-analise`;
+
+// Só oferece o WhatsApp manual pra quem realmente precisa de lembrete: tem
+// conta, não converteu, e ainda não tem nenhuma análise concluída — mesmo
+// critério do lembrete automático por e-mail (runTrialReminderJob).
+function getWhatsAppReminderLink(lead: MarketingLead, whatsapp: string | null): { url: string; phone: string } | null {
+  if (!lead.atividade) return null; // sem conta no sistema — nada a lembrar
+  if (lead.converteu) return null;
+
+  const events = Array.isArray(lead.metadata?.commercial_events) ? lead.metadata!.commercial_events : [];
+  // Mesmo gate duplo do lembrete por e-mail (runTrialReminderJob): a tabela
+  // analyses pode não refletir uma conclusão antiga se a análise foi apagada
+  // depois — trial_completed no histórico é a fonte mais confiável.
+  const jaCompletouTrialHistoricamente = events.some((e) => e.type === 'trial_completed');
+  if (lead.atividade.analises_concluidas > 0 || jaCompletouTrialHistoricamente) return null;
+
+  const phone = normalizePhoneForWhatsApp(whatsapp);
+  if (!phone) return null;
+
+  const segmento = classificarSegmentoTrial(events);
+  const mensagem = getWhatsAppReminderMessage(segmento, lead.nome, NOVA_ANALISE_URL);
+
+  return { url: `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`, phone };
 }
 
 interface LeadMetrics {
@@ -344,6 +371,18 @@ export default function DashboardLeadsPage() {
     } finally {
       setUpdatingId(null);
     }
+  };
+
+  const handleWhatsAppClick = (email: string, url: string) => {
+    // Fire-and-forget: registra no histórico do PRÓPRIO lead (não bloqueia a
+    // abertura do link se a chamada falhar ou demorar).
+    fetch('/api/marketing/leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'track_lead_event', email, eventType: 'whatsapp_contact_sent' }),
+    }).catch((err) => console.error('[dashboard/leads] erro ao registrar contato WhatsApp:', err));
+
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const trackPriorityView = async () => {
@@ -637,6 +676,7 @@ export default function DashboardLeadsPage() {
                     {filteredLeads.map((lead) => {
                       const scoreBadge = getCommercialScoreBadge(lead.score);
                       const atividade = getActivityLabel(lead.atividade);
+                      const whatsappLink = getWhatsAppReminderLink(lead, lead.interest.whatsapp);
                       return (
                         <tr
                           key={lead.id}
@@ -655,6 +695,15 @@ export default function DashboardLeadsPage() {
                             </div>
                             {atividade.detalhe && (
                               <div className="text-xs text-gray-500 mt-0.5">{atividade.detalhe}</div>
+                            )}
+                            {whatsappLink && (
+                              <button
+                                onClick={() => handleWhatsAppClick(lead.email, whatsappLink.url)}
+                                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-full px-2 py-0.5 transition-colors"
+                                title="Abre o WhatsApp com uma mensagem de lembrete já pronta"
+                              >
+                                <MessageCircle size={12} /> WhatsApp
+                              </button>
                             )}
                           </td>
                           <td className="px-5 py-4 text-sm">
