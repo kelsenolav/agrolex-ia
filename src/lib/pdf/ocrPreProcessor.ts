@@ -583,54 +583,47 @@ export async function ocrDocumentComplete(
   const perPageTimeout = Math.min(options.timeoutMs || 60000, 60000);
   const MAX_PAGES = 40; // guarda contra documentos absurdamente longos
 
-  // 1) Tenta o documento INTEIRO primeiro (1 chamada — gentil com rate limits e
-  //    suficiente para a maioria dos documentos). Só paga o custo do per-page se
-  //    o modelo TRUNCAR (transcrever menos páginas do que o PDF realmente tem).
-  //    Cap de 35s: em densos isto SEMPRE trunca e é descartado, então não pode
-  //    consumir o orçamento todo — se demorar, parte direto p/ o per-page.
-  const whole = await ocrWithFallback(
-    pdfBuffer,
-    { ...options, timeoutMs: Math.min(options.timeoutMs || 60000, 35000) },
-    deps,
-  );
-  if (realPages <= 1 || (whole.success && (whole.pageCount || 0) >= realPages)) {
+  // 1) Documento de 1 página: 1 chamada direta (sem custo de fatiamento).
+  if (realPages <= 1) {
+    const whole = await ocrWithFallback(pdfBuffer, options, deps);
     return { ...whole, pagesExpected: realPages };
   }
 
-  // 2) Transcrição parcial detectada → fatia e transcreve página a página.
+  // 2) Multi-página: vai DIRETO ao per-page. NÃO tenta o "documento inteiro" antes —
+  //    em densos ele SEMPRE trunca (lê só a 1ª página), é descartado, e ainda podia
+  //    "aprender" um provedor lento (ex.: cair p/ OpenAI quando o Gemini trunca),
+  //    fazendo o per-page rodar lento e estourar o maxDuration. O Gemini transcreve
+  //    cada página em ~15–30s, então o per-page com a cascata completa (Gemini 1º) é
+  //    rápido e cabe no orçamento.
   let pageBuffers: Buffer[];
   try {
     pageBuffers = await splitPdfIntoPageBuffers(pdfBuffer);
   } catch {
-    // Fatiamento falhou → devolve o que o documento inteiro conseguiu.
+    // Fatiamento falhou → último recurso: tenta o documento inteiro.
+    const whole = await ocrWithFallback(pdfBuffer, options, deps);
     return { ...whole, pagesExpected: realPages };
   }
 
   const pagesToProcess = Math.min(pageBuffers.length, MAX_PAGES);
   const rank = { high: 0, medium: 1, low: 2 };
+  const perPageOpt = { ...options, timeoutMs: perPageTimeout };
 
-  // Transcreve as páginas em PARALELO com concorrência limitada. Sequencial
-  // estoura o maxDuration (300s) em documentos de várias páginas — 6 páginas em
-  // série mataram a função. Em paralelo (lote de CONCURRENCY), a latência total
-  // ≈ a de uma página × (nº de lotes). O cap evita disparar dezenas de chamadas
-  // simultâneas (429) em documentos longos; a cascata interna já reabsorve 503/429.
-  // Aprende com a tentativa do documento inteiro qual provedor está VIVO e usa-o
-  // DIRETO por página — evita re-sondar Gemini/Claude mortos a cada uma das N
-  // páginas (cada re-sondagem custava ~o timeout, e ×N páginas estourava o
-  // maxDuration=300s sob apagão do Gemini). Se o Gemini estava vivo (só truncou)
-  // ou se tudo falhou, mantém a cascata completa por página.
+  // Sonda barata: transcreve a 1ª PÁGINA (cascata completa, Gemini 1º) para aprender
+  // qual provedor está VIVO — e essa transcrição JÁ É o resultado da página 1 (não há
+  // desperdício). As demais páginas usam o provedor aprendido direto (evita re-sondar
+  // provedores mortos a cada página sob apagão).
+  const probe = await ocrWithFallback(pageBuffers[0], perPageOpt, deps);
   const perPageOcr = (buf: Buffer): Promise<OcrResult> => {
-    const opt = { ...options, timeoutMs: perPageTimeout };
-    if (whole.success && whole.method === 'openai_ocr') return (deps.openai || ocrWithOpenAI)(buf, opt);
-    if (whole.success && whole.method === 'claude_ocr') return (deps.claude || ocrWithClaude)(buf, opt);
-    return ocrWithFallback(buf, opt, deps);
+    if (probe.success && probe.method === 'openai_ocr') return (deps.openai || ocrWithOpenAI)(buf, perPageOpt);
+    if (probe.success && probe.method === 'claude_ocr') return (deps.claude || ocrWithClaude)(buf, perPageOpt);
+    return ocrWithFallback(buf, perPageOpt, deps);
   };
 
-  // Concorrência 5: com os provedores vivos, transcreve ~todas as páginas numa
-  // onda (6 págs ≈ 1–2 lotes), cortando o tempo total do OCR para caber no orçamento.
+  // Concorrência 5: com os provedores vivos, transcreve as páginas restantes em ~1 onda.
   const CONCURRENCY = 5;
   const results: (OcrResult | null)[] = new Array(pagesToProcess).fill(null);
-  let cursor = 0;
+  results[0] = probe; // página 1 já transcrita pela sonda
+  let cursor = 1;     // workers começam na página 2
   async function worker(): Promise<void> {
     while (cursor < pagesToProcess) {
       const i = cursor++;
