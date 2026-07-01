@@ -377,7 +377,92 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Erro ao buscar leads.' }, { status: 500 });
     }
 
-    return NextResponse.json({ leads: data ?? [] });
+    const leads = data ?? [];
+
+    // Resolve user_id ausente via profiles.email — best-effort, não bloqueia
+    // (leads antigos ou capturados por register_interest podem não ter user_id).
+    const semUserId = leads.filter((l) => !l.user_id && l.email);
+    if (semUserId.length > 0) {
+      const emails = semUserId.map((l) => l.email);
+      const { data: perfis } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email')
+        .in('email', emails);
+      const idPorEmail = new Map((perfis ?? []).map((p) => [p.email, p.id]));
+      for (const lead of semUserId) {
+        const resolvedId = idPorEmail.get(lead.email);
+        if (resolvedId) lead.user_id = resolvedId;
+      }
+    }
+
+    // Atividade real no sistema (análises) por lead — o que o admin realmente
+    // precisa saber para decidir se/como reabordar o usuário: só se cadastrou,
+    // subiu matrícula, e se a análise terminou (e com que resultado).
+    const userIds = Array.from(new Set(leads.map((l) => l.user_id).filter(Boolean)));
+    const atividadePorUsuario: Record<string, {
+      total_analises: number;
+      analises_concluidas: number;
+      analises_com_erro: number;
+      ultima_analise: {
+        status: string;
+        risk_level: string | null;
+        isf_score: number | null;
+        isf_faixa: string | null;
+        propriedade: string | null;
+        data: string;
+      } | null;
+    }> = {};
+
+    if (userIds.length > 0) {
+      // Nota: completed_at NÃO é coluna própria de `analyses` — vive dentro do
+      // JSONB `findings` (gravado pelo /api/analyze). Usamos created_at aqui.
+      const { data: analises, error: analisesError } = await supabaseAdmin
+        .from('analyses')
+        .select('user_id, status, risk_level, isf_score, isf_faixa, created_at, properties(name)')
+        .in('user_id', userIds)
+        .order('created_at', { ascending: false });
+
+      if (analisesError) {
+        console.warn('[marketing/leads GET] falha ao buscar atividade de análises (não bloqueante):', analisesError.message);
+      } else {
+        for (const a of analises ?? []) {
+          const uid = a.user_id as string;
+          if (!atividadePorUsuario[uid]) {
+            atividadePorUsuario[uid] = {
+              total_analises: 0,
+              analises_concluidas: 0,
+              analises_com_erro: 0,
+              ultima_analise: null,
+            };
+          }
+          const resumo = atividadePorUsuario[uid];
+          resumo.total_analises += 1;
+          if (a.status === 'completed') resumo.analises_concluidas += 1;
+          if (a.status === 'error') resumo.analises_com_erro += 1;
+          // Já ordenado desc por created_at — a 1ª ocorrência por usuário é a mais recente
+          if (!resumo.ultima_analise) {
+            const propriedade = Array.isArray(a.properties) ? a.properties[0] : a.properties;
+            resumo.ultima_analise = {
+              status: a.status,
+              risk_level: a.risk_level ?? null,
+              isf_score: a.isf_score ?? null,
+              isf_faixa: a.isf_faixa ?? null,
+              propriedade: propriedade?.name ?? null,
+              data: a.created_at,
+            };
+          }
+        }
+      }
+    }
+
+    const leadsComAtividade = leads.map((l) => ({
+      ...l,
+      atividade: l.user_id
+        ? (atividadePorUsuario[l.user_id] ?? { total_analises: 0, analises_concluidas: 0, analises_com_erro: 0, ultima_analise: null })
+        : null,
+    }));
+
+    return NextResponse.json({ leads: leadsComAtividade });
   } catch (err) {
     console.error('[marketing/leads GET] error:', err);
     return NextResponse.json({ error: 'Erro interno.' }, { status: 500 });

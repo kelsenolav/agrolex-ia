@@ -22,6 +22,22 @@ import { calculateInterestScore, getCommercialScoreBadge } from '@/lib/commercia
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
+interface UltimaAnalise {
+  status: string;
+  risk_level: string | null;
+  isf_score: number | null;
+  isf_faixa: string | null;
+  propriedade: string | null;
+  data: string;
+}
+
+interface AtividadeLead {
+  total_analises: number;
+  analises_concluidas: number;
+  analises_com_erro: number;
+  ultima_analise: UltimaAnalise | null;
+}
+
 interface MarketingLead {
   id: string;
   created_at: string;
@@ -35,12 +51,42 @@ interface MarketingLead {
   trial_utilizado: boolean;
   ultima_atividade: string;
   metadata?: Record<string, any> | null;
+  // Uso real no sistema — o que o lead efetivamente fez (não apenas contato)
+  atividade?: AtividadeLead | null;
   // Campos estruturados que podem vir do banco futuramente
   interest_registered?: boolean;
   interest_registered_at?: string | null;
   interest_plan?: string | null;
   interest_volume?: string | null;
   interest_status?: string | null;
+}
+
+const STATUS_ANALISE_LABEL: Record<string, string> = {
+  completed: 'Concluída',
+  processing: 'Analisando',
+  error: 'Falhou',
+  pending: 'Pendente',
+  payment_pending: 'Aguardando pagamento',
+  ready_for_processing: 'Liberada',
+};
+
+function getActivityLabel(atividade?: AtividadeLead | null): { resumo: string; detalhe: string; temAnalise: boolean } {
+  if (!atividade) {
+    return { resumo: 'Sem conta no sistema', detalhe: 'Só manifestou interesse — nunca criou login', temAnalise: false };
+  }
+  if (atividade.total_analises === 0) {
+    return { resumo: 'Cadastrado — nenhuma análise', detalhe: '', temAnalise: false };
+  }
+  const u = atividade.ultima_analise;
+  const statusLabel = u ? (STATUS_ANALISE_LABEL[u.status] ?? u.status) : '—';
+  const resumo = `${atividade.total_analises} análise(s) · ${atividade.analises_concluidas} concluída(s)`;
+  let detalhe = `Última: ${statusLabel}`;
+  if (u?.propriedade) detalhe += ` — ${u.propriedade}`;
+  if (u?.status === 'completed' && (u.isf_score != null || u.isf_faixa)) {
+    detalhe += ` (ISF ${u.isf_score ?? '—'}${u.isf_faixa ? `/${u.isf_faixa}` : ''})`;
+  }
+  if (u?.data) detalhe += ` · ${new Date(u.data).toLocaleDateString('pt-BR')}`;
+  return { resumo, detalhe, temAnalise: true };
 }
 
 interface LeadMetrics {
@@ -115,6 +161,7 @@ export default function DashboardLeadsPage() {
   const [filtroPerfil, setFiltroPerfil] = useState<string>('');
   const [filtroStatus, setFiltroStatus] = useState<string>('');
   const [filtroScoreMin, setFiltroScoreMin] = useState<string>('');
+  const [filtroAtividade, setFiltroAtividade] = useState<string>('');
 
   const trackDashboardEvent = async (accessToken: string, eventType: string, meta: Record<string, any> = {}) => {
     try {
@@ -338,6 +385,9 @@ export default function DashboardLeadsPage() {
     if (filtroPerfil && lead.interest.tipo_usuario !== filtroPerfil) return false;
     if (filtroStatus && lead.interest.interest_status !== filtroStatus) return false;
     if (filtroScoreMin && lead.score < Number(filtroScoreMin)) return false;
+    if (filtroAtividade === 'sem_analise' && (lead.atividade?.total_analises ?? 0) > 0) return false;
+    if (filtroAtividade === 'com_concluida' && (lead.atividade?.analises_concluidas ?? 0) === 0) return false;
+    if (filtroAtividade === 'so_erro' && !(((lead.atividade?.total_analises ?? 0) > 0) && (lead.atividade?.analises_concluidas ?? 0) === 0 && (lead.atividade?.analises_com_erro ?? 0) > 0)) return false;
     return true;
   });
 
@@ -480,7 +530,21 @@ export default function DashboardLeadsPage() {
                 <Filter size={16} className="text-brand-green" />
                 Filtros de Segmentação
               </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1 font-semibold">Atividade no Sistema</label>
+                  <select
+                    value={filtroAtividade}
+                    onChange={(e) => setFiltroAtividade(e.target.value)}
+                    className="w-full border border-gray-200 rounded p-2 text-xs focus:ring-1 focus:ring-brand-green focus:outline-none"
+                  >
+                    <option value="">Todos</option>
+                    <option value="sem_analise">Só cadastro (sem análise)</option>
+                    <option value="com_concluida">Com análise concluída</option>
+                    <option value="so_erro">Só análises com erro</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-xs text-gray-500 mb-1 font-semibold">Plano de Interesse</label>
                   <select
@@ -557,10 +621,11 @@ export default function DashboardLeadsPage() {
                   Nenhum lead corresponde aos filtros aplicados.
                 </div>
               ) : (
-                <table className="w-full text-left min-w-[1000px]">
+                <table className="w-full text-left min-w-[1200px]">
                   <thead className="bg-gray-50 text-gray-600 text-sm border-b border-gray-100">
                     <tr>
                       <th className="px-5 py-4 font-semibold">Nome / E-mail</th>
+                      <th className="px-5 py-4 font-semibold">Atividade no Sistema</th>
                       <th className="px-5 py-4 font-semibold">Plano Desejado</th>
                       <th className="px-5 py-4 font-semibold">Volume / Perfil</th>
                       <th className="px-5 py-4 font-semibold">Data de Interesse</th>
@@ -571,6 +636,7 @@ export default function DashboardLeadsPage() {
                   <tbody className="divide-y divide-gray-100">
                     {filteredLeads.map((lead) => {
                       const scoreBadge = getCommercialScoreBadge(lead.score);
+                      const atividade = getActivityLabel(lead.atividade);
                       return (
                         <tr
                           key={lead.id}
@@ -581,6 +647,14 @@ export default function DashboardLeadsPage() {
                             <div className="text-xs text-gray-400">{lead.email}</div>
                             {lead.interest.whatsapp && (
                               <div className="text-xs text-gray-500 font-medium mt-0.5">WhatsApp: {lead.interest.whatsapp}</div>
+                            )}
+                          </td>
+                          <td className="px-5 py-4 text-sm">
+                            <div className={`font-semibold ${atividade.temAnalise ? 'text-gray-800' : 'text-gray-400 italic'}`}>
+                              {atividade.resumo}
+                            </div>
+                            {atividade.detalhe && (
+                              <div className="text-xs text-gray-500 mt-0.5">{atividade.detalhe}</div>
                             )}
                           </td>
                           <td className="px-5 py-4 text-sm">

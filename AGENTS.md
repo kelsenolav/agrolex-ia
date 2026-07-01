@@ -3,6 +3,20 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 01/07/2026
+- **Bloco**: Painel Comercial (`/dashboard/leads`) — visibilidade de USO real (não só contato)
+- **Contexto**: usuário reportou com screenshot real de produção: via a lead "Angelo Luiz Papa Parmejane" (score 10/Frio) mas **nenhuma informação sobre o que ele fez** no sistema — se analisou matrícula, se a análise terminou, com que resultado. Sem isso, o admin não tem base pra decidir como reabordar o lead.
+- **Causa raiz**: `GET /api/marketing/leads` só fazia `select('*')` em `marketing_leads` — nunca consultava a tabela `analyses`. Toda a "atividade" mostrada na UI vinha de `metadata.commercial_events` (telemetria de clique, não uso real).
+- **Correção (2 arquivos, sem tocar `route.ts` do `/api/analyze` nem schema)**:
+  - `api/marketing/leads/route.ts` (GET) — para cada lead, resolve `user_id` (usa o já gravado; se ausente, tenta resolver por `profiles.email` — leads capturados só por `register_interest` às vezes não têm `user_id`); consulta `analyses` (`user_id, status, risk_level, isf_score, isf_faixa, created_at, properties(name)`) para os `user_id`s encontrados; agrega por usuário: total de análises, quantas concluídas, quantas com erro, e a análise mais recente (status/propriedade/ISF/risco/data). Tudo em `Promise`s simples (sem N+1 — 1 query só p/ todos os leads), fail-safe (erro na consulta de análises não derruba a resposta).
+  - `dashboard/leads/page.tsx` — nova coluna "Atividade no Sistema" distinguindo 3 estados: **"Sem conta no sistema"** (só registrou interesse, nunca criou login) vs **"Cadastrado — nenhuma análise"** (tem conta, zero análises) vs **"N análise(s) · M concluída(s)"** com detalhe da última (status, propriedade, ISF/faixa, data). Novo filtro "Atividade no Sistema" (Todos / Só cadastro sem análise / Com análise concluída / Só análises com erro) — direto pro caso de uso do admin ("quem se cadastrou e nunca fez nada" é um segmento de reengajamento).
+- **🔴 Achado real durante a verificação (não hipotético)**: testado ao vivo contra o banco de PRODUÇÃO (autenticado como admin real) — a query `analyses.select('...completed_at...')` que eu tinha escrito inicialmente **quebrava** (`column analyses.completed_at does not exist` — esse campo vive dentro do JSONB `findings`, não é coluna própria; só descobri isso testando contra dados reais antes de commitar, não por leitura de código). Corrigido para usar só `created_at`.
+- **Verificado ao vivo (produção, autenticado como admin real via cookie httpOnly)**: o lead exato do screenshot do usuário ("Angelo Luiz Papa Parmejane") agora mostra **"Cadastrado — nenhuma análise"** (achado extra: ele tem 3 eventos `trial_started` na metadata mas ZERO linhas em `analyses` — sinal real de funil quebrado nesse caso, não da feature). A própria conta do usuário (advkelsenolavbruno@gmail.com) mostra corretamente **"3 análise(s) · 3 concluída(s) — Última: Concluída — Fazenda Teste (ISF 39/critico) · 01/07/2026"**. 17 dos 20 leads reais em produção não têm conta (`profiles`) — a maioria é seed de teste HML (`hml_markdown_*@agrolex.dev`) ou registrou interesse sem nunca logar.
+- **Validação**: `tsc` 0, `lint` 0 erros (mesmos 12 warnings pré-existentes), `jest` **705** (sem regressão), `build` OK.
+- **Deploy em produção**: **EFETUADO**.
+
+---
+
+- **Data**: 01/07/2026
 - **Bloco**: Crédito Rural / Ambiental — verificação AO VIVO em APIs governamentais reais (TerraBrasilis/DETER + reaproveita SICAR/CAR do Radar); IBAMA permanece autodeclarado por não ter API pública
 - **Contexto**: usuário pediu para implementar "todas as APIs governamentais possíveis" para checar a propriedade a partir da matrícula/CAR já cadastrados, substituindo a verificação ambiental do módulo de Crédito Rural que era 100% autodeclarada (`environmentalEngine.ts` já tinha o comentário "HONESTIDADE: hoje o sistema NÃO consulta PRODES/INPE ou IBAMA em tempo real").
 - **Pesquisa técnica (endpoints reais verificados ao vivo em 01/07/2026, nada suposto)**:
