@@ -18,12 +18,29 @@ import {
   getISFBgTint,
   getISFTextTint,
   getISFDescription,
+  getISFTaxonomy,
   classifyISFScore,
   normalizeISFLevel,
 } from '@/lib/isf/isfTaxonomy';
 import type { ISFLevel } from '@/lib/isf/isfTaxonomy';
 import { getCommercialAccess, type TrialProfile } from '@/lib/commercial/trial';
 import { getPlanPermissions } from '@/lib/commercial/plans';
+import { AUDIT_MODULES } from '@/lib/auditModules';
+
+// Rótulo legível do módulo (catálogo oficial + fallback para chaves legadas)
+const MODULE_NAME_BY_ID: Record<string, string> = AUDIT_MODULES.reduce((acc, mod) => {
+  acc[mod.id] = mod.name;
+  return acc;
+}, {} as Record<string, string>);
+
+function getModuleDisplayName(moduleId: string): string {
+  return MODULE_NAME_BY_ID[moduleId] || moduleId;
+}
+
+function getModuleListLabel(moduleIds: string[]): string {
+  if (!moduleIds || moduleIds.length === 0) return '';
+  return moduleIds.map(getModuleDisplayName).join(', ');
+}
 
 const planLimits: Record<string, number> = {
   trial: 10,
@@ -355,6 +372,71 @@ export default function DashboardPage() {
       };
     }
     return { isf_score: null, risk_label: null, risk_level: null, isf_version: null };
+  }
+
+  /**
+   * Determina o pior (mais crítico) ISF entre a análise-mãe e suas análises
+   * complementares concluídas. Cada análise complementar calcula seu ISF de forma
+   * isolada (escopado ao módulo específico), então o card-topo da propriedade deve
+   * refletir o maior risco real encontrado em qualquer uma delas — nunca esconder
+   * um achado mais grave de uma complementar atrás de um score melhor da mãe.
+   * Comparação por severidade da taxonomy (maior severidade = mais crítico).
+   */
+  function getWorstISFAcrossFamily(
+    parent: Analysis,
+    children: Analysis[]
+  ): {
+    isf_score: number | null;
+    risk_level: string | null;
+    risk_label: string | null;
+    source: 'parent' | 'child';
+    sourceModuleLabel: string | null;
+  } {
+    const parentISF = getISFV2FromFindings(parent.findings);
+    const parentScoreData = calcularScoreAgroLex(parent.findings, parent.risk_level, parentISF.isf_score);
+    const parentStatus = normalizeStatus(parent.status || '').type;
+    const parentScore = parentStatus === 'completed' ? (parentISF.isf_score ?? parentScoreData.score) : null;
+    const parentLevel = (parentISF.risk_level || parent.risk_level || '') as ISFLevel;
+
+    let worst: {
+      isf_score: number | null;
+      risk_level: string | null;
+      risk_label: string | null;
+      source: 'parent' | 'child';
+      sourceModuleLabel: string | null;
+    } = {
+      isf_score: parentScore,
+      risk_level: parentLevel || null,
+      risk_label: parentISF.risk_label || (parentLevel ? getISFLabel(parentLevel) : null),
+      source: 'parent',
+      sourceModuleLabel: null,
+    };
+    let worstSeverity = worst.risk_level ? getISFTaxonomy(worst.risk_level).severity : -1;
+
+    for (const child of children) {
+      if (normalizeStatus(child.status || '').type !== 'completed') continue;
+      const childISF = getISFV2FromFindings(child.findings);
+      const childScoreData = calcularScoreAgroLex(child.findings, child.risk_level, childISF.isf_score);
+      const childScore = childISF.isf_score ?? childScoreData.score;
+      const childLevel = (childISF.risk_level || child.risk_level || '') as ISFLevel;
+      if (!childLevel) continue;
+      const childSeverity = getISFTaxonomy(childLevel).severity;
+      if (childSeverity > worstSeverity) {
+        worstSeverity = childSeverity;
+        const childModules = Array.isArray((child.findings as any)?.selected_modules)
+          ? (child.findings as any).selected_modules
+          : [];
+        worst = {
+          isf_score: childScore,
+          risk_level: childLevel,
+          risk_label: childISF.risk_label || getISFLabel(childLevel),
+          source: 'child',
+          sourceModuleLabel: childModules.length > 0 ? getModuleListLabel(childModules) : null,
+        };
+      }
+    }
+
+    return worst;
   }
 
   const handleStartAnalysis = async (analysisId: string, propertyId: string, retryOptions?: { retryMessage?: string; forceRetry?: boolean; isAutoChain?: boolean }) => {
@@ -1001,9 +1083,20 @@ export default function DashboardPage() {
               const isfV2ForScore = getISFV2FromFindings(analise.findings);
               const scoreData = calcularScoreAgroLex(analise.findings, analise.risk_level, isfV2ForScore.isf_score);
               const isfV2 = getISFV2FromFindings(analise.findings);
-              const displayScore = statusType === 'completed' ? (isfV2.isf_score !== null ? isfV2.isf_score : scoreData.score) : null;
-              const displayLevel = (isfV2.risk_level || analise.risk_level || '') as ISFLevel;
-              const riskLabel = isfV2.risk_label || (displayLevel ? getISFLabel(displayLevel) : '') || analise.risk_level || '';
+              const ownDisplayScore = statusType === 'completed' ? (isfV2.isf_score !== null ? isfV2.isf_score : scoreData.score) : null;
+              const ownDisplayLevel = (isfV2.risk_level || analise.risk_level || '') as ISFLevel;
+
+              // O card-topo deve refletir o PIOR risco entre a mãe e suas complementares
+              // concluídas — uma complementar pode achar algo mais grave que a mãe.
+              const familyWorst = statusType === 'completed'
+                ? getWorstISFAcrossFamily(analise, childrenByParent.get(analise.id) || [])
+                : null;
+              const worstIsFromChild = familyWorst?.source === 'child';
+
+              const displayScore = statusType === 'completed' ? (familyWorst?.isf_score ?? ownDisplayScore) : null;
+              const displayLevel = (familyWorst?.risk_level || ownDisplayLevel || '') as ISFLevel;
+              const riskLabel = familyWorst?.risk_label || (displayLevel ? getISFLabel(displayLevel) : '') || analise.risk_level || '';
+              const worstSourceModuleLabel = worstIsFromChild ? familyWorst?.sourceModuleLabel : null;
 
               // Cor da borda-esquerda do card por criticidade / status
               const cardBorderLeft =
@@ -1151,6 +1244,11 @@ export default function DashboardPage() {
                             {riskLabel}
                           </span>
                         )}
+                        {worstIsFromChild && statusType === 'completed' && (
+                          <span className="text-xs text-gray-500 italic">
+                            conforme análise complementar{worstSourceModuleLabel ? `: ${worstSourceModuleLabel}` : ''}
+                          </span>
+                        )}
                         {recommended.length > 0 && statusType === 'completed' && (
                           <button
                             onClick={() => {
@@ -1263,6 +1361,11 @@ export default function DashboardPage() {
                                   return modName[m] || m;
                                 }).join(', ')}
                               </p>
+                              {childStatus.type === 'completed' && childScore !== null && (
+                                <p className="text-[11px] text-gray-400 italic mt-0.5 leading-snug">
+                                  ISF desta análise (módulo: {childModules.length > 0 ? getModuleListLabel(childModules) : 'complementar'}) — não substitui o risco geral da matrícula.
+                                </p>
+                              )}
                             </div>
                             {/* Actions */}
                             <div className="flex-shrink-0">
