@@ -3,6 +3,17 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 01/07/2026
+- **Bloco**: UX — análise complementar não pode parecer que "o risco melhorou"
+- **Contexto**: usuário notou algo real no dashboard: propriedade "Fazenda Teste" com análise-mãe **39/Crítico**, e uma análise complementar "Nulidades e Fraudes" mostrando **75** (verde) logo abaixo — pergunta direta: "está correto?".
+- **Diagnóstico (confirmado por leitura de código, não achismo)**: cada análise complementar calcula seu próprio ISF de forma **isolada**, só a partir dos achados do módulo daquela análise (`route.ts:2236-2277`) — não herda nem pondera os achados/score da mãe (`recommendations/accept/route.ts:171-196` confirma que só o `case_file` é herdado, não `isf_score`/achados). Isso é correto no cálculo (cada módulo é uma lente específica), mas a UI mostrava os dois scores lado a lado sem nenhum contexto — visualmente lê como "melhorou", quando na verdade são escopos diferentes que não deveriam ser comparados como antes/depois.
+- **Correção (commit `130fb84`, dashboard apenas — sem tocar `route.ts` nem o motor ISF)**: (1) cada card de análise complementar ganha um aviso de escopo: "ISF desta análise (módulo: X) — não substitui o risco geral da matrícula"; (2) o card-topo da propriedade passa a refletir o **PIOR risco** (maior severidade) entre a mãe e todas as complementares concluídas — nunca esconde um achado mais grave de uma complementar atrás de um score melhor da mãe; quando o pior vem de uma complementar, mostra "conforme análise complementar: {módulo}".
+- **Verificado ao vivo** (browser autenticado via cookie httpOnly, mesmo método de sessões anteriores): Fazenda Teste real com mãe=39/Crítico + complementares 39 (Origem Pública) e 75 (Nulidades e Fraudes) — rótulos de escopo corretos nas duas, card-topo mantém 39 (nenhuma complementar é pior que a mãe neste caso — cenário inverso, onde uma complementar É pior, não foi testado ao vivo, só por leitura de código + tsc/build).
+- **Validação**: `tsc` 0, `lint` 0 erros, `jest` **693** (sem regressão), `build` OK.
+- **Deploy em produção**: **EFETUADO**.
+
+---
+
+- **Data**: 01/07/2026
 - **Bloco**: HOTFIX — laudo vazando JSON cru (`matricula_individual` sem fallback de erro)
 - **Sintoma reportado pelo usuário**: 1ª análise real pós-restauração da IA (matrícula 6767, Porto Nacional/TO, módulo `matricula_individual`) — o laudo/PDF veio com o **JSON bruto** da IA no lugar do texto (`{"identificacao": {...}, "atos_registrais": [...` visível na tela). ISF calculado ficou correto (o score não depende do `resumo` renderizado).
 - **Causa raiz (confirmada por leitura de código, não suposição)**: em `route.ts`, quando `tryParseMatriculaIndividualJson()` falha (ex: a IA trunca a resposta no meio do array `atos_registrais` por limite de tokens, gerando JSON incompleto), **não havia NENHUM tratamento de erro** — o código só logava `console.warn` e seguia com `markdownResponse` ainda contendo o JSON cru, que era gravado direto em `findings.resumo` e a análise marcada `completed`. O contrato de `matricula_individual` é **JSON-only** (`auditPromptBuilder.ts` exige `parecer_markdown` dentro do JSON) — não existe modo texto-livre legítimo para esse módulo.
