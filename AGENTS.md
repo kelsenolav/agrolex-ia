@@ -2,6 +2,18 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 01/07/2026
+- **Bloco**: HOTFIX — laudo vazando JSON cru (`matricula_individual` sem fallback de erro)
+- **Sintoma reportado pelo usuário**: 1ª análise real pós-restauração da IA (matrícula 6767, Porto Nacional/TO, módulo `matricula_individual`) — o laudo/PDF veio com o **JSON bruto** da IA no lugar do texto (`{"identificacao": {...}, "atos_registrais": [...` visível na tela). ISF calculado ficou correto (o score não depende do `resumo` renderizado).
+- **Causa raiz (confirmada por leitura de código, não suposição)**: em `route.ts`, quando `tryParseMatriculaIndividualJson()` falha (ex: a IA trunca a resposta no meio do array `atos_registrais` por limite de tokens, gerando JSON incompleto), **não havia NENHUM tratamento de erro** — o código só logava `console.warn` e seguia com `markdownResponse` ainda contendo o JSON cru, que era gravado direto em `findings.resumo` e a análise marcada `completed`. O contrato de `matricula_individual` é **JSON-only** (`auditPromptBuilder.ts` exige `parecer_markdown` dentro do JSON) — não existe modo texto-livre legítimo para esse módulo.
+- **Bug irmão encontrado por inspeção (mesma classe, `cadeia_dominial`)**: esse módulo tinha um fallback (`validateFastChainOfTitleResponse`), mas esse validador só checa **substrings** de seções obrigatórias ("achados", "recomendacoes", "documentos analisados") — um JSON malformado contém essas mesmas palavras como **nomes de campo** e passaria pela validação por engano, vazando JSON cru do mesmo jeito.
+- **Correção (commit `830b0348`)**: `looksLikeStructuredJsonResponse()` detecta resposta que começa com `{` (ou ```` ```json ````) — se o parse JSON falhou E a resposta "parece JSON", **nunca** cai no validador de texto livre; falha limpo e retentável (`ai_incomplete_response`, mesmo padrão de erro já usado no resto do pipeline — nunca orfaniza). Aplicado nos dois módulos (`matricula_individual` ganhou o tratamento que não existia; `cadeia_dominial` ganhou a blindagem contra o falso-positivo do validador de substring).
+- **Validação**: `tsc` 0, `lint` 0 erros (10 warnings pré-existentes, não relacionados), `jest` **693** (sem regressão). Mudança é backend-only (payload da IA), sem superfície de preview visual para verificar.
+- **Deploy em produção**: **EFETUADO** (`vercel --prod --yes`).
+- **Pendência**: reproduzir com uma análise real que gere resposta truncada para confirmar em produção que agora falha limpo (retentável) em vez de vazar JSON — não reproduzido ao vivo neste bloco (depende de a IA truncar de novo, não é determinístico sob demanda).
+
+---
+
 - **Data**: 30/06/2026
 - **Bloco**: IA restaurada + **fim do órfão em `processing`** (guardas de orçamento de tempo no OCR e na análise)
 - **Contexto**: usuário recarregou crédito **Gemini** (✅) e **Claude** (✅). Preflight tinha falso-negativo (default velho `gemini-2.0-flash` 404) → corrigido p/ `gemini-3.5-flash` (commit `678742fe`). **Claude (commit `967380d5`)**: crédito estava em org diferente da chave; usuário criou chave nova na org "Kelsen's Individual Org" (US$5) e trocou no Vercel + `.env.local`. Erro virou 404 'model not found' (`claude-3-5-sonnet-20241022` descontinuado) → atualizado p/ **`claude-haiku-4-5-20251001`** em aiProviders.ts, ocrPreProcessor.ts e preflight (override via `CLAUDE_MODEL`). **🎉 REDE COMPLETA: Gemini ✅ · Claude ✅ · OpenAI ✅ · Groq ✅** (4/4 vivos).
