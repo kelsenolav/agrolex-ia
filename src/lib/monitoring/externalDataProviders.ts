@@ -104,6 +104,24 @@ export interface CertidoesResult {
   };
 }
 
+export interface DesmatamentoAlertaDetectado {
+  data: string;
+  classe: string;
+  municipio: string;
+  uf: string;
+  area_ha: number;
+  fonte: 'DETER-AMZ' | 'DETER-Cerrado';
+}
+
+export interface DesmatamentoResult {
+  // true quando ao menos uma consulta ao TerraBrasilis/DETER foi executada com
+  // sucesso (mesmo que sem alertas) — distingue "verificado e limpo" de "não verificado"
+  verificado: boolean;
+  alertas: DesmatamentoAlertaDetectado[];
+  periodo_meses: number;
+  erro?: string;
+}
+
 export interface ExternalCheckAlert {
   alert_type: string;
   severity: 'info' | 'warning' | 'critical';
@@ -271,6 +289,84 @@ export async function consultarCAR(params: PropertyParams): Promise<CARResult> {
     const msg = err instanceof Error ? err.message : String(err);
     return { found: false, car_code: params.car_code, erro: `Falha ao consultar SICAR: ${msg}` };
   }
+}
+
+// ─── TerraBrasilis / DETER (INPE) ────────────────────────────────────────────
+// Serviço público WFS (OGC), sem autenticação. Endpoints e schema verificados
+// ao vivo em 01/07/2026: https://terrabrasilis.dpi.inpe.br/geoserver/ows
+// DETER cobre apenas Amazônia Legal e Cerrado (near-real-time); outros biomas
+// só têm PRODES anual (não integrado aqui — ver AGENTS.md).
+
+const DETER_WORKSPACES: Array<{ workspace: string; layer: string; fonte: DesmatamentoAlertaDetectado['fonte'] }> = [
+  { workspace: 'deter-amz', layer: 'deter-amz:deter_amz', fonte: 'DETER-AMZ' },
+  { workspace: 'deter-cerrado-nb', layer: 'deter-cerrado-nb:deter_cerrado', fonte: 'DETER-Cerrado' },
+];
+
+function escapeCql(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+export async function consultarDesmatamentoTerraBrasilis(
+  params: PropertyParams,
+  mesesRetroativos = 24
+): Promise<DesmatamentoResult> {
+  const result: DesmatamentoResult = { verificado: false, alertas: [], periodo_meses: mesesRetroativos };
+
+  if (!params.city || !params.state) {
+    result.erro = 'Município/UF não informados na propriedade — consulta ao TerraBrasilis/DETER não é possível';
+    return result;
+  }
+
+  const uf = params.state.toUpperCase();
+  const cidade = escapeCql(params.city.trim());
+  const dataCorte = new Date();
+  dataCorte.setMonth(dataCorte.getMonth() - mesesRetroativos);
+  const dataCorteStr = dataCorte.toISOString().slice(0, 10);
+
+  let algumaConsultaOk = false;
+  const erros: string[] = [];
+
+  await Promise.all(DETER_WORKSPACES.map(async ({ workspace, layer, fonte }) => {
+    const cql = `uf='${uf}' AND municipality ILIKE '%${cidade}%' AND view_date >= '${dataCorteStr}'`;
+    const url = `https://terrabrasilis.dpi.inpe.br/geoserver/${workspace}/wfs?service=WFS&version=2.0.0&request=GetFeature&typeName=${encodeURIComponent(layer)}&outputFormat=application/json&CQL_FILTER=${encodeURIComponent(cql)}&sortBy=view_date+D&count=50`;
+
+    try {
+      const res = await withTimeout(
+        fetch(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'AgrolexI-CreditoRural/1.0' } }),
+        15000,
+        `TerraBrasilis ${fonte}`
+      );
+      if (!res.ok) { erros.push(`${fonte}: HTTP ${res.status}`); return; }
+
+      const data = await res.json();
+      algumaConsultaOk = true;
+      const features: Array<Record<string, unknown>> = Array.isArray(data?.features) ? data.features : [];
+      for (const f of features) {
+        const p = (f.properties ?? {}) as Record<string, unknown>;
+        const areaKm2 = typeof p.areamunkm === 'number' ? p.areamunkm : 0;
+        result.alertas.push({
+          data: (p.view_date as string) ?? '',
+          classe: (p.classname as string) ?? 'desmatamento',
+          municipio: (p.municipality as string) ?? params.city!,
+          uf: (p.uf as string) ?? uf,
+          area_ha: Math.round(areaKm2 * 100 * 100) / 100, // km² → ha
+          fonte,
+        });
+      }
+    } catch (err: unknown) {
+      erros.push(`${fonte}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }));
+
+  result.verificado = algumaConsultaOk;
+  result.alertas.sort((a, b) => (a.data < b.data ? 1 : -1));
+  if (!algumaConsultaOk) {
+    result.erro = erros.length > 0 ? erros.join('; ') : 'Falha ao consultar TerraBrasilis/DETER';
+  } else if (erros.length > 0) {
+    result.erro = `Consulta parcial — ${erros.join('; ')}`;
+  }
+
+  return result;
 }
 
 // ─── CNIR ────────────────────────────────────────────────────────────────────

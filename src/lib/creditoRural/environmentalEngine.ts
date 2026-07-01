@@ -1,4 +1,4 @@
-import type { EnvironmentalComplianceResult, ComplianceStatus } from '@/types/creditoRural';
+import type { EnvironmentalComplianceResult, ComplianceStatus, FonteDadosAmbientais } from '@/types/creditoRural';
 
 // ─── Resoluções CMN aplicáveis ──────────────────────────────────────────────
 
@@ -26,6 +26,12 @@ export interface EnvironmentalInput {
   reserva_legal_averbada?: boolean;
   deficit_rl_ha?: number;
   deficit_app_ha?: number;
+
+  // Proveniência real das consultas — setar apenas quando a consulta ao vivo
+  // foi de fato executada (mesmo sem resultado), nunca por suposição.
+  desmatamento_verificado_api?: boolean; // true = TerraBrasilis/DETER consultado ao vivo
+  car_verificado_api?: boolean;          // true = SICAR (consulta pública) consultado ao vivo
+  car_status?: 'ativo' | 'pendente' | 'cancelado' | 'suspenso';
 }
 
 // ─── Motor de conformidade ambiental ────────────────────────────────────────
@@ -74,8 +80,26 @@ export function verificarConformidadeAmbiental(input: EnvironmentalInput): Envir
     recomendacoes.push(`Déficit de APP: ${input.deficit_app_ha.toFixed(1)} ha — recuperação obrigatória (Código Florestal, art. 7°)`);
   }
 
-  // 4. Sem dados suficientes
-  if (!input.embargo_ibama && alertas.length === 0 && input.desmatamento_recente === undefined && input.reserva_legal_averbada === undefined) {
+  // 4. Situação do CAR no SICAR
+  if (input.car_status === 'cancelado' || input.car_status === 'suspenso') {
+    status = 'nao_conforme';
+    impacto += ` O CAR consta como "${input.car_status}" no SICAR — pendência cadastral impede a comprovação de regularidade ambiental exigida pela Res. CMN 5.193/2024.`;
+    recomendacoes.push('Regularizar o CAR no SICAR antes de solicitar crédito rural');
+  } else if (input.car_status === 'pendente') {
+    if (status === 'conforme') status = 'verificacao_necessaria';
+    recomendacoes.push('CAR pendente de validação no SICAR — acompanhar a análise cadastral');
+  }
+
+  // 5. Sem dados suficientes (só quando NENHUMA fonte — autodeclarada ou ao vivo — foi checada)
+  const nenhumaVerificacaoRealizada =
+    !input.embargo_ibama &&
+    alertas.length === 0 &&
+    input.desmatamento_recente === undefined &&
+    input.reserva_legal_averbada === undefined &&
+    !input.desmatamento_verificado_api &&
+    !input.car_verificado_api;
+
+  if (nenhumaVerificacaoRealizada) {
     status = 'sem_dados';
     impacto = 'Dados ambientais insuficientes para emitir parecer. Recomenda-se consultar PRODES/INPE e IBAMA antes de solicitar crédito.';
     recomendacoes.push('Consultar PRODES/INPE (terrabrasilis.dpi.inpe.br) para verificar alertas de desmatamento');
@@ -83,26 +107,45 @@ export function verificarConformidadeAmbiental(input: EnvironmentalInput): Envir
     recomendacoes.push('Verificar situação do CAR no SICAR (car.gov.br)');
   }
 
-  // 5. Conforme
+  // 6. Conforme
   if (status === 'conforme') {
-    impacto = 'Imóvel em conformidade ambiental para fins de crédito rural. Sem restrições ambientais detectadas.';
-    recomendacoes.push('Manter monitoramento ambiental contínuo — nova consulta PRODES recomendada a cada safra');
+    impacto = 'Imóvel em conformidade ambiental para fins de crédito rural. Sem restrições ambientais detectadas nas fontes consultadas.';
+    recomendacoes.push('Manter monitoramento ambiental contínuo — nova consulta recomendada a cada safra');
+  }
+
+  // ─── Proveniência honesta dos dados ────────────────────────────────────────
+  // O embargo IBAMA NUNCA entra aqui como verificado: não existe hoje API pública
+  // oficial para consultar embargos por propriedade/CPF/CNPJ (confirmado em
+  // 01/07/2026 — apenas portal de consulta manual e datasets em lote de ~50MB,
+  // inviáveis para checagem síncrona por requisição). Ver AGENTS.md.
+  const fontesAoVivoUsadas = [input.desmatamento_verificado_api, input.car_verificado_api].filter(Boolean).length;
+  const fonte_dados: FonteDadosAmbientais = fontesAoVivoUsadas > 0 ? 'parcial_api' : 'autodeclarado';
+
+  let disclaimer: string;
+  if (fonte_dados === 'parcial_api') {
+    const partes: string[] = [];
+    if (input.desmatamento_verificado_api) partes.push('desmatamento verificado ao vivo via TerraBrasilis/INPE (PRODES/DETER)');
+    if (input.car_verificado_api) partes.push('situação cadastral verificada via consulta pública do SICAR (car.gov.br)');
+    disclaimer =
+      `Verificação parcial em fontes oficiais: ${partes.join(' e ')}. ` +
+      'O embargo do IBAMA permanece AUTODECLARADO — não existe hoje API pública oficial de consulta de embargos por propriedade/CPF/CNPJ; confirme em servicos.ibama.gov.br antes de solicitar crédito. Não constitui parecer ambiental nem aconselhamento jurídico.';
+  } else {
+    disclaimer =
+      'IMPORTANTE: esta verificação é baseada em dados AUTODECLARADOS, não em consulta oficial em tempo real ao PRODES/INPE ou ao IBAMA. Confirme a situação real nas fontes oficiais (terrabrasilis.dpi.inpe.br, servicos.ibama.gov.br, car.gov.br) antes de solicitar crédito. Não constitui parecer ambiental nem aconselhamento jurídico.';
   }
 
   return {
     status,
-    // HONESTIDADE: hoje o sistema NÃO consulta PRODES/INPE ou IBAMA em tempo real.
-    // Avalia apenas o que foi informado. Quando houver integração oficial, mudar
-    // fonte_dados para 'api_oficial' e prodes_verificado_api para true.
-    fonte_dados: 'autodeclarado',
-    prodes_verificado_api: false,
+    fonte_dados,
+    prodes_verificado_api: !!input.desmatamento_verificado_api,
+    car_verificado_api: !!input.car_verificado_api,
+    car_status: input.car_status,
     alertas_desmatamento: alertas,
     embargo_ibama: input.embargo_ibama,
     resolucoes_aplicaveis: RESOLUCOES_AMBIENTAIS,
     impacto_credito: impacto.trim(),
     recomendacoes,
-    disclaimer:
-      'IMPORTANTE: esta verificação é baseada em dados AUTODECLARADOS, não em consulta oficial em tempo real ao PRODES/INPE ou ao IBAMA. Confirme a situação real nas fontes oficiais (terrabrasilis.dpi.inpe.br, servicos.ibama.gov.br, car.gov.br) antes de solicitar crédito. Não constitui parecer ambiental nem aconselhamento jurídico.',
+    disclaimer,
   };
 }
 

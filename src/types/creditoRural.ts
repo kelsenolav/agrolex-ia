@@ -145,14 +145,18 @@ export interface CedulaAnalysis {
 
 // ─── Conformidade Ambiental ──────────────────────────────────────────────────
 
-export type FonteDadosAmbientais = 'autodeclarado' | 'api_oficial';
+// 'autodeclarado': nada foi verificado ao vivo. 'parcial_api': desmatamento e/ou
+// CAR verificados via API pública real (TerraBrasilis/SICAR), mas o embargo IBAMA
+// segue autodeclarado (sem API pública oficial de consulta por propriedade/CPF/CNPJ
+// hoje). 'api_oficial': reservado para quando/se todas as fontes forem verificáveis.
+export type FonteDadosAmbientais = 'autodeclarado' | 'parcial_api' | 'api_oficial';
 
 export interface EnvironmentalComplianceResult {
   status: ComplianceStatus;
-  // Origem dos dados ambientais. Hoje 'autodeclarado': o sistema NÃO consulta
-  // PRODES/INPE ou IBAMA em tempo real — avalia o que o usuário informou.
   fonte_dados: FonteDadosAmbientais;
-  prodes_verificado_api: boolean; // true só quando houver integração oficial real
+  prodes_verificado_api: boolean; // true quando o TerraBrasilis/DETER foi consultado ao vivo
+  car_verificado_api: boolean;    // true quando o SICAR (consulta pública) foi consultado ao vivo
+  car_status?: 'ativo' | 'pendente' | 'cancelado' | 'suspenso';
   alertas_desmatamento: Array<{
     ano: number;
     area_ha: number;

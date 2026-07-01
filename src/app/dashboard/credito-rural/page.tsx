@@ -87,6 +87,8 @@ export default function CreditoRuralPage() {
   // Ambiental state
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [ambResult, setAmbResult] = useState<any | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [ambFontes, setAmbFontes] = useState<any | null>(null);
   const [ambLoading, setAmbLoading] = useState(false);
 
   // Conhecimento state
@@ -293,6 +295,7 @@ export default function CreditoRuralPage() {
     if (!selectedProperty) return;
     setAmbLoading(true);
     setAmbResult(null);
+    setAmbFontes(null);
     try {
       const res = await fetch('/api/credito-rural/ambiental', {
         method: 'POST',
@@ -300,6 +303,8 @@ export default function CreditoRuralPage() {
         body: JSON.stringify({
           property_id: selectedProperty.id,
           uf: selectedProperty.state ?? 'GO',
+          city: selectedProperty.city,
+          car_code: selectedProperty.car_number,
           area_total_ha: matriculaData?.area_total_ha ?? selectedProperty.area ?? 100,
           embargo_ibama: eligForm.embargo_ibama,
           desmatamento_recente: !eligForm.prodes_clean,
@@ -309,6 +314,7 @@ export default function CreditoRuralPage() {
       const data = await res.json();
       if (!res.ok) { setAmbResult({ error: data.message || data.error || 'Erro ao verificar conformidade' }); return; }
       setAmbResult(data.resultado);
+      setAmbFontes(data.fontes_externas ?? null);
     } catch {
       setAmbResult({ error: 'Erro ao verificar conformidade' });
     }
@@ -899,11 +905,40 @@ export default function CreditoRuralPage() {
                   ))}
                 </div>
 
-                {/* Aviso de fonte autodeclarada — honestidade sobre a verificação */}
+                {/* Fontes consultadas ao vivo — honestidade sobre o que foi/não foi verificado */}
+                {ambResult.fonte_dados === 'parcial_api' && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                    <p className="text-xs text-emerald-800 font-medium flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Verificação parcial em fontes oficiais</p>
+                    {ambResult.disclaimer && <p className="text-[11px] text-emerald-700 mt-1 leading-relaxed">{ambResult.disclaimer}</p>}
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                      <span className={`px-2 py-0.5 rounded-full ${ambResult.prodes_verificado_api ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'}`}>
+                        TerraBrasilis/DETER: {ambResult.prodes_verificado_api ? 'consultado' : 'não verificado'}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full ${ambResult.car_verificado_api ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'}`}>
+                        SICAR/CAR: {ambResult.car_verificado_api ? `consultado (${ambResult.car_status ?? 'sem status'})` : 'não verificado'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">IBAMA: autodeclarado (sem API pública)</span>
+                    </div>
+                  </div>
+                )}
+
                 {ambResult.fonte_dados === 'autodeclarado' && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                     <p className="text-xs text-amber-800 font-medium flex items-center gap-1"><AlertTriangle className="w-4 h-4" /> Verificação baseada em dados autodeclarados</p>
                     {ambResult.disclaimer && <p className="text-[11px] text-amber-700 mt-1 leading-relaxed">{ambResult.disclaimer}</p>}
+                    {ambFontes?.desmatamento?.erro && (
+                      <p className="text-[11px] text-amber-600 mt-1">TerraBrasilis/DETER: {ambFontes.desmatamento.erro}</p>
+                    )}
+                  </div>
+                )}
+
+                {ambResult.alertas_desmatamento?.length > 0 && (
+                  <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <h3 className="font-semibold text-sm text-gray-700 mb-2">Alertas de desmatamento (TerraBrasilis/DETER)</h3>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {ambResult.alertas_desmatamento.map((a: any, i: number) => (
+                      <p key={i} className="text-xs text-gray-500 py-0.5">- {a.ano} · {a.bioma} · {a.area_ha.toFixed(2)} ha ({a.fonte})</p>
+                    ))}
                   </div>
                 )}
 
