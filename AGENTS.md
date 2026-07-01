@@ -16,7 +16,7 @@
   - `dashboard/credito-rural/page.tsx` — `handleAmbiental` agora envia `city`/`car_code` da propriedade selecionada; UI distingue visualmente `parcial_api` (verde, badges "TerraBrasilis: consultado" / "SICAR: consultado (status)" / "IBAMA: autodeclarado") de `autodeclarado` puro (âmbar); lista os alertas de desmatamento reais quando houver.
 - **Validação**: `tsc` 0, `lint` 0 erros (12 warnings pré-existentes/mesmo padrão do arquivo, não relacionados), `jest` **705** (+12: 7 novos em `environmentalEngine.test.ts` cobrindo `parcial_api`/CAR/honestidade + 5 novos em `environmentalDataProviders.test.ts` mockando fetch), `build` OK. Preview local: `/dashboard/credito-rural` compila e redireciona corretamente para `/login` (gated), sem erro de runtime.
 - **Pendência (não é bug, é limite real de infraestrutura externa)**: embargo IBAMA segue sem verificação ao vivo — não existe hoje API pública para isso. Se o usuário obtiver acesso à API oficial SICAR via Conecta (exige ser órgão público — improvável) ou IBAMA disponibilizar uma API filtrável no futuro, revisar este bloco.
-- **Deploy em produção**: **PENDENTE** — aguardando autorização/execução nesta sessão.
+- **Deploy em produção**: **EFETUADO** (commit `96500ac5`, `vercel --prod --yes`). `/dashboard/credito-rural` → HTTP 307 (→ login, gated OK).
 
 ---
 
