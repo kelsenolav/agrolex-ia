@@ -827,6 +827,33 @@ function tryParseMatriculaIndividualJson(rawText: string): { success: true; data
 }
 
 /**
+ * Detecta se a resposta bruta da IA é um JSON estruturado (possivelmente
+ * truncado/inválido) em vez de prosa livre. Usado para não deixar o
+ * validador de texto livre (que apenas checa substrings) ser enganado por
+ * um JSON malformado que contém as próprias palavras-chave das seções
+ * (ex: "achados", "recomendacoes") como nomes de campo.
+ */
+function looksLikeStructuredJsonResponse(rawText: string): boolean {
+  return /^\s*```?json?\s*\{|^\s*\{/i.test(rawText);
+}
+
+/**
+ * Constrói o erro padrão de "JSON estruturado inválido/incompleto" —
+ * retentável (technicalErrorType='ai_incomplete_response'), nunca deixa o
+ * JSON cru vazar para `resumo`.
+ */
+function buildIncompleteJsonError(moduleLabel: string, rawResponse: string, parseError: string, validationPath: string): Error {
+  const err = new Error(`JSON inválido/incompleto (${moduleLabel}): ${parseError}`);
+  (err as any).technicalErrorType = 'ai_incomplete_response';
+  (err as any).userMessage = 'A IA retornou um parecer incompleto. Tente reprocessar.';
+  (err as any).findingsCurrentStep = 'A IA retornou um parecer incompleto. Tente reprocessar.';
+  (err as any).rawAiResponsePreview = rawResponse.slice(0, 2000);
+  (err as any).validationPath = validationPath;
+  (err as any).jsonParseError = parseError;
+  return err;
+}
+
+/**
  * Converte achados do JSON de matricula_individual para formato interno.
  */
 function mapJsonMatriculaAchadosToProblemas(achados: any[]): any[] {
@@ -1810,18 +1837,21 @@ ${ocrTextBlocks.join('\n\n')}
             // PASSO 25.7I — Fallback textual: JSON inválido/incompleto
             validationPath = 'textual_fallback';
             console.warn('[Analyze API] PASSO 25.7O — JSON inválido/incompleto:', jsonParseResult.error);
+
+            // Se a resposta bruta É um JSON (só que malformado/truncado — ex: estourou o
+            // limite de tokens no meio do array), o validador de texto livre não deve
+            // rodar: ele checa por substrings ("achados", "recomendacoes" etc.) que o
+            // próprio JSON cru contém como nomes de campo, e passaria por engano — o
+            // JSON bruto vazaria para `resumo` no laudo final. Falha limpo e retentável.
+            if (looksLikeStructuredJsonResponse(markdownResponse)) {
+              console.warn('[Analyze API] PASSO 25.7O — resposta é JSON malformado (não prosa livre); rejeitando sem fallback textual.');
+              throw buildIncompleteJsonError('cadeia_dominial', markdownResponse, jsonParseResult.error, validationPath);
+            }
+
             console.warn('[Analyze API] PASSO 25.7O — Usando fallback textual (validateFastChainOfTitleResponse)');
-            
             const fastQualityIssue = validateFastChainOfTitleResponse(markdownResponse);
             if (fastQualityIssue) {
-              const qualityError = new Error(fastQualityIssue);
-              (qualityError as any).technicalErrorType = 'ai_incomplete_response';
-              (qualityError as any).userMessage = 'A IA retornou um parecer incompleto. Tente reprocessar.';
-              (qualityError as any).findingsCurrentStep = 'A IA retornou um parecer incompleto. Tente reprocessar.';
-              (qualityError as any).rawAiResponsePreview = markdownResponse.slice(0, 2000);
-              (qualityError as any).validationPath = validationPath;
-              (qualityError as any).jsonParseError = jsonParseResult.error;
-              throw qualityError;
+              throw buildIncompleteJsonError('cadeia_dominial', markdownResponse, fastQualityIssue, validationPath);
             }
           }
         }
@@ -1834,8 +1864,13 @@ ${ocrTextBlocks.join('\n\n')}
             validationPath = 'json_first';
             console.log('[Analyze API] matricula_individual — JSON estruturado parseado com sucesso');
           } else {
+            // Contrato de matricula_individual é JSON-only (auditPromptBuilder exige
+            // parecer_markdown dentro do JSON) — não existe modo texto-livre legítimo
+            // aqui. Sem este throw, o JSON cru (às vezes truncado por limite de tokens)
+            // vazava direto para `resumo` e virava o "laudo" exibido/exportado ao usuário.
             validationPath = 'textual_fallback';
-            console.warn('[Analyze API] matricula_individual — JSON inválido, fallback textual:', jsonParseResult.error);
+            console.warn('[Analyze API] matricula_individual — JSON inválido/incompleto:', jsonParseResult.error);
+            throw buildIncompleteJsonError('matricula_individual', markdownResponse, jsonParseResult.error, validationPath);
           }
         }
 
