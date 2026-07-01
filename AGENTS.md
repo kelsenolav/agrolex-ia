@@ -3,6 +3,23 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 01/07/2026
+- **Bloco**: Domínio próprio `agrolexi.com.br` — conectado ao Vercel existente (sem migração de stack)
+- **Contexto**: usuário registrou `agrolexi.com.br` na Hostinger (o `.dev`/`.com` "agrolex" já estava tomado) e cogitou migrar hospedagem (Vercel) e banco (Supabase) inteiros pra lá. Rodado `/product-brainstorming` (2x, a pedido explícito do usuário de sempre rodar `/brainstorming` + `/product-brainstorming` em trabalho de produto no AgrolexI) — decisão do usuário: **não migrar stack**, só trocar o endereço.
+- **Execução**:
+  - `vercel domains add agrolexi.com.br` — anexado ao projeto correto (`agrolex-ia-qx32`; havia um projeto órfão antigo `agrolex-ia` de 39 dias atrás, sem conflito real). Confirmado via API direta da Vercel (`GET /v9/projects/{id}/domains`) que o domínio está `verified:true` e atribuído ao projeto certo — o `vercel domains inspect` da CLI dava 403 por um bug/quirk da própria CLI, não refletia o estado real.
+  - `NEXT_PUBLIC_SITE_URL=https://agrolexi.com.br` adicionada no Vercel (produção) — todos os 4 lugares que hoje têm fallback hardcoded pro domínio antigo (`trialReminderJob.ts`, `cron/renewals`, `cron/monitoring`, `checkout`) já leem essa env var primeiro, então nenhum código precisou ser tocado.
+  - Checado: **não há** `redirectTo`/`resetPasswordForEmail` no código — a página de "Esqueceu sua senha" não está funcionalmente implementada, então não há dependência de configuração de redirect do Supabase Auth pra esse domínio novo.
+  - Redeploy feito pra env var valer.
+- **🔴 Pendência do usuário (fora do meu alcance — não tenho acesso ao painel Hostinger)**: configurar 2 registros DNS na Hostinger (`agrolexi.com.br` → DNS Zone), valores confirmados via API real da Vercel pra esse domínio específico (não são chute — `misconfigured:true` hoje, apontando pro IP de parking padrão da Hostinger `2.57.91.91`):
+  - **A** — nome `@` (raiz) → `216.198.79.1` (pode adicionar também `64.29.17.1` como segundo A, redundância)
+  - **CNAME** — nome `www` → `870cf7c66a6a4de2.vercel-dns-017.com.`
+  - Manter os nameservers da Hostinger (não precisa migrar pra nameserver da Vercel). `agrolex-ia-qx32.vercel.app` continua funcionando em paralelo — a Vercel nunca desativa o domínio padrão.
+- **Validação**: build/deploy OK (mudança é só config/env, sem alteração de código de aplicação — não roda tsc/lint/jest específico pra esse bloco).
+- **Deploy em produção**: **EFETUADO** (domínio + env var), aguardando o usuário configurar o DNS na Hostinger pra propagar.
+
+---
+
+- **Data**: 01/07/2026
 - **Bloco**: Funil de ativação — diagnóstico do "funil quebrado" + lembrete automático de trial abandonado
 - **Contexto**: seguimento do bloco anterior (visibilidade de atividade em `/dashboard/leads`). Usuário pediu para executar as 2 sugestões: (1) investigar o caso real achado (lead com 3 eventos `trial_started` mas zero linhas em `analyses`); (2) automatizar um lembrete para quem se cadastrou e não usou a análise gratuita.
 - **Diagnóstico do "funil quebrado" (não é bug de código)**: `trial_started` dispara em `route.ts:1399-1407` toda vez que `/api/analyze` é chamado com `planType==='trial'` — inclusive em retries do auto-chain sobre o MESMO `analysisId` (explica os 3 eventos). `markTrialUsed`/`trial_completed` só disparam dentro do bloco de SUCESSO (`route.ts:2458-2462`) — confirmado ao vivo: `trial_used=false` para o lead em questão, ou seja, o trial nunca foi de fato consumido. A causa de zero linhas em `analyses` é o **hard delete** de `/api/analyses/delete` (deleta `properties`, cascade remove `analyses`) — a "lixeira" que já existe por desenho (P1.3, permite reprocessar sem duplo débito). **Conclusão**: não há defeito para corrigir no código; é um sinal de negócio real (usuário tentou, não conseguiu, apagou, desistiu) — o produto certo para isso é reengajamento, não um "fix".
