@@ -3,6 +3,16 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 01/07/2026
+- **Bloco**: Domínio `agrolexi.com.br` verificado no Resend — e-mail transacional do sistema volta a funcionar de verdade
+- **Contexto**: seguimento do bloco anterior (domínio conectado ao Vercel). O usuário criou a caixa `contato@agrolexi.com.br` na Hostinger — oportunidade de resolver de vez o bloqueio de e-mail achado ao ativar `TRIAL_REMINDER_ENABLED` (domínio antigo `agrolex.dev` nunca verificava — provavelmente nunca foi de fato do usuário).
+- **Execução**: domínio `agrolexi.com.br` cadastrado no Resend pelo usuário; DNS (TXT `resend._domainkey`, MX+TXT `send` para SPF, `_dmarc`) adicionado na mesma Hostinger onde já estava o A/CNAME do Vercel — **sem conflito** com o e-mail que a própria Hostinger já gerencia pro `contato@agrolexi.com.br` (o MX/SPF do Resend fica no subdomínio `send.`, o da Hostinger fica na raiz `@`; confirmado visualmente na tabela de DNS depois de configurado). `RESEND_FROM_EMAIL=AgrolexI <contato@agrolexi.com.br>` adicionada no Vercel; fallback hardcoded em `notificationService.ts` (3 ocorrências: `sendRadarNotification`, `sendRadarRenewalReminder`, `sendTrialReminderEmail`) trocado de `@agrolex.dev` pra `@agrolexi.com.br` (nunca mais cai de volta num domínio não-verificável se a env var sumir).
+- **Verificado ao vivo em produção real (não simulado)**: após redeploy, chamado `GET https://agrolexi.com.br/api/cron/renewals` (o domínio novo já respondendo com SSL válido, de bônus) — **`enviados:1, falhas:[]`**: o lembrete de trial abandonado saiu de verdade pro lead real (`angelopapa@gmail.com`) pela primeira vez desde que a feature foi implementada. Confirmado no banco que `metadata.trial_reminder.milestones_sent=[3]` foi persistido — não vai reenviar até o marco de 10 dias.
+- **Validação**: `tsc` 0, `jest` (suíte de `monitoring`) 16/16. Mudança de e-mail é config + 3 linhas de fallback — sem necessidade de rodar a suíte inteira de novo.
+- **Deploy em produção**: **EFETUADO**. Todo o sistema de e-mail transacional (Radar: alerta + renovação; Trial: lembrete de abandono) está funcional pela primeira vez em produção.
+
+---
+
+- **Data**: 01/07/2026
 - **Bloco**: Domínio próprio `agrolexi.com.br` — conectado ao Vercel existente (sem migração de stack)
 - **Contexto**: usuário registrou `agrolexi.com.br` na Hostinger (o `.dev`/`.com` "agrolex" já estava tomado) e cogitou migrar hospedagem (Vercel) e banco (Supabase) inteiros pra lá. Rodado `/product-brainstorming` (2x, a pedido explícito do usuário de sempre rodar `/brainstorming` + `/product-brainstorming` em trabalho de produto no AgrolexI) — decisão do usuário: **não migrar stack**, só trocar o endereço.
 - **Execução**:
