@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { daysUntilExpiry, radarLifecycleState, shouldSkipManualRenewalReminder } from '@/lib/monitoring/radarRenewal';
 import { sendRadarRenewalReminder } from '@/lib/monitoring/notificationService';
 import { runTrialReminderJob } from '@/lib/trial/trialReminderJob';
+import { runCalendarReminderJob } from '@/lib/calendar/taskReminderJob';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -76,7 +77,7 @@ export async function GET(req: Request) {
     const { data: authUser } = await admin.auth.admin.getUserById(sub.user_id);
     const email = authUser?.user?.email;
     const { data: profile } = email
-      ? await admin.from('profiles').select('full_name').eq('id', sub.user_id).maybeSingle()
+      ? await admin.from('profiles').select('name').eq('id', sub.user_id).maybeSingle()
       : { data: null };
 
     if (estado === 'expired') {
@@ -91,7 +92,7 @@ export async function GET(req: Request) {
       if (email) {
         const r = await sendRadarRenewalReminder({
           user_email: email,
-          user_name: profile?.full_name || undefined,
+          user_name: profile?.name || undefined,
           days_until_expiry: dias ?? -1,
           renew_url: renewUrl,
         });
@@ -108,7 +109,7 @@ export async function GET(req: Request) {
     }
     const r = await sendRadarRenewalReminder({
       user_email: email,
-      user_name: profile?.full_name || undefined,
+      user_name: profile?.name || undefined,
       days_until_expiry: dias as number,
       renew_url: renewUrl,
     });
@@ -145,6 +146,21 @@ export async function GET(req: Request) {
     }
   }
 
+  // Lembretes do Calendário Ambiental (marcos 7/3/0 dias) — ressuscitado do
+  // cron órfão /api/cron/reminders (nunca esteve agendado). Transacional: o
+  // usuário cadastrou a obrigação esperando ser avisado — sem gate de env var.
+  let calendarReminders: Awaited<ReturnType<typeof runCalendarReminderJob>> | null = null;
+  try {
+    calendarReminders = await runCalendarReminderJob(admin);
+  } catch (err: unknown) {
+    calendarReminders = {
+      avaliadas: 0,
+      enviados: 0,
+      pulados: 0,
+      falhas: [err instanceof Error ? err.message : String(err)],
+    };
+  }
+
   return NextResponse.json({
     success: true,
     avaliadas: subs?.length || 0,
@@ -153,5 +169,6 @@ export async function GET(req: Request) {
     pulados,
     ...(falhas.length ? { falhas } : {}),
     trial_reminders: trialReminders,
+    calendar_reminders: calendarReminders,
   });
 }

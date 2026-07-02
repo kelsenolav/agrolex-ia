@@ -257,3 +257,83 @@ export async function sendTrialReminderEmail(
   console.log(`[Trial Reminder] E-mail não enviado (sem RESEND_API_KEY) — ${payload.user_email}, segmento=${payload.segmento}`);
   return { sent: false, method: 'log_only', error: 'RESEND_API_KEY não configurada' };
 }
+
+// ─── Lembrete de obrigação ambiental (Calendário) ────────────────────────────
+
+export interface CalendarTaskReminderPayload {
+  user_email: string;
+  user_name?: string;
+  task_title: string;
+  property_name?: string;
+  /** Dias até o vencimento (0 = vence hoje). */
+  dias_restantes: number;
+  cta_url: string;
+}
+
+function buildCalendarReminderEmailHtml(p: CalendarTaskReminderPayload): string {
+  const nome = p.user_name || 'Produtor';
+  const venceHoje = p.dias_restantes === 0;
+  const titulo = venceHoje
+    ? `"${p.task_title}" vence HOJE`
+    : `"${p.task_title}" vence em ${p.dias_restantes} dia${p.dias_restantes !== 1 ? 's' : ''}`;
+  const propriedade = p.property_name ? ` da propriedade <strong>${p.property_name}</strong>` : '';
+
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Roboto,sans-serif;background:#f3f4f6;">
+  <div style="max-width:600px;margin:0 auto;padding:24px;">
+    <div style="background:#064e3b;padding:20px 24px;border-radius:12px 12px 0 0;">
+      <h1 style="margin:0;color:#fff;font-size:18px;">📅 AgrolexI — Calendário Ambiental</h1>
+    </div>
+    <div style="background:#fff;padding:24px;border:1px solid #e5e7eb;border-top:none;">
+      <p style="margin:0 0 8px;color:#111827;font-size:17px;font-weight:700;">${venceHoje ? '🚨 ' : '⏳ '}${titulo}</p>
+      <p style="margin:0 0 16px;color:#374151;">Olá, ${nome}.</p>
+      <p style="margin:0 0 16px;color:#374151;">
+        A obrigação ambiental <strong>"${p.task_title}"</strong>${propriedade} exige sua atenção.
+        ${venceHoje ? 'O prazo termina hoje — não deixe para depois.' : 'Programe-se para cumprir o prazo sem correria.'}
+      </p>
+      <div style="text-align:center;margin-top:24px;">
+        <a href="${p.cta_url}" style="display:inline-block;padding:12px 32px;background:${venceHoje ? '#dc2626' : '#d97706'};color:#fff;font-weight:700;text-decoration:none;border-radius:8px;font-size:14px;">
+          Abrir Calendário Ambiental →
+        </a>
+      </div>
+    </div>
+    <div style="padding:12px 24px;text-align:center;border-radius:0 0 12px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-top:none;">
+      <p style="margin:0;font-size:11px;color:#9ca3af;">© ${new Date().getFullYear()} AgrolexI — Inteligência Fundiária</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export async function sendCalendarTaskReminder(
+  payload: CalendarTaskReminderPayload,
+): Promise<{ sent: boolean; method: string; error?: string }> {
+  const resendKey = process.env.RESEND_API_KEY;
+  const venceHoje = payload.dias_restantes === 0;
+  const subject = venceHoje
+    ? `🚨 "${payload.task_title}" vence HOJE — Calendário AgrolexI`
+    : `⏳ "${payload.task_title}" vence em ${payload.dias_restantes} dia(s) — Calendário AgrolexI`;
+  if (resendKey) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM_EMAIL || 'AgrolexI <contato@agrolexi.com.br>',
+          to: [payload.user_email],
+          subject,
+          html: buildCalendarReminderEmailHtml(payload),
+        }),
+      });
+      if (res.ok) return { sent: true, method: 'resend' };
+      return { sent: false, method: 'resend', error: `HTTP ${res.status}: ${await res.text()}` };
+    } catch (err: unknown) {
+      return { sent: false, method: 'resend', error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  console.log(`[Calendar Reminder] E-mail não enviado (sem RESEND_API_KEY) — ${payload.user_email}, tarefa="${payload.task_title}", D-${payload.dias_restantes}`);
+  return { sent: false, method: 'log_only', error: 'RESEND_API_KEY não configurada' };
+}

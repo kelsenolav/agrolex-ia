@@ -20,7 +20,6 @@ export default function CalendarioPage() {
   const [selectedDateStr, setSelectedDateStr] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskAmount, setNewTaskAmount] = useState('');
-  const [notify, setNotify] = useState(true);
 
   useEffect(() => {
     fetchTasks();
@@ -85,11 +84,7 @@ export default function CalendarioPage() {
 
     setIsModalOpen(false);
     fetchTasks();
-    if (notify) {
-      // Honestidade (Eixo 4): a obrigação fica registrada na agenda; os lembretes
-      // automáticos por e-mail/WhatsApp ainda estão em desenvolvimento.
-      alert(`Obrigação "${newTaskTitle}" registrada na sua agenda. Os lembretes automáticos por e-mail/WhatsApp chegam em breve — por ora, acompanhe pelo calendário.`);
-    }
+    alert(`Obrigação "${newTaskTitle}" registrada. Você será avisado por e-mail 7 dias antes, 3 dias antes e no dia do vencimento.`);
   };
 
   const completeTask = async (id: string, e?: React.MouseEvent) => {
@@ -277,13 +272,13 @@ export default function CalendarioPage() {
             </div>
 
             <div className="bg-orange-50 p-4 rounded-lg mb-6 border border-orange-100">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} className="w-5 h-5 text-orange-600 rounded" />
+              <div className="flex items-start gap-3">
+                <Bell size={16} className="text-orange-700 mt-0.5 shrink-0" />
                 <div className="flex flex-col">
-                  <span className="font-bold text-orange-900 flex items-center gap-1"><Bell size={16}/> Receber Alertas <span className="text-[10px] bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full font-bold">EM BREVE</span></span>
-                  <span className="text-xs text-orange-700">Avisos automáticos via WhatsApp e E-mail próximos ao vencimento (em desenvolvimento).</span>
+                  <span className="font-bold text-orange-900">Alertas automáticos por e-mail</span>
+                  <span className="text-xs text-orange-700">Você recebe aviso 7 dias antes, 3 dias antes e no dia do vencimento de cada obrigação pendente.</span>
                 </div>
-              </label>
+              </div>
             </div>
 
             <div className="flex gap-3 justify-end">
