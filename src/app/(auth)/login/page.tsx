@@ -136,7 +136,7 @@ export default function LoginPage() {
 
             <div className="flex items-center justify-between">
               <div className="text-sm">
-                <Link href="mailto:suporte@agrolex.com.br?subject=Esqueci%20minha%20senha" className="font-medium text-gray-400 hover:text-brand-gold transition-colors">
+                <Link href="/recuperar-senha" className="font-medium text-gray-400 hover:text-brand-gold transition-colors">
                   Esqueceu sua senha?
                 </Link>
               </div>
