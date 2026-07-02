@@ -93,7 +93,10 @@ function RadarContent() {
     trial_used: boolean;
     trial_available: boolean;
     expires_at?: string | null;
+    auto_renew_active?: boolean;
+    subscription_status?: string | null;
   } | null>(null);
+  const [cancellingAutoRenew, setCancellingAutoRenew] = useState(false);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
   const [userInfo, setUserInfo] = useState<{ id: string; email?: string } | null>(null);
@@ -271,6 +274,31 @@ function RadarContent() {
     }
   }, [token, properties, fetchData, trackRadarEvent]);
 
+  const handleCancelAutoRenew = useCallback(async () => {
+    if (!token) return;
+    const ok = window.confirm(
+      'Cancelar a renovação automática do Radar?\n\nSeu acesso permanece até o fim do período já pago — depois disso o monitoramento para de rodar.'
+    );
+    if (!ok) return;
+    setCancellingAutoRenew(true);
+    try {
+      const res = await fetch('/api/monitoring/subscription/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        window.alert(data.error || 'Não foi possível cancelar. Tente novamente.');
+        return;
+      }
+      await fetchData(token);
+    } catch {
+      window.alert('Não foi possível cancelar. Tente novamente.');
+    } finally {
+      setCancellingAutoRenew(false);
+    }
+  }, [token, fetchData]);
+
   const monitoredProperties = properties.filter(p => p.is_monitoring);
   const unmonitoredProperties = properties.filter(p => !p.is_monitoring);
   const unreadAlerts = alerts.filter(a => !a.is_read);
@@ -385,9 +413,66 @@ function RadarContent() {
           ))}
         </div>
 
+        {/* Estado da assinatura recorrente (Preapproval): renovação automática / cancelada / pausada. */}
+        {(() => {
+          if (!radarStatus?.has_active_subscription || !radarStatus.expires_at) return null;
+          const dataFim = new Date(radarStatus.expires_at).toLocaleDateString('pt-BR');
+
+          if (radarStatus.subscription_status === 'paused') {
+            return (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <Clock size={20} className="text-amber-600 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-amber-900">Cobrança automática não foi concluída</p>
+                    <p className="text-xs mt-0.5 text-amber-700">O Mercado Pago não conseguiu processar a última cobrança (ex: cartão recusado). Seu acesso continua até {dataFim}. Verifique o método de pagamento no Mercado Pago ou assine novamente.</p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          if (radarStatus.subscription_status === 'cancelled') {
+            return (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-6 flex items-start gap-3">
+                <XCircle size={20} className="text-gray-500 mt-0.5" />
+                <div>
+                  <p className="font-bold text-gray-800">Renovação automática cancelada</p>
+                  <p className="text-xs mt-0.5 text-gray-600">Seu acesso ao Radar permanece até {dataFim}. Para retomar o monitoramento depois disso, assine novamente.</p>
+                </div>
+              </div>
+            );
+          }
+
+          if (radarStatus.auto_renew_active) {
+            return (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <RefreshCw size={20} className="text-emerald-600 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-emerald-900">Renovação automática ativa</p>
+                    <p className="text-xs mt-0.5 text-emerald-700">Sua assinatura renova sozinha todo mês via Mercado Pago — período atual até {dataFim}. Cancele quando quiser, sem burocracia.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleCancelAutoRenew}
+                  disabled={cancellingAutoRenew}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {cancellingAutoRenew ? 'Cancelando...' : 'Cancelar renovação automática'}
+                </button>
+              </div>
+            );
+          }
+
+          return null;
+        })()}
+
         {/* Banner de renovação (Eixo 2 / 2.1): aviso quando a assinatura expira em ≤7 dias ou já expirou. */}
         {(() => {
           if (!radarStatus?.has_active_subscription || !radarStatus.expires_at) return null;
+          // Com renovação automática ativa o MP cobra sozinho — pedir "renove agora" seria confuso.
+          if (radarStatus.auto_renew_active) return null;
           const dias = daysUntilExpiry(radarStatus.expires_at, Date.now());
           if (dias === null || dias > 7) return null;
           const expirou = dias < 0;

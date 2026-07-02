@@ -81,3 +81,17 @@ export function parseRadarPropertyCount(paymentMethod: string | null | undefined
   const n = m ? parseInt(m[1], 10) : 0;
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
+
+/**
+ * Preapproval (MP): assinante com renovação AUTOMÁTICA ativa não deve receber
+ * lembrete de "renove manualmente" — o MP cobra sozinho; o e-mail só confundiria.
+ * Exceções que voltam a receber comunicação: 'paused' (cobrança falhou →
+ * dunning) e 'expired' pós-graça (win-back).
+ */
+export function shouldSkipManualRenewalReminder(
+  subscriptionStatus: string | null | undefined,
+  mpPreapprovalId: string | null | undefined,
+  lifecycle: RadarLifecycle,
+): boolean {
+  return !!mpPreapprovalId && subscriptionStatus === 'active' && lifecycle !== 'expired';
+}

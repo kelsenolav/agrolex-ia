@@ -39,10 +39,12 @@ export async function GET(req: Request) {
   // Gate de assinatura (Eixo 2 / 2.3): só varre propriedades de usuários com
   // assinatura efetivamente ativa (graça inclusa). Fecha o vazamento de
   // monitoramento automático grátis pós-expiração. Batch-fetch (sem N queries).
+  // Preapproval (CDC): 'cancelled'/'paused' mantêm a varredura até o fim do
+  // período já pago — o corte pós-expiração fica com o isEffectivelyActive.
   const { data: activeSubs } = await adminClient
     .from('radar_subscriptions')
     .select('user_id, expires_at')
-    .eq('status', 'active');
+    .in('status', ['active', 'cancelled', 'paused']);
   const nowMs = Date.now();
   const usuariosAtivos = new Set<string>(
     (activeSubs || [])

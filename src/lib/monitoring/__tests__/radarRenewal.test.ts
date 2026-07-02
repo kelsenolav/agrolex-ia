@@ -6,6 +6,7 @@ import {
   parseRadarPropertyCount,
   radarLifecycleState,
   isEffectivelyActive,
+  shouldSkipManualRenewalReminder,
 } from '../radarRenewal';
 
 const NOW = Date.parse('2026-06-24T12:00:00.000Z');
@@ -80,5 +81,23 @@ describe('parseRadarPropertyCount', () => {
     expect(parseRadarPropertyCount('plan_pro')).toBe(1);
     expect(parseRadarPropertyCount(null)).toBe(1);
     expect(parseRadarPropertyCount('radar_0_properties')).toBe(1);
+  });
+});
+
+describe('shouldSkipManualRenewalReminder (Preapproval)', () => {
+  it('renovação automática ativa → PULA o lembrete manual (MP cobra sozinho)', () => {
+    expect(shouldSkipManualRenewalReminder('active', 'pre_123', 'expiring_soon')).toBe(true);
+    expect(shouldSkipManualRenewalReminder('active', 'pre_123', 'grace')).toBe(true);
+    expect(shouldSkipManualRenewalReminder('active', 'pre_123', 'active')).toBe(true);
+  });
+  it('sem preapproval (renovação manual legada) → NÃO pula', () => {
+    expect(shouldSkipManualRenewalReminder('active', null, 'expiring_soon')).toBe(false);
+    expect(shouldSkipManualRenewalReminder('active', undefined, 'grace')).toBe(false);
+  });
+  it('paused (cobrança automática falhou) → NÃO pula (dunning)', () => {
+    expect(shouldSkipManualRenewalReminder('paused', 'pre_123', 'expiring_soon')).toBe(false);
+  });
+  it('expirada pós-graça → NÃO pula (win-back), mesmo com preapproval', () => {
+    expect(shouldSkipManualRenewalReminder('active', 'pre_123', 'expired')).toBe(false);
   });
 });

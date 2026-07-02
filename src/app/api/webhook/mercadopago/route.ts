@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getPayment, verifyWebhookSignature } from '@/lib/payments/mercadopago';
+import { getPreapproval, getAuthorizedPayment } from '@/lib/payments/mercadopagoPreapproval';
 import { activateSubscription, type PlanType } from '@/lib/subscriptions';
 import { computeRenewalExpiry, parseRadarPropertyCount } from '@/lib/monitoring/radarRenewal';
 
@@ -27,6 +28,128 @@ export async function POST(req: Request) {
 
     // Ler o corpo da requisição
     const body = JSON.parse(rawBody || '{}');
+    const notifType = body.type || body.topic || '';
+
+    // ─── Preapproval (Radar recorrente): status da assinatura ────────────────
+    // authorized → ativa · cancelled → cancela · paused → cobrança falhou
+    // (cobre também cancelamento feito por dentro do app do MP — nunca dessincroniza).
+    if (notifType === 'subscription_preapproval') {
+      const preapprovalId = String(body.data?.id || body.id || '');
+      if (!preapprovalId) {
+        return NextResponse.json({ success: true, message: 'No preapproval ID found' });
+      }
+
+      let preapproval;
+      try {
+        preapproval = await getPreapproval(preapprovalId);
+      } catch (mpError) {
+        console.error('Erro ao consultar preapproval no MP:', mpError);
+        return NextResponse.json({ error: 'Erro ao consultar assinatura' }, { status: 502 });
+      }
+
+      const { data: sub } = await supabaseAdmin
+        .from('radar_subscriptions')
+        .select('user_id, status, expires_at')
+        .eq('mp_preapproval_id', preapprovalId)
+        .maybeSingle();
+
+      if (!sub) {
+        // Preapproval desconhecido (ex: criado fora do app) — loga e aceita
+        // (200 evita reentrega infinita de algo que não sabemos correlacionar).
+        console.warn(`Webhook MP: preapproval ${preapprovalId} sem assinatura correspondente.`);
+        return NextResponse.json({ success: true, message: 'Preapproval não correlacionado' });
+      }
+
+      if (preapproval.status === 'authorized') {
+        // Ativação: o período começa aqui. A extensão mensal fica por conta
+        // dos eventos subscription_authorized_payment (não estende duas vezes).
+        await supabaseAdmin
+          .from('radar_subscriptions')
+          .update({
+            status: 'active',
+            expires_at: sub.expires_at ?? computeRenewalExpiry(null, Date.now()),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('mp_preapproval_id', preapprovalId);
+        console.log(`✅ Radar (preapproval ${preapprovalId}) do usuário ${sub.user_id} AUTORIZADO/ativo`);
+      } else if (preapproval.status === 'cancelled') {
+        await supabaseAdmin
+          .from('radar_subscriptions')
+          .update({
+            status: 'cancelled',
+            cancelled_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('mp_preapproval_id', preapprovalId);
+        console.log(`⚠️ Radar (preapproval ${preapprovalId}) do usuário ${sub.user_id} CANCELADO (acesso até expires_at)`);
+      } else if (preapproval.status === 'paused') {
+        await supabaseAdmin
+          .from('radar_subscriptions')
+          .update({ status: 'paused', updated_at: new Date().toISOString() })
+          .eq('mp_preapproval_id', preapprovalId);
+        console.log(`⚠️ Radar (preapproval ${preapprovalId}) do usuário ${sub.user_id} PAUSADO (cobrança automática falhou)`);
+      }
+
+      return NextResponse.json({ success: true, preapproval_status: preapproval.status });
+    }
+
+    // ─── Preapproval (Radar recorrente): cobrança mensal individual ──────────
+    if (notifType === 'subscription_authorized_payment') {
+      const authorizedPaymentId = String(body.data?.id || body.id || '');
+      if (!authorizedPaymentId) {
+        return NextResponse.json({ success: true, message: 'No authorized payment ID found' });
+      }
+
+      let authPayment;
+      try {
+        authPayment = await getAuthorizedPayment(authorizedPaymentId);
+      } catch (mpError) {
+        console.error('Erro ao consultar cobrança recorrente no MP:', mpError);
+        return NextResponse.json({ error: 'Erro ao consultar cobrança' }, { status: 502 });
+      }
+
+      const preapprovalId = String(authPayment.preapproval_id || '');
+      const aprovado =
+        authPayment.payment?.status === 'approved' ||
+        (!authPayment.payment && authPayment.status === 'processed');
+
+      if (!preapprovalId || !aprovado) {
+        return NextResponse.json({ success: true, message: 'Cobrança não aprovada ou sem preapproval' });
+      }
+
+      const { data: sub } = await supabaseAdmin
+        .from('radar_subscriptions')
+        .select('user_id, status, expires_at, mp_subscription_id')
+        .eq('mp_preapproval_id', preapprovalId)
+        .maybeSingle();
+
+      if (!sub) {
+        console.warn(`Webhook MP: cobrança ${authorizedPaymentId} de preapproval ${preapprovalId} sem assinatura correspondente.`);
+        return NextResponse.json({ success: true, message: 'Cobrança não correlacionada' });
+      }
+
+      // Idempotência: evento reentregue não estende expires_at duas vezes.
+      // mp_subscription_id guarda o último authorized_payment processado.
+      const marker = `authpay_${authorizedPaymentId}`;
+      if (sub.mp_subscription_id === marker) {
+        console.log(`[webhook] Cobrança ${authorizedPaymentId} já processada. Evento duplicado ignorado.`);
+        return NextResponse.json({ success: true, message: 'Cobrança já processada' });
+      }
+
+      const newExpiry = computeRenewalExpiry(sub.expires_at ?? null, Date.now());
+      await supabaseAdmin
+        .from('radar_subscriptions')
+        .update({
+          status: 'active', // cobrança aprovada reativa inclusive quem estava paused
+          expires_at: newExpiry,
+          mp_subscription_id: marker,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('mp_preapproval_id', preapprovalId);
+
+      console.log(`✅ Radar do usuário ${sub.user_id} renovado automaticamente até ${newExpiry} (cobrança ${authorizedPaymentId})`);
+      return NextResponse.json({ success: true, renewed_until: newExpiry });
+    }
 
     let paymentId: string | null = null;
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { daysUntilExpiry, radarLifecycleState } from '@/lib/monitoring/radarRenewal';
+import { daysUntilExpiry, radarLifecycleState, shouldSkipManualRenewalReminder } from '@/lib/monitoring/radarRenewal';
 import { sendRadarRenewalReminder } from '@/lib/monitoring/notificationService';
 import { runTrialReminderJob } from '@/lib/trial/trialReminderJob';
 
@@ -34,10 +34,12 @@ export async function GET(req: Request) {
   const janelaInicio = new Date(now - 45 * 24 * 60 * 60 * 1000).toISOString();
   const janelaFim = new Date(now + 8 * 24 * 60 * 60 * 1000).toISOString();
 
+  // 'paused' (Preapproval com cobrança automática falhada) entra na varredura:
+  // recebe dunning por marco e fecha como expired pós-graça, igual à ativa.
   const { data: subs, error } = await admin
     .from('radar_subscriptions')
-    .select('user_id, expires_at, status')
-    .eq('status', 'active')
+    .select('user_id, expires_at, status, mp_preapproval_id')
+    .in('status', ['active', 'paused'])
     .gte('expires_at', janelaInicio)
     .lte('expires_at', janelaFim);
 
@@ -62,6 +64,14 @@ export async function GET(req: Request) {
       continue;
     }
 
+    // Preapproval ativo (renovação automática): o MP cobra sozinho — pedir
+    // "renove manualmente" confundiria. Só o fechamento pós-graça permanece
+    // (se chegou a expirar, a cobrança automática não veio — win-back se aplica).
+    if (shouldSkipManualRenewalReminder(sub.status, sub.mp_preapproval_id, estado)) {
+      pulados++;
+      continue;
+    }
+
     // Resolve e-mail/nome (necessário tanto para lembrete quanto para win-back).
     const { data: authUser } = await admin.auth.admin.getUserById(sub.user_id);
     const email = authUser?.user?.email;
@@ -76,7 +86,7 @@ export async function GET(req: Request) {
         .from('radar_subscriptions')
         .update({ status: 'expired', updated_at: new Date().toISOString() })
         .eq('user_id', sub.user_id)
-        .eq('status', 'active');
+        .in('status', ['active', 'paused']);
       expiradas++;
       if (email) {
         const r = await sendRadarRenewalReminder({

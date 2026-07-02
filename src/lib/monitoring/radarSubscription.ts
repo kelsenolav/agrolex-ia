@@ -10,6 +10,10 @@ export interface RadarSubscriptionStatus {
   subscribed_properties: string[];
   max_properties: number;
   expires_at: string | null;
+  /** true quando há Preapproval MP ativo (cobrança automática mensal). */
+  auto_renew_active: boolean;
+  /** Status bruto da assinatura ('active'|'cancelled'|'paused'|...) — null sem assinatura. */
+  subscription_status: string | null;
 }
 
 const RADAR_TRIAL_SCANS_PER_PROPERTY = 1;
@@ -24,9 +28,8 @@ export async function getRadarStatus(
 ): Promise<RadarSubscriptionStatus> {
   const { data: sub } = await supabaseAdmin
     .from('radar_subscriptions')
-    .select('id, status, property_ids, expires_at, max_properties')
+    .select('id, status, property_ids, expires_at, max_properties, mp_preapproval_id')
     .eq('user_id', userId)
-    .eq('status', 'active')
     .maybeSingle();
 
   const { data: trialRecord } = await supabaseAdmin
@@ -37,10 +40,12 @@ export async function getRadarStatus(
 
   const trialUsed = (trialRecord && trialRecord.length > 0) || false;
 
-  // Grace-aware (Eixo 2 / 2.3): uma assinatura status='active' mas vencida ALÉM da
-  // graça NÃO conta como ativa (fecha o vazamento de monitoramento grátis pós-expiração).
-  // Durante a graça segue ativa — sem corte abrupto.
-  if (sub && isEffectivelyActive(sub.expires_at, Date.now())) {
+  // Grace-aware (Eixo 2 / 2.3): assinatura vencida ALÉM da graça NÃO conta como
+  // ativa (fecha o vazamento de monitoramento grátis pós-expiração).
+  // Preapproval (CDC): 'cancelled' e 'paused' MANTÊM acesso até o expires_at já
+  // pago — cancelar a renovação automática nunca corta o que o cliente pagou.
+  const statusComAcesso = sub && ['active', 'cancelled', 'paused'].includes(sub.status);
+  if (sub && statusComAcesso && isEffectivelyActive(sub.expires_at, Date.now())) {
     return {
       has_active_subscription: true,
       trial_used: trialUsed,
@@ -48,6 +53,8 @@ export async function getRadarStatus(
       subscribed_properties: sub.property_ids || [],
       max_properties: sub.max_properties || 5,
       expires_at: sub.expires_at,
+      auto_renew_active: sub.status === 'active' && !!sub.mp_preapproval_id,
+      subscription_status: sub.status,
     };
   }
 
@@ -58,6 +65,8 @@ export async function getRadarStatus(
     subscribed_properties: [],
     max_properties: 0,
     expires_at: null,
+    auto_renew_active: false,
+    subscription_status: sub?.status ?? null,
   };
 }
 

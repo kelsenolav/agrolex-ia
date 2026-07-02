@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createPreference } from '@/lib/payments/mercadopago';
+import { createPreapproval } from '@/lib/payments/mercadopagoPreapproval';
 import { RADAR_PRICE_PER_PROPERTY } from '@/lib/monitoring/radarSubscription';
 
 export const dynamic = 'force-dynamic';
@@ -32,60 +32,47 @@ export async function POST(req: Request) {
       auth: { persistSession: false },
     });
 
-    const { data: order, error: orderError } = await adminClient
-      .from('orders')
-      .insert({
-        user_id: user.id,
-        amount: totalPrice,
-        status: 'pending',
-        sandbox: true,
-        payment_method: `radar_${count}_properties`,
-      })
-      .select()
-      .single();
-
-    if (orderError || !order) {
-      return NextResponse.json({ error: 'Erro ao criar pedido' }, { status: 500 });
-    }
-
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || `https://${process.env.VERCEL_URL}` || 'http://localhost:3000';
 
+    // Preapproval (assinatura recorrente): o cliente autoriza uma vez e o MP
+    // cobra sozinho todo mês. `orders` sai do fluxo do Radar — a assinatura
+    // pertence ao usuário e é correlacionada por `mp_preapproval_id` no webhook.
     try {
-      const preference = await createPreference({
-        items: [{
-          id: order.id,
-          title: `AgrolexI Radar — ${count} propriedade${count > 1 ? 's' : ''}/mês`,
-          description: `Monitoramento fundiário contínuo para ${count} propriedade${count > 1 ? 's' : ''}`,
-          quantity: 1,
-          unit_price: totalPrice,
-          currency_id: 'BRL',
-        }],
-        external_reference: order.id,
-        payer: {
-          name: user.user_metadata?.full_name || user.email || 'Cliente AgrolexI',
-          email: user.email || '',
-        },
-        notification_url: `${baseUrl}/api/webhook/mercadopago`,
-        back_urls: {
-          success: `${baseUrl}/dashboard/radar?payment=success&order=${order.id}`,
-          failure: `${baseUrl}/dashboard/radar?payment=failure&order=${order.id}`,
-          pending: `${baseUrl}/dashboard/radar?payment=pending&order=${order.id}`,
-        },
-        auto_return: 'approved',
+      const preapproval = await createPreapproval({
+        reason: `AgrolexI Radar — ${count} propriedade${count > 1 ? 's' : ''}/mês`,
+        external_reference: user.id,
+        payer_email: user.email || '',
+        transaction_amount: totalPrice,
+        back_url: `${baseUrl}/dashboard/radar?subscription=pending`,
       });
 
-      await adminClient.from('orders').update({ preference_id: preference.preferenceId }).eq('id', order.id);
+      // Grava o vínculo ANTES do redirect: quando o webhook
+      // subscription_preapproval chegar, já sabemos de quem é a assinatura.
+      const { error: subError } = await adminClient.from('radar_subscriptions').upsert({
+        user_id: user.id,
+        status: 'pending',
+        max_properties: count,
+        price_per_property: RADAR_PRICE_PER_PROPERTY,
+        mp_preapproval_id: preapproval.preapprovalId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+
+      if (subError) {
+        console.error('[monitoring/checkout] falha ao gravar assinatura pending:', subError.message);
+        return NextResponse.json({ error: 'Erro ao registrar assinatura' }, { status: 500 });
+      }
 
       return NextResponse.json({
-        mode: 'mercadopago',
-        checkoutUrl: preference.checkoutUrl,
-        orderId: order.id,
+        mode: 'mercadopago_preapproval',
+        checkoutUrl: preapproval.initPoint,
+        preapprovalId: preapproval.preapprovalId,
         totalPrice,
         propertyCount: count,
       });
     } catch (mpError) {
       const mpConfigured = !!(process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN);
       if (!mpConfigured) {
+        // Dev local sem MP: assinatura simulada (mesmo fallback de antes).
         await adminClient.from('radar_subscriptions').upsert({
           user_id: user.id,
           status: 'active',
@@ -94,11 +81,6 @@ export async function POST(req: Request) {
           expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         }, { onConflict: 'user_id' });
 
-        await adminClient.from('orders').update({
-          status: 'approved',
-          paid_at: new Date().toISOString(),
-        }).eq('id', order.id);
-
         return NextResponse.json({
           mode: 'simulated_dev',
           status: 'approved',
@@ -106,7 +88,8 @@ export async function POST(req: Request) {
         });
       }
 
-      return NextResponse.json({ error: 'Erro ao processar pagamento' }, { status: 502 });
+      console.error('[monitoring/checkout] erro MP preapproval:', mpError);
+      return NextResponse.json({ error: 'Erro ao processar assinatura' }, { status: 502 });
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
