@@ -66,7 +66,7 @@ export async function authGate(req: NextRequest): Promise<AuthGateOk | AuthGateF
 interface PersistInput {
   user_id: string;
   property_id?: string | null;
-  tipo: 'elegibilidade' | 'defesa' | 'ambiental';
+  tipo: 'elegibilidade' | 'defesa' | 'ambiental' | 'dossie';
   score?: number | null;
   faixa?: string | null;
   input: unknown;

@@ -24,7 +24,7 @@ import {
 
 // ─── Tipos locais ───────────────────────────────────────────────────────────
 
-type TabId = 'hub' | 'elegibilidade' | 'defesa' | 'ambiental' | 'conhecimento';
+type TabId = 'hub' | 'elegibilidade' | 'defesa' | 'ambiental' | 'dossie' | 'conhecimento';
 
 interface PropertyForCredit {
   id: string;
@@ -33,6 +33,7 @@ interface PropertyForCredit {
   state?: string;
   area?: number;
   car_number?: string;
+  car_code?: string;
 }
 
 // ─── Componente principal ───────────────────────────────────────────────────
@@ -96,6 +97,13 @@ export default function CreditoRuralPage() {
   const [programas, setProgramas] = useState<any[]>([]);
   const [conhecLoading, setConhecLoading] = useState(false);
 
+  // Dossiê 5.193 state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [dossieResult, setDossieResult] = useState<any | null>(null);
+  const [dossieLoading, setDossieLoading] = useState(false);
+  const [dossieCarCode, setDossieCarCode] = useState('');
+  const [dossieEmbargoDeclarado, setDossieEmbargoDeclarado] = useState(false);
+
   // Integração com a análise da matrícula
   interface MatriculaDerived {
     found: boolean;
@@ -118,7 +126,7 @@ export default function CreditoRuralPage() {
 
       const { data: props } = await supabase
         .from('properties')
-        .select('id, name, city, state, area, car_number')
+        .select('id, name, city, state, area, car_number, car_code')
         .eq('user_id', session.user.id)
         .order('created_at', { ascending: false });
 
@@ -321,6 +329,34 @@ export default function CreditoRuralPage() {
     setAmbLoading(false);
   }
 
+  async function handleDossie() {
+    const code = (dossieCarCode || selectedProperty?.car_code || selectedProperty?.car_number || '').trim().toUpperCase();
+    if (!code) {
+      setDossieResult({ error: 'Informe o código CAR (ou cadastre-o na propriedade pelo Radar).' });
+      return;
+    }
+    setDossieLoading(true);
+    setDossieResult(null);
+    try {
+      const res = await fetch('/api/credito-rural/dossie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: await getAuthHeader() },
+        body: JSON.stringify({
+          car_code: code,
+          property_id: selectedProperty?.id ?? null,
+          embargo_autodeclarado: dossieEmbargoDeclarado,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setDossieResult({ error: data.message || data.error || 'Erro ao gerar o dossiê' }); return; }
+      setDossieResult(data.resultado);
+    } catch {
+      setDossieResult({ error: 'Erro de conexão ao gerar o dossiê' });
+    } finally {
+      setDossieLoading(false);
+    }
+  }
+
   async function handleConhecimento() {
     setConhecLoading(true);
     try {
@@ -426,6 +462,7 @@ export default function CreditoRuralPage() {
             { id: 'elegibilidade' as TabId, label: 'Elegibilidade', icon: TrendingUp },
             { id: 'defesa' as TabId, label: 'Defesa Judicial', icon: Gavel },
             { id: 'ambiental' as TabId, label: 'Ambiental', icon: Leaf },
+            { id: 'dossie' as TabId, label: 'Dossiê 5.193', icon: ShieldCheck },
             { id: 'conhecimento' as TabId, label: 'Base de Conhecimento', icon: BookOpen },
           ].map(tab => (
             <button
@@ -478,6 +515,13 @@ export default function CreditoRuralPage() {
                   color: 'emerald',
                   title: 'Conformidade Ambiental',
                   desc: 'Verificação de barreiras ambientais (PRODES/INPE, embargo IBAMA) conforme Resoluções CMN 5.193/2024 e 5.268/2025.',
+                },
+                {
+                  tab: 'dossie' as TabId,
+                  icon: ShieldCheck,
+                  color: 'green',
+                  title: 'Dossiê de Conformidade 5.193',
+                  desc: 'Veredito por operação (apto / com ressalvas / impedido): sobreposições geo (TI, UC, embargo, CAR vizinho) + DETER ao vivo + plano de saneamento por impedimento.',
                 },
                 {
                   tab: 'conhecimento' as TabId,
@@ -950,6 +994,126 @@ export default function CreditoRuralPage() {
 
             {ambResult?.error && (
               <div className="max-w-2xl mx-auto bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-sm">{ambResult.error}</div>
+            )}
+          </div>
+        )}
+
+        {/* ─── DOSSIÊ 5.193 ─────────────────────────────────────────────── */}
+        {activeTab === 'dossie' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-green-700" /> Dossiê de Conformidade — Res. CMN 5.193</h2>
+              <p className="text-sm text-gray-400 mt-1">Veredito por operação de crédito: sobreposições georreferenciadas (TI, UC, embargo, CAR vizinho) + desmatamento DETER ao vivo + plano de saneamento por impedimento.</p>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl p-5 max-w-3xl mx-auto no-print">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500">Código CAR do imóvel</label>
+                  <input
+                    value={dossieCarCode || selectedProperty?.car_code || selectedProperty?.car_number || ''}
+                    onChange={e => setDossieCarCode(e.target.value)}
+                    placeholder="TO-1721000-ABCD..."
+                    className="w-full mt-1 bg-gray-100 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Pré-preenchido da propriedade selecionada quando cadastrado (Radar → dados cadastrais).</p>
+                </div>
+                <div className="flex flex-col justify-between">
+                  <label className="flex items-center gap-2 mt-5 text-sm text-gray-600">
+                    <input type="checkbox" checked={dossieEmbargoDeclarado} onChange={e => setDossieEmbargoDeclarado(e.target.checked)} className="w-4 h-4" />
+                    Há embargo IBAMA conhecido sobre o imóvel (declaração)
+                  </label>
+                  <button
+                    onClick={handleDossie}
+                    disabled={dossieLoading}
+                    className="mt-3 px-6 py-2.5 rounded-xl bg-green-700 hover:bg-green-600 text-white font-semibold text-sm transition disabled:opacity-50"
+                  >
+                    {dossieLoading ? 'Consultando bases oficiais...' : 'Gerar Dossiê de Conformidade'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {dossieResult?.error && (
+              <div className="max-w-3xl mx-auto bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-sm">{dossieResult.error}</div>
+            )}
+
+            {dossieResult && !dossieResult.error && (
+              <div className="max-w-3xl mx-auto space-y-4">
+                {/* Veredito */}
+                <div className={`rounded-xl p-6 text-center border ${
+                  dossieResult.veredito === 'impedido' ? 'bg-red-50 border-red-200' :
+                  dossieResult.veredito === 'apto_com_ressalvas' ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'
+                }`}>
+                  <p className={`text-2xl font-black ${
+                    dossieResult.veredito === 'impedido' ? 'text-red-700' :
+                    dossieResult.veredito === 'apto_com_ressalvas' ? 'text-amber-700' : 'text-green-700'
+                  }`}>
+                    {dossieResult.veredito === 'impedido' ? 'IMPEDIDO' :
+                     dossieResult.veredito === 'apto_com_ressalvas' ? 'APTO COM RESSALVAS' : 'APTO'}
+                  </p>
+                  <p className="text-sm text-gray-600 mt-2">{dossieResult.resumo}</p>
+                  <p className="text-xs text-gray-400 mt-2">{dossieResult.car_code} · {dossieResult.municipio ?? '—'} · {dossieResult.area_imovel_ha} ha</p>
+                </div>
+
+                {/* Impedimentos */}
+                {dossieResult.impedimentos?.length > 0 && (
+                  <div className="bg-white border border-red-200 rounded-xl p-5 space-y-4">
+                    <h3 className="font-bold text-sm text-red-700 flex items-center gap-2"><XCircle className="w-4 h-4" /> Impedimentos ({dossieResult.impedimentos.length})</h3>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {dossieResult.impedimentos.map((i: any, idx: number) => (
+                      <div key={idx} className="border-l-2 border-red-300 pl-3 space-y-1">
+                        <p className="text-sm font-semibold text-gray-800">{i.descricao}</p>
+                        <p className="text-xs text-gray-500">Base: {i.base_normativa}</p>
+                        <p className="text-xs text-gray-600"><span className="font-semibold">Saneamento: </span>{i.saneamento}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Ressalvas */}
+                {dossieResult.ressalvas?.length > 0 && (
+                  <div className="bg-white border border-amber-200 rounded-xl p-5 space-y-4">
+                    <h3 className="font-bold text-sm text-amber-700 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Ressalvas ({dossieResult.ressalvas.length})</h3>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {dossieResult.ressalvas.map((r: any, idx: number) => (
+                      <div key={idx} className="border-l-2 border-amber-300 pl-3 space-y-1">
+                        <p className="text-sm font-semibold text-gray-800">{r.descricao}</p>
+                        <p className="text-xs text-gray-500">Base: {r.base_normativa}</p>
+                        <p className="text-xs text-gray-600"><span className="font-semibold">Providência: </span>{r.saneamento}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Lacunas */}
+                {dossieResult.lacunas_de_verificacao?.length > 0 && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                    <h3 className="font-semibold text-xs text-gray-600 mb-2">Fontes NÃO verificadas nesta análise</h3>
+                    {dossieResult.lacunas_de_verificacao.map((l: string, i: number) => (
+                      <p key={i} className="text-xs text-gray-500 py-0.5">- {l}</p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Link pra sobreposição completa */}
+                {dossieResult.sobreposicoes?.length > 0 && (
+                  <a
+                    href={`/dashboard/sobreposicao?car=${encodeURIComponent(dossieResult.car_code)}`}
+                    className="block text-center text-sm font-semibold text-emerald-700 hover:text-emerald-800 no-print"
+                  >
+                    Ver análise de sobreposição completa com mapa →
+                  </a>
+                )}
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-[11px] text-amber-800 leading-relaxed">{dossieResult.disclaimer}</p>
+                </div>
+
+                <button onClick={() => window.print()} className="w-full py-2 rounded-lg border border-green-300 text-green-700 text-sm font-medium hover:bg-green-50 transition flex items-center justify-center gap-2 no-print">
+                  <FileText className="w-4 h-4" /> Exportar dossiê em PDF
+                </button>
+              </div>
             )}
           </div>
         )}
