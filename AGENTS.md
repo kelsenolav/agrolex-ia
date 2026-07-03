@@ -3,6 +3,19 @@
 ## Agent Rules for AgroLex Project
 
 - **Data**: 03/07/2026
+- **Bloco**: Foto da matrícula → PDF no navegador (Nova Análise) — a "capacidade mobile" sem app
+- **Contexto**: pergunta do usuário "o AgrolexI pode virar app Android/iOS?" → `/product-brainstorming` concluiu: PWA/lojas são prematuros (gatilho = 1º assinante do Radar; iOS tem armadilha dupla: rejeição de wrapper por Guideline 4.2 + IAP 15-30% colidindo com o checkout MP); a ÚNICA capacidade mobile com dor real observada é o produtor com matrícula em papel esbarrando no upload PDF-only. Usuário escolheu executar só isso. `/brainstorming` fechou: escopo só Nova Análise; N fotos → 1 PDF com prévia ordenada; limites 20 fotos/8MB.
+- **Implementação (aditiva, arquivos críticos preservados)**:
+  - `src/lib/pdf/photosToPdf.ts` *(novo, client-side)* — `photosToPdf(File[]) → File` PDF: normaliza orientação EXIF (`createImageBitmap` + canvas — foto de celular chega deitada sem isso), comprime JPEG 0.85, 1 foto/página A4 (paisagem gira a página), nome `matricula-fotos-Npag-<ts>.pdf`. Validações puras exportadas (`validarFoto`/`validarLoteFotos`, 6 testes). `pdf-lib` já era dependência.
+  - `nova-analise/page.tsx` (crítico no baseline — mudança **aditiva**): seção "Sem PDF? Fotografe a matrícula" com `input accept="image/*" capture="environment" multiple`, miniaturas ordenadas (pág. 1..N) com remoção, botão gera o PDF e entrega ao `processFiles` **existente**. Fluxo de PDF atual intocado; **bucket segue PDF-only** (decisão do bloco Data Room mantida) e `/api/analyze` não foi tocado — o backend nem sabe que era foto.
+- **Prova no browser real (preview autenticado)**: 2 fotos geradas via canvas (retrato 900×1200 + paisagem 1200×900) injetadas no input via `DataTransfer` → miniaturas renderizadas → `matricula-fotos-2pag-*.pdf` apareceu na lista de documentos pronto pro envio normal. (A conversão usa APIs de browser — canvas/createImageBitmap — então jsdom não cobre; a prova real é essa.)
+- **Nota de higiene**: `src/lib/pdf/__tests__` está no `.gitignore` legado — teste força-adicionado (`git add -f`), mesmo padrão de blocos anteriores.
+- **Validação**: `tsc` 0, `lint` 0 erros, `jest` **790** (+6), `build` OK. Deploy **EFETUADO**.
+- **Decisões registradas da avaliação mobile**: PWA com web push quando houver 1º assinante do Radar; wrapper Capacitor só Android e só com demanda por loja; iOS por último (IAP); reescrita React Native descartada neste estágio.
+
+---
+
+- **Data**: 03/07/2026
 - **Bloco**: Aposta 2 — Dossiê de Conformidade CMN 5.193 por operação de crédito (fecha o ciclo das 2 apostas de valor agregado)
 - **Contexto**: continuação direta da aposta 1 (mesma sessão de `/product-brainstorming` com pesquisa de mercado; `/brainstorming` fechou 3 decisões: conteúdo completo com saneamento; gate dentro do plano ativo — cobrança por operação só quando houver cooperativa compradora; UI como aba nova no módulo Crédito Rural). Spec em `docs/superpowers/specs/2026-07-03-dossie-cmn-5193-design.md`.
 - **Implementação (quase tudo reuso)**:
