@@ -2,6 +2,19 @@
 
 ## Agent Rules for AgroLex Project
 
+- **Data**: 03/07/2026
+- **Bloco**: Aposta 1 — Análise de Sobreposição Georreferenciada (TI/UC/embargo/CAR vizinho) — NENHUM player BR tem isso em self-service
+- **Contexto**: usuário pediu sugestão de CTO com pesquisa de mercado real; sessão de `/product-brainstorming` validou 2 apostas (spec da 1ª em `docs/superpowers/specs/2026-07-02-sobreposicao-georreferenciada-design.md`); `/brainstorming` fechou 4 decisões (posicionamento: página própria + PDF; sem CAR → digitar na hora c/ fallback mapa; CAR-vs-CAR entra na v1; leitura jurídica DETERMINÍSTICA por template, sem IA).
+- **Fontes geoespaciais validadas AO VIVO antes do design (regra do projeto)**: polígono do imóvel via **camada CAR nacional espelhada no PAMGIA/IBAMA** (ArcGIS REST, 1 camada por UF — mapa completo das 27 UFs extraído do metadata; busca por `cod_imovel` exato devolve GeoJSON); embargos IBAMA **ativos** em `SISCOM/publico/MapServer/3` (desembargos=4 e cancelados=5 separados — nunca acusamos embargo levantado; isso destrava o embargo georreferenciado que era "impossível" via zip de 53MB); TIs no geoserver FUNAI (**exige User-Agent de browser** — 403 com UA padrão); UCs federais no INDE (`ICMBio:limiteucsfederais_a`). **INCRA/SIGEF fora do ar em todos os testes** → v1 rotula `indisponivel` explicitamente.
+- **Implementação**: `src/lib/geo/geoProviders.ts` (fetchers c/ proveniência), `overlapEngine.ts` (interseção turf pura, ha/%, severidade por faixa, agregação por entidade), `overlapLegalReading.ts` (templates jurídicos: TI→art. 231 §6º CF + STF; UC→SNUC; embargo→propter rem + Res. CMN 5.193; vizinho→CAR declaratório art. 29 §2º), rota `/api/geo/sobreposicao` (authGate do crédito rural, `Promise.allSettled`, persiste em `geo_overlap_reports` — migration aplicada em prod via Management API), página `/dashboard/sobreposicao` (mapa Leaflet, badges de severidade, leitura jurídica, painel de fontes, export PDF), botão "Sobreposições" no card da propriedade no Radar. Deps novas: @turf/*, leaflet/react-leaflet.
+- **🔴 3 bugs de integração achados AO VIVO (e por isso o teste ao vivo é regra)**: (1) o ArcGIS do PAMGIA **rejeita espaço como `+`** (padrão URLSearchParams) — exige `%20`, senão "Failed to execute query"; (2) `outFields` com UM campo inexistente **derruba a query inteira** (usar só campos confirmados no metadata, ou `*`); (3) o geoserver da FUNAI **rejeita WFS 2.0 sem sortBy** ("Cannot do natural order without a primary key") — usar WFS 1.0.0 (bbox lon,lat).
+- **Prova ao vivo (CAR real de Couto Magalhães/TO)**: 5/5 fontes consultadas, ~2s, relatório persistido — e o primeiro teste já revelou **caso real de CAR vizinho sobrepondo 99,82% do imóvel** (possível CAR duplicado/conflito dominial pleno; multipartes do mesmo vizinho agregadas num único achado; regra nova: vizinho >50% → severidade 'alta'). UI verificada autenticada no preview: mapa renderiza, 3 badges, leitura jurídica presente, zero erro de console.
+- **⚠️ Revisão jurídica pendente (gate de qualidade)**: os textos de `overlapLegalReading.ts` foram redigidos pelo agente e DEVEM ser revisados pelo usuário (advogado) — mérito jurídico é dele.
+- **Validação**: `tsc` 0, `lint` 0 erros, `jest` **772** (+13), `build` OK (rotas novas presentes). Deploy **EFETUADO**; `/dashboard/sobreposicao` → 307 (gated OK).
+- **Próximo (aposta 2, já autorizada)**: "Dossiê de Conformidade CMN 5.193" por operação de crédito — REUSA sobreposição + módulo ambiental + motores de elegibilidade/defesa; decisões de escopo em aberto com o usuário.
+
+---
+
 - **Data**: 02/07/2026
 - **Bloco**: Ressurreição de código morto — recuperação de senha + lembretes do Calendário + verificação de vereditos + limpeza (3 commits)
 - **Contexto**: usuário perguntou "há algo morto no sistema que é bom e pode ser reimplantado?". Auditoria real no código (não de memória) achou 3 ressurreições e 3 limpezas; usuário mandou "ataque todas".
