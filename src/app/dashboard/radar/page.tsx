@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   Shield, ArrowLeft, AlertTriangle, CheckCircle2, Clock,
   RefreshCw, Bell, BellOff, Eye, Zap, Radio, Activity,
-  ChevronRight, XCircle, Info, Edit3, Save, Database, Globe, Plus,
+  ChevronRight, XCircle, Info, Edit3, Save, Database, Globe, Plus, Layers,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getStatusConfig, getSeverityConfig } from '@/lib/monitoring/monitoringEngine';
@@ -612,13 +612,24 @@ function RadarContent() {
                       <button onClick={() => setEditingProp(null)} className="text-xs text-gray-500 hover:text-gray-700 mt-1">Cancelar</button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => startEditProp(prop)}
-                      className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-green mb-3 transition-colors"
-                    >
-                      <Edit3 size={10} />
-                      {prop.car_code || prop.sigef_code || prop.cpf_cnpj ? 'Editar dados cadastrais' : 'Adicionar dados cadastrais (CAR, SIGEF, CPF...)'}
-                    </button>
+                    <div className="flex items-center gap-3 mb-3">
+                      <button
+                        onClick={() => startEditProp(prop)}
+                        className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-green transition-colors"
+                      >
+                        <Edit3 size={10} />
+                        {prop.car_code || prop.sigef_code || prop.cpf_cnpj ? 'Editar dados cadastrais' : 'Adicionar dados cadastrais (CAR, SIGEF, CPF...)'}
+                      </button>
+                      {prop.car_code && (
+                        <Link
+                          href={`/dashboard/sobreposicao?car=${encodeURIComponent(prop.car_code)}`}
+                          className="flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 transition-colors"
+                          title="Cruza o polígono do CAR com Terras Indígenas, UCs, embargos IBAMA e CARs vizinhos"
+                        >
+                          <Layers size={10} /> Sobreposições
+                        </Link>
+                      )}
+                    </div>
                   )}
 
                   {/* Resultado consultas externas */}
