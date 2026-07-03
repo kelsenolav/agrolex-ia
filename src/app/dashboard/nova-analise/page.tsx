@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from 'next/link';
-import { ShieldCheck, ArrowLeft, ArrowRight, UploadCloud, FileText, XCircle, Layers, CheckCircle2, ShieldAlert, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, ArrowRight, UploadCloud, FileText, XCircle, Layers, CheckCircle2, ShieldAlert, ChevronDown, ChevronUp, Info, Camera } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -10,6 +10,7 @@ import { AUDIT_MODULES, getModulePrice, buildDocumentProfile, getModuleCompatibi
 import { createInitialCaseFile, type CaseFileDocument } from "@/lib/caseFile";
 import { getCommercialAccess, canStartTrialAnalysis, getTrialBlockReason, type TrialProfile } from '@/lib/commercial/trial';
 import { montarLeadPayload, validarNome, validarEmail, validarWhatsApp, validarCidade, validarEstado, type LeadPayload } from '@/lib/commercial/lead';
+import { photosToPdf, validarFoto, validarLoteFotos, MAX_FOTOS, MAX_FOTO_MB } from '@/lib/pdf/photosToPdf';
 
 // ─── Constantes ─────────────────────────────────────────────────────────────
 const MAX_FILE_SIZE_MB = 20;
@@ -113,6 +114,9 @@ export default function NovaAnalisePage() {
   const [currentDocType, setCurrentDocType] = useState('Matrícula');
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [fotos, setFotos] = useState<{ file: File; url: string }[]>([]);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
 
   // Etapa 3 — Módulos
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
@@ -285,6 +289,49 @@ export default function NovaAnalisePage() {
     next.splice(index, 1);
     setFiles(next);
     setSelectedModules(prev => retainCompatibleModules(prev, next));
+  };
+
+  // ── Foto da matrícula → PDF (client-side; o backend recebe PDF normal) ────
+  const onPhotoInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const novas = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (novas.length === 0) return;
+
+    const loteErr = validarLoteFotos(fotos.length, novas.length);
+    if (loteErr) { showToast(loteErr, 'error'); return; }
+
+    const aceitas: { file: File; url: string }[] = [];
+    for (const f of novas) {
+      const err = validarFoto(f);
+      if (err) { showToast(err, 'error'); continue; }
+      aceitas.push({ file: f, url: URL.createObjectURL(f) });
+    }
+    if (aceitas.length > 0) setFotos(prev => [...prev, ...aceitas]);
+  };
+
+  const removeFoto = (index: number) => {
+    setFotos(prev => {
+      URL.revokeObjectURL(prev[index].url);
+      const next = [...prev];
+      next.splice(index, 1);
+      return next;
+    });
+  };
+
+  const gerarDocumentoDeFotos = async () => {
+    if (fotos.length === 0) return;
+    setGerandoPdf(true);
+    try {
+      const pdf = await photosToPdf(fotos.map(f => f.file));
+      await processFiles([pdf]);
+      fotos.forEach(f => URL.revokeObjectURL(f.url));
+      setFotos([]);
+      showToast(`Documento gerado com ${pdf.name.match(/(\d+)pag/)?.[1] ?? ''} página(s) e adicionado à lista.`, 'success');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Falha ao gerar o documento a partir das fotos.', 'error');
+    } finally {
+      setGerandoPdf(false);
+    }
   };
 
   // ── Validações por etapa ─────────────────────────────────────────────────
@@ -625,6 +672,57 @@ export default function NovaAnalisePage() {
                   <p className="text-xs text-gray-600">
                     Tipo selecionado: <strong className="text-brand-green">{currentDocType}</strong> · máx. {MAX_FILE_SIZE_MB} MB por arquivo · até {MAX_FILE_COUNT} arquivos
                   </p>
+                </div>
+
+                {/* Foto da matrícula → PDF (gerado no navegador) */}
+                <div className="mt-4 border border-gray-200 rounded-2xl p-4">
+                  <input ref={photoInputRef} type="file" accept="image/*" capture="environment" multiple className="sr-only" onChange={onPhotoInput} />
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-amber-50 border border-amber-100 p-2 rounded-lg text-amber-600"><Camera size={18} /></div>
+                      <div>
+                        <p className="font-bold text-gray-700 text-sm">Sem PDF? Fotografe a matrícula</p>
+                        <p className="text-xs text-gray-500">Tire uma foto de cada página — nós montamos o documento pra você. Até {MAX_FOTOS} fotos, {MAX_FOTO_MB} MB cada.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="inline-flex items-center gap-2 border border-brand-green text-brand-green px-4 py-2 rounded-xl text-sm font-bold hover:bg-green-50 transition-colors"
+                    >
+                      <Camera size={15} /> {fotos.length > 0 ? 'Adicionar mais fotos' : 'Fotografar / enviar fotos'}
+                    </button>
+                  </div>
+
+                  {fotos.length > 0 && (
+                    <div className="mt-4">
+                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                        {fotos.map((f, i) => (
+                          <div key={f.url} className="relative group">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={f.url} alt={`Página ${i + 1}`} className="w-full h-20 object-cover rounded-lg border border-gray-200" />
+                            <span className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">pág. {i + 1}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeFoto(i)}
+                              className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-90 hover:opacity-100"
+                              aria-label={`Remover página ${i + 1}`}
+                            >
+                              <XCircle size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={gerarDocumentoDeFotos}
+                        disabled={gerandoPdf}
+                        className="mt-3 w-full bg-brand-green text-white py-2.5 rounded-xl font-bold text-sm hover:brightness-110 transition-all disabled:opacity-50"
+                      >
+                        {gerandoPdf ? 'Gerando documento...' : `Gerar documento com ${fotos.length} página(s)`}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Lista de arquivos */}
