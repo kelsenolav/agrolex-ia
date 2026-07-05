@@ -6,6 +6,17 @@
 
 ---
 
+- **Data**: 02/07/2026
+- **Bloco**: Mercado Pago em PRODUÇÃO REAL — troca da credencial + flag + redeploy
+- **Contexto**: seguimento imediato do bloco Preapproval. Usuário trocou `MERCADO_PAGO_ACCESS_TOKEN` no Vercel pela credencial da conta MP real dele.
+- **Verificação (ao vivo, read-only `users/me`)**: token novo pertence à conta **real** (KELSENBRUNO / kelsenb@hotmail.com / `tags:["normal"]` — sem `test_user`). **A partir de agora, cobranças movem dinheiro de verdade.**
+- **Correção aplicada**: `MERCADOPAGO_PRODUCTION=true` adicionada no Vercel — sem ela, `MP_SANDBOX` continuava true e o checkout de planos/pacotes (Preference) devolvia `sandbox_init_point` mesmo com token de produção. Redeploy efetuado; sanity-check pós-deploy OK (home 200, cancel sem auth 401).
+- **⚠️ Gap conhecido (baixo risco, registrado)**: `verifyWebhookSignature` ainda retorna `true` sem validar a assinatura (TODO herdado no código). Mitigação real: todos os handlers do webhook consultam a API do MP como fonte de verdade (`getPayment`/`getPreapproval`/`getAuthorizedPayment`) — notificação forjada não fabrica aprovação. Endurecer quando houver volume.
+- **Nota p/ teste real**: o dono da conta MP não consegue assinar de si mesmo (payer=collector recusado). Conta MP do usuário = kelsenb@hotmail.com; login do app = advkelsenolavbruno@gmail.com — e-mails distintos, o teste do fluxo deve passar.
+- **Deploy em produção**: **EFETUADO**.
+
+---
+
 
 - **Data**: 02/07/2026
 - **Bloco**: MP Preapproval — cobrança recorrente REAL do Radar (auto-débito mensal) + cancelamento no app

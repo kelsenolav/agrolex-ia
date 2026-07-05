@@ -37,6 +37,16 @@
 
 ## Últimos blocos
 
+- **Data**: 05/07/2026
+- **Bloco**: Fix — matrícula densa truncava JSON em 8192 tokens (análise nunca concluía) + revisão de código pegou 3 gaps na cascata
+- **Caso real**: Raimundo Nonato/Miracema (usucapião do usuário) — inteiro teor + vintenária estouravam `maxOutputTokens=8192` → JSON truncado → parse falhava → retry determinístico. OCR estava perfeito; o gargalo era SAÍDA.
+- **Fix**: caminho denso pede 16384; `PROVIDER_OUTPUT_CAPS` (fonte única em `aiProviders.ts`) protege cada provedor contra 400 por pedido acima do teto (400 casa com NON_FALLBACK e derrubaria a cascata inteira).
+- **`/code-review` (protocolo novo, 1ª utilização) pegou ANTES do deploy**: (1) Claude/OpenAI/Groq devolviam resposta truncada como sucesso — agora `stop_reason`/`finish_reason` viram `ai_incomplete_response` (elegível a fallback, cascateia); (2) teto 8192 dado ao Claude era factualmente errado (haiku 4.5 aceita 64k) e reintroduzia o bug no fallback; (3) Gemini sem clamp.
+- **Prova em produção**: reprocesso da análise real concluiu — ISF 39/crítico, parecer forense íntegro (7,2k chars), trilha `isf_verdict` presente. OCR resumível (cache do bloco 30/06) fez o reprocesso custar só a etapa de síntese.
+- **Limpeza**: 3 propriedades "Raimundo Nonato" duplicadas (retries do wizard, 0 análises/0 docs) deletadas de prod.
+- **Validação**: tsc 0, lint 0, jest **794** (+4), build OK. Deploy EFETUADO.
+- **Nota UX a observar**: wizard cria propriedade nova a cada tentativa — candidato a dedup futuro.
+---
 - **Data**: 03/07/2026
 - **Bloco**: Foto da matrícula → PDF no navegador (Nova Análise) — a "capacidade mobile" sem app
 - **Contexto**: pergunta do usuário "o AgrolexI pode virar app Android/iOS?" → `/product-brainstorming` concluiu: PWA/lojas são prematuros (gatilho = 1º assinante do Radar; iOS tem armadilha dupla: rejeição de wrapper por Guideline 4.2 + IAP 15-30% colidindo com o checkout MP); a ÚNICA capacidade mobile com dor real observada é o produtor com matrícula em papel esbarrando no upload PDF-only. Usuário escolheu executar só isso. `/brainstorming` fechou: escopo só Nova Análise; N fotos → 1 PDF com prévia ordenada; limites 20 fotos/8MB.
@@ -86,16 +96,5 @@
 - **4) Limpeza (commit `1d6ea018`)**: `mockData.ts` (não importado), `/admin/leads` (página órfã — o real é `/dashboard/leads`), e **`/api/seed`** — este era grave: GET **sem autenticação** que injetava propriedades falsas via service role na conta do primeiro usuário do banco; qualquer visitante da URL poluía dados de produção.
 - **Decidido não ressuscitar**: pipeline PDF→Markdown (congelado PASSO 25.7 — OCR página-a-página atual já cobre) e sub-bloco 1.2/eval LLM (destravado pelo crédito de IA, mas precisa de volume de uso pra medir algo).
 - **Validação**: `tsc` 0 (após limpar `.next` poluído), `lint` 0 erros (12 warnings pré-existentes), `jest` **759** (+24: 11 calendário + 13 já contados do bloco Preapproval), `build` OK (rotas novas presentes; `/admin/leads` e `/api/seed` fora). Preview ao vivo: `/recuperar-senha` renderiza o formulário; `/redefinir-senha` sem token de recovery mostra corretamente "Link inválido ou expirado".
-- **Deploy em produção**: **EFETUADO**.
-
----
-
-- **Data**: 02/07/2026
-- **Bloco**: Mercado Pago em PRODUÇÃO REAL — troca da credencial + flag + redeploy
-- **Contexto**: seguimento imediato do bloco Preapproval. Usuário trocou `MERCADO_PAGO_ACCESS_TOKEN` no Vercel pela credencial da conta MP real dele.
-- **Verificação (ao vivo, read-only `users/me`)**: token novo pertence à conta **real** (KELSENBRUNO / kelsenb@hotmail.com / `tags:["normal"]` — sem `test_user`). **A partir de agora, cobranças movem dinheiro de verdade.**
-- **Correção aplicada**: `MERCADOPAGO_PRODUCTION=true` adicionada no Vercel — sem ela, `MP_SANDBOX` continuava true e o checkout de planos/pacotes (Preference) devolvia `sandbox_init_point` mesmo com token de produção. Redeploy efetuado; sanity-check pós-deploy OK (home 200, cancel sem auth 401).
-- **⚠️ Gap conhecido (baixo risco, registrado)**: `verifyWebhookSignature` ainda retorna `true` sem validar a assinatura (TODO herdado no código). Mitigação real: todos os handlers do webhook consultam a API do MP como fonte de verdade (`getPayment`/`getPreapproval`/`getAuthorizedPayment`) — notificação forjada não fabrica aprovação. Endurecer quando houver volume.
-- **Nota p/ teste real**: o dono da conta MP não consegue assinar de si mesmo (payer=collector recusado). Conta MP do usuário = kelsenb@hotmail.com; login do app = advkelsenolavbruno@gmail.com — e-mails distintos, o teste do fluxo deve passar.
 - **Deploy em produção**: **EFETUADO**.
 
