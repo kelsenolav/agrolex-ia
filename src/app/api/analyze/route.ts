@@ -1759,7 +1759,11 @@ ${ocrTextBlocks.join('\n\n')}
           const result: FallbackResult = await withTimeout(
             generateWithFallback(geminiParts, {
               geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-              maxOutputTokens: isFastChainOfTitleOnly ? 4096 : 8192,
+              // 16384 no caminho denso: matrícula com vintenária (décadas de atos)
+              // truncava o JSON em 8192 → parse falhava → análise nunca concluía
+              // (caso real 03/07: Raimundo Nonato/Miracema). Cada provedor da
+              // cascata se protege com o próprio teto (clampOutputTokens).
+              maxOutputTokens: isFastChainOfTitleOnly ? 4096 : 16384,
               timeoutMs: perProviderTimeoutMs,
             }),
             remainingBudgetMs,

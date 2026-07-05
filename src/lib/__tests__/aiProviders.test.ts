@@ -12,6 +12,7 @@
  */
 
 import {
+  clampOutputTokens,
   isFallbackEligible,
   classifyFallbackReason,
   generateWithFallback,
@@ -125,6 +126,24 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env = originalEnv;
+});
+
+// ── Testes: clampOutputTokens ────────────────────────────────────────────────
+
+describe('clampOutputTokens', () => {
+  it('sem pedido → usa o default', () => {
+    expect(clampOutputTokens(undefined, 4096, 16384)).toBe(4096);
+    expect(clampOutputTokens(0, 8192, 8192)).toBe(8192);
+  });
+
+  it('pedido dentro do teto → respeitado', () => {
+    expect(clampOutputTokens(16384, 4096, 16384)).toBe(16384);
+  });
+
+  it('pedido ACIMA do teto do provedor → clampado (nunca 400 na cascata)', () => {
+    // Caso real: caminho denso pede 16384; teto conservador do Claude é 8192
+    expect(clampOutputTokens(16384, 8192, 8192)).toBe(8192);
+  });
 });
 
 // ── Testes: isFallbackEligible ───────────────────────────────────────────────
@@ -346,6 +365,21 @@ describe('generateWithOpenAI', () => {
 
     const parts: GeminiPart[] = [{ text: 'test' }];
     await expect(generateWithOpenAI(parts)).rejects.toThrow('OPENAI_API_KEY');
+  });
+
+  it('detecta truncamento (finish_reason=length) e lança ai_incomplete_response ELEGÍVEL pra cascata', async () => {
+    // Achado da revisão de código 03/07: sem este check, JSON truncado voltava
+    // como "sucesso", falhava no parse do route (não-retentável) e matava a
+    // análise em vez de cair pro próximo provedor.
+    mockStore.openaiCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: '{"json": "truncado no meio de um array de at' }, finish_reason: 'length' }],
+    });
+
+    const parts: GeminiPart[] = [{ text: 'Analise esta matrícula densa' }];
+    const err = await generateWithOpenAI(parts).catch((e) => e);
+    expect(err.message).toContain('ai_incomplete_response');
+    // A mensagem PRECISA ser elegível pra fallback (não pode conter padrões non-fallback)
+    expect(isFallbackEligible(err.message)).toBe(true);
   });
 });
 

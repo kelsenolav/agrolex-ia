@@ -43,6 +43,31 @@ export interface AiGenerateOptions {
   allowFallback?: boolean;
 }
 
+/**
+ * Tetos de saída por provedor — FONTE ÚNICA (revisão de código 03/07 pegou
+ * números espalhados divergindo). Valores DELIBERADAMENTE abaixo do máximo
+ * real dos modelos default (gpt-4o 16k; haiku 4.5 64k; llama-3.3 32k; gemini
+ * flash 64k+) para sobreviverem a trocas de modelo via env var sem 400.
+ * Um 400 por pedido inválido casa com NON_FALLBACK_PATTERNS ('invalid
+ * request') e derrubaria a cascata INTEIRA — pior que truncar.
+ */
+export const PROVIDER_OUTPUT_CAPS = {
+  gemini: 32768,
+  claude: 16384,
+  openai: 16384,
+  groq: 32768,
+} as const;
+
+/**
+ * Limita o pedido de tokens de saída ao teto do provedor. Caso real: a análise
+ * da matrícula densa (vintenária) truncava em 8192; ao elevar o pedido do
+ * caminho denso, cada provedor se protege com o próprio teto.
+ */
+export function clampOutputTokens(requested: number | undefined, def: number, cap: number): number {
+  const asked = requested && requested > 0 ? requested : def;
+  return Math.min(asked, cap);
+}
+
 export interface GeminiPart {
   text?: string;
   inlineData?: {
@@ -236,7 +261,7 @@ async function generateWithOpenAI(
 
   const modelName = options.openaiModel || getEnvVar('OPENAI_MODEL', 'gpt-4o');
   const timeoutMs = options.timeoutMs || 90000;
-  const maxTokens = options.maxOutputTokens || 4096;
+  const maxTokens = clampOutputTokens(options.maxOutputTokens, 4096, PROVIDER_OUTPUT_CAPS.openai);
 
   const { systemPrompt, userPrompt } = geminiPartsToOpenAIMessages(parts);
 
@@ -254,6 +279,16 @@ async function generateWithOpenAI(
 
   const completion = await withTimeout(completionPromise, timeoutMs, 'openai_generation');
   const durationMs = Date.now() - startTime;
+
+  // Truncamento por limite de tokens: espelha a detecção do Gemini
+  // (finishReason MAX_TOKENS). Sem isso, JSON cortado volta como "sucesso",
+  // falha no parse do route (não-retentável) e mata a análise — em vez de
+  // cair pro próximo provedor da cascata (ai_incomplete_response é elegível).
+  if ((completion as any)?.choices?.[0]?.finish_reason === 'length') {
+    const err = new Error('[ai_incomplete_response] OpenAI atingiu o limite de tokens (finish_reason=length) — resposta truncada.');
+    (err as any).technicalErrorType = 'ai_incomplete_response';
+    throw err;
+  }
 
   const text = (completion as any)?.choices?.[0]?.message?.content || '';
 
@@ -290,7 +325,7 @@ async function generateWithClaude(
   
   const modelName = getEnvVar('CLAUDE_MODEL', 'claude-haiku-4-5-20251001');
   const timeoutMs = options.timeoutMs || 90000;
-  const maxTokens = options.maxOutputTokens || 8192;
+  const maxTokens = clampOutputTokens(options.maxOutputTokens, 8192, PROVIDER_OUTPUT_CAPS.claude);
   
   let systemPrompt = 'Você é um auditor jurídico especializado em direito registral imobiliário brasileiro. Produza pareceres técnicos em português (Brasil), em formato Markdown, com as seções: Identificação, Documentos Analisados, Cadeia Dominial, Achados, Classificação de Risco, Recomendações.';
   const contentBlocks: any[] = [];
@@ -332,12 +367,19 @@ async function generateWithClaude(
   
   const completion = await withTimeout(messagePromise, timeoutMs, 'claude_generation');
   const durationMs = Date.now() - startTime;
-  
+
+  // Truncamento por limite de tokens (mesmo racional do check no OpenAI/Gemini)
+  if ((completion as any)?.stop_reason === 'max_tokens') {
+    const err = new Error('[ai_incomplete_response] Claude atingiu o limite de tokens (stop_reason=max_tokens) — resposta truncada.');
+    (err as any).technicalErrorType = 'ai_incomplete_response';
+    throw err;
+  }
+
   let text = '';
   if (completion.content && completion.content.length > 0) {
     text = (completion.content.find((c: any) => c.type === 'text') as any)?.text || '';
   }
-  
+
   if (!text || text.trim().length < 50) {
     throw new Error('Claude retornou resposta vazia ou muito curta.');
   }
@@ -383,7 +425,7 @@ async function generateWithGroq(
 
   const modelName = getEnvVar('GROQ_MODEL', 'llama-3.3-70b-versatile');
   const timeoutMs = options.timeoutMs || 90000;
-  const maxTokens = options.maxOutputTokens || 4096;
+  const maxTokens = clampOutputTokens(options.maxOutputTokens, 4096, PROVIDER_OUTPUT_CAPS.groq);
 
   const { systemPrompt, userPrompt } = geminiPartsToOpenAIMessages(parts);
 
@@ -401,6 +443,13 @@ async function generateWithGroq(
 
   const completion = await withTimeout(completionPromise, timeoutMs, 'groq_generation');
   const durationMs = Date.now() - startTime;
+
+  // Truncamento por limite de tokens (mesmo racional do check no OpenAI/Gemini)
+  if ((completion as any)?.choices?.[0]?.finish_reason === 'length') {
+    const err = new Error('[ai_incomplete_response] Groq atingiu o limite de tokens (finish_reason=length) — resposta truncada.');
+    (err as any).technicalErrorType = 'ai_incomplete_response';
+    throw err;
+  }
 
   const text = (completion as any)?.choices?.[0]?.message?.content || '';
 
@@ -455,7 +504,9 @@ async function generateWithGemini(
     temperature: 0,
   };
   if (options.maxOutputTokens) {
-    genConfig.maxOutputTokens = options.maxOutputTokens;
+    // Clamp também no primário: 400 INVALID_ARGUMENT do Gemini casaria com
+    // NON_FALLBACK_PATTERNS ('invalid request') e derrubaria a cascata INTEIRA.
+    genConfig.maxOutputTokens = clampOutputTokens(options.maxOutputTokens, options.maxOutputTokens, PROVIDER_OUTPUT_CAPS.gemini);
   }
 
   const model = genAI.getGenerativeModel({
