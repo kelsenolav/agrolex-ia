@@ -8,7 +8,7 @@ import {
   Trash2, Pause, Play, Users, MessageCircle, ImagePlus, X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { CATEGORIES, type Category, type Listing } from '@/lib/types';
+import { CATEGORIES, type BuyIntent, type Category, type Listing } from '@/lib/types';
 import SwipeDeck from '@/components/SwipeDeck';
 
 type Tab = 'comprar' | 'anuncios' | 'matches';
@@ -101,9 +101,29 @@ function TabButton({
 // ---------- Comprar ----------
 
 function ComprarTab({ userId }: { userId: string }) {
+  const [intents, setIntents] = useState<BuyIntent[] | null>(null);
   const [listings, setListings] = useState<Listing[] | null>(null);
+  const [showIntentForm, setShowIntentForm] = useState(false);
+
+  const loadIntents = async () => {
+    const { data } = await supabase
+      .from('buy_intents')
+      .select('*')
+      .eq('buyer_id', userId)
+      .order('created_at', { ascending: false });
+    setIntents(data ?? []);
+  };
 
   useEffect(() => {
+    loadIntents();
+  }, [userId]);
+
+  useEffect(() => {
+    if (!intents || intents.length === 0) {
+      setListings(intents ? [] : null);
+      return;
+    }
+
     const load = async () => {
       const { data: swiped } = await supabase.from('swipes').select('listing_id').eq('buyer_id', userId);
       const swipedIds = new Set((swiped ?? []).map((s) => s.listing_id));
@@ -115,10 +135,21 @@ function ComprarTab({ userId }: { userId: string }) {
         .neq('seller_id', userId)
         .order('created_at', { ascending: false });
 
-      setListings((data ?? []).filter((l) => !swipedIds.has(l.id)));
+      const matched = (data ?? []).filter(
+        (l) =>
+          !swipedIds.has(l.id) &&
+          intents.some(
+            (intent) =>
+              intent.category === l.category &&
+              intent.state === l.state &&
+              (!intent.city || intent.city === l.city)
+          )
+      );
+
+      setListings(matched);
     };
     load();
-  }, [userId]);
+  }, [userId, intents]);
 
   const handleSwipe = async (item: Listing, direction: 'like' | 'pass') => {
     await supabase
@@ -126,7 +157,12 @@ function ComprarTab({ userId }: { userId: string }) {
       .upsert({ listing_id: item.id, buyer_id: userId, direction }, { onConflict: 'listing_id,buyer_id' });
   };
 
-  if (listings === null) {
+  const removeIntent = async (id: string) => {
+    await supabase.from('buy_intents').delete().eq('id', id);
+    loadIntents();
+  };
+
+  if (intents === null) {
     return (
       <div className="flex justify-center py-20">
         <Loader2 className="animate-spin text-brand-pink" size={28} />
@@ -135,19 +171,152 @@ function ComprarTab({ userId }: { userId: string }) {
   }
 
   return (
-    <SwipeDeck
-      items={listings}
-      keyExtractor={(l) => l.id}
-      onSwipe={handleSwipe}
-      renderCard={(l) => <ListingCard listing={l} />}
-      emptyState={
-        <div className="text-center py-20 text-white/40 space-y-2">
-          <Sparkles size={40} className="mx-auto opacity-30" />
-          <p className="font-semibold">Nenhum anúncio novo por aqui.</p>
-          <p className="text-sm">Volte mais tarde para ver novidades.</p>
+    <div className="space-y-6">
+      <div className="bg-[#151521] border border-white/10 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold uppercase tracking-wider text-white/50">O que você procura</p>
+          <button
+            onClick={() => setShowIntentForm((v) => !v)}
+            className="text-xs font-bold text-brand-pink hover:underline cursor-pointer flex items-center gap-1"
+          >
+            <Plus size={13} /> {showIntentForm ? 'Fechar' : 'Nova busca'}
+          </button>
         </div>
-      }
-    />
+
+        {intents.length === 0 && !showIntentForm && (
+          <p className="text-sm text-white/40">
+            Cadastre o que você quer comprar (categoria + região) e o Zwipe cruza automaticamente com
+            quem está vendendo. Você não precisa procurar nada.
+          </p>
+        )}
+
+        {intents.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {intents.map((intent) => (
+              <span
+                key={intent.id}
+                className="text-xs bg-black/30 border border-white/10 rounded-full px-3 py-1.5 flex items-center gap-2"
+              >
+                {intent.category} · {[intent.city, intent.state].filter(Boolean).join(', ')}
+                <button onClick={() => removeIntent(intent.id)} className="cursor-pointer text-white/40 hover:text-rose-400">
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {showIntentForm && (
+          <IntentForm
+            userId={userId}
+            onCreated={() => {
+              setShowIntentForm(false);
+              loadIntents();
+            }}
+          />
+        )}
+      </div>
+
+      {intents.length === 0 ? (
+        <div className="text-center py-16 text-white/40 space-y-2">
+          <Sparkles size={40} className="mx-auto opacity-30" />
+          <p className="font-semibold">Cadastre uma busca acima para começar.</p>
+        </div>
+      ) : listings === null ? (
+        <div className="flex justify-center py-20">
+          <Loader2 className="animate-spin text-brand-pink" size={28} />
+        </div>
+      ) : (
+        <SwipeDeck
+          items={listings}
+          keyExtractor={(l) => l.id}
+          onSwipe={handleSwipe}
+          renderCard={(l) => <ListingCard listing={l} />}
+          emptyState={
+            <div className="text-center py-20 text-white/40 space-y-2">
+              <Sparkles size={40} className="mx-auto opacity-30" />
+              <p className="font-semibold">Nenhum anúncio bateu com sua busca ainda.</p>
+              <p className="text-sm">Assim que alguém anunciar algo compatível, aparece aqui.</p>
+            </div>
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+function IntentForm({ userId, onCreated }: { userId: string; onCreated: () => void }) {
+  const [category, setCategory] = useState<Category>(CATEGORIES[0]);
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    const { error } = await supabase.from('buy_intents').insert({
+      buyer_id: userId,
+      category,
+      city: city || null,
+      state,
+    });
+    setSaving(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setCity('');
+    setState('');
+    onCreated();
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3 pt-2 border-t border-white/10">
+      {error && <p className="text-sm text-rose-400 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2">{error}</p>}
+
+      <Field label="Categoria">
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value as Category)}
+          className="w-full bg-black/30 border border-white/10 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-pink"
+        >
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Cidade (opcional)">
+          <input
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            className="w-full bg-black/30 border border-white/10 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-pink"
+          />
+        </Field>
+        <Field label="Estado (UF)">
+          <input
+            value={state}
+            onChange={(e) => setState(e.target.value.toUpperCase())}
+            maxLength={2}
+            required
+            className="w-full bg-black/30 border border-white/10 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-pink"
+          />
+        </Field>
+      </div>
+
+      <button
+        type="submit"
+        disabled={saving}
+        className="w-full h-11 rounded-xl bg-brand-pink text-white font-bold flex items-center justify-center gap-2 hover:brightness-110 transition-all cursor-pointer disabled:opacity-60"
+      >
+        {saving ? <Loader2 size={16} className="animate-spin" /> : 'Cadastrar busca'}
+      </button>
+    </form>
   );
 }
 

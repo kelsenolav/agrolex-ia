@@ -1,7 +1,10 @@
 # Zwipe 🔥
 
-Compra e venda com swipe: quem vende anuncia, quem quer comprar dá like, e quando os dois lados
-topam (comprador curte, vendedor aceita) o Zwipe libera o contato no WhatsApp para fechar o negócio.
+Compra e venda com swipe: ninguém precisa procurar nada. Quem vende anuncia (categoria + região),
+quem quer comprar cadastra o que procura (categoria + região), e o Zwipe cruza os dois
+automaticamente — só aparece pro comprador o que bate com o que ele cadastrou. Quando os dois
+lados topam (comprador curte, vendedor aceita) o Zwipe libera o contato no WhatsApp para fechar o
+negócio.
 
 Este é um projeto **independente**, dentro do repositório `agrolex-ia` apenas por conveniência de
 ambiente — não compartilha código, banco de dados nem contas de usuário com o AgroLex IA.
@@ -17,9 +20,11 @@ npm install
 
 1. Acesse [supabase.com](https://supabase.com/) e crie um novo projeto.
 2. Em **Settings > API**, copie a **Project URL** e a **anon key**.
-3. Em **SQL Editor > New Query**, cole todo o conteúdo de `supabase/migrations/00000_init.sql`
-   e clique em **Run**. Isso cria as tabelas (`profiles`, `listings`, `swipes`, `matches`), as
-   policies de RLS e o bucket público `listing-photos` para as fotos dos anúncios.
+3. Em **SQL Editor > New Query**, rode os arquivos de `supabase/migrations/` **em ordem**:
+   - `00000_init.sql` cria as tabelas (`profiles`, `listings`, `swipes`, `matches`), as policies de
+     RLS e o bucket público `listing-photos` para as fotos dos anúncios.
+   - `00001_buy_intents.sql` cria a tabela `buy_intents`, onde o comprador cadastra o que procura
+     (categoria + região) para o cruzamento automático com os anúncios.
 
 ### 2. Configurar as variáveis de ambiente
 
@@ -45,7 +50,9 @@ Abra [http://localhost:3000](http://localhost:3000).
 
 ## Como funciona
 
-- **Comprar**: dá swipe nos anúncios ativos de outras pessoas. Direita = curtiu, esquerda = passou.
+- **Comprar**: cadastre o que você procura (categoria + cidade/estado). O Zwipe mostra só os
+  anúncios que batem com isso, em formato de swipe — direita = curtiu, esquerda = passou. Sem busca
+  manual: se não bateu com nenhuma das suas buscas cadastradas, não aparece.
 - **Meus Anúncios**: cadastra o que você quer vender (título, descrição, categoria, preço, cidade,
   fotos) e acompanha quem curtiu cada anúncio.
 - **Ver Interessados**: para cada anúncio seu, você vê — no mesmo formato de swipe — quem curtiu, e

@@ -25,6 +25,15 @@ export interface Listing {
   created_at: string;
 }
 
+export interface BuyIntent {
+  id: string;
+  buyer_id: string;
+  category: Category;
+  city: string | null;
+  state: string;
+  created_at: string;
+}
+
 export interface Profile {
   id: string;
   name: string;
