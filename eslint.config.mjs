@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Zwipe lives in its own independent Next.js project with its own eslint config.
+    "zwipe/**",
   ]),
 ]);
 

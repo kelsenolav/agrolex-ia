@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# zwipe (independent Next.js app in its own subfolder)
+zwipe/node_modules
+zwipe/.next/
+zwipe/out/
