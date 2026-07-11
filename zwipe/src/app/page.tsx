@@ -24,7 +24,7 @@ export default function LandingPage() {
 
       <main className="flex-1 container mx-auto px-4 flex flex-col items-center text-center justify-center gap-8 py-16">
         <span className="text-xs font-bold uppercase tracking-widest text-brand-pink bg-brand-pink/10 border border-brand-pink/30 rounded-full px-4 py-1.5">
-          Compra e venda com swipe
+          Chega de procurar. Comece a cadastrar.
         </span>
 
         <h1 className="text-4xl md:text-6xl font-black leading-tight max-w-3xl">
@@ -32,8 +32,9 @@ export default function LandingPage() {
         </h1>
 
         <p className="text-lg text-white/60 max-w-xl">
-          Anuncie qualquer coisa — casa, carro, equipamento, o que for. Quem quiser compra dá um
-          swipe. Quando os dois lados topam, o Zwipe libera o contato direto no WhatsApp.
+          Anuncie o que você vende ou cadastre o que você procura — casa, carro, equipamento, o que
+          for. O Zwipe cruza os dois automaticamente por categoria e região. Você não abre feed,
+          não rola busca, não compara preço: só confirma quando já bateu.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4">
@@ -54,24 +55,32 @@ export default function LandingPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 w-full max-w-4xl">
           <FeatureCard
             icon={<Sparkles className="text-brand-pink" size={24} />}
-            title="Anuncie em segundos"
-            description="Foto, título, preço e categoria. Seu anúncio já entra no feed de quem procura."
+            title="Cadastre, não procure"
+            description="Diga o que vende ou o que quer comprar. Nada de rolar catálogo — o cruzamento acontece sozinho."
           />
           <FeatureCard
             icon={<Heart className="text-brand-pink" size={24} fill="currentColor" />}
-            title="Swipe duplo"
-            description="Comprador curte o anúncio, vendedor aceita o comprador. Só vira match com os dois lados de acordo."
+            title="Swipe é só a confirmação"
+            description="Diferente do Tinder: o swipe não serve pra descobrir. O match já veio pronto, você só confirma."
           />
           <FeatureCard
             icon={<MessageCircle className="text-brand-pink" size={24} />}
             title="Negocie direto"
-            description="Deu match, o contato do WhatsApp é liberado na hora para fechar o negócio."
+            description="Deu match, o WhatsApp é liberado na hora. Sem checkout, sem frete — é negociação de verdade."
           />
+        </div>
+
+        <div className="w-full max-w-3xl mt-4 bg-brand-pink/5 border border-brand-pink/20 rounded-2xl p-6 space-y-1.5">
+          <p className="font-black text-lg">Não é Mercado Livre. Não é Amazon. Não é Tinder.</p>
+          <p className="text-sm text-white/50">
+            Marketplace tradicional te faz procurar. Tinder te faz descartar um por um. O Zwipe casa
+            oferta e demanda automaticamente — o swipe é só a sua palavra final.
+          </p>
         </div>
       </main>
 
       <footer className="container mx-auto px-4 py-8 text-center text-xs text-white/30">
-        Zwipe — compra e venda com swipe.
+        Zwipe — cadastre o que vende ou o que procura. O match a gente faz.
       </footer>
     </div>
   );
