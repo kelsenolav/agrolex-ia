@@ -74,7 +74,7 @@ async function main() {
     ['gemini', checkGemini()],
     ['claude', checkClaude()],
     ['openai', checkOpenAICompatible('openai', 'https://api.openai.com/v1', 'OPENAI_API_KEY', 'gpt-4o-mini')],
-    ['groq', checkOpenAICompatible('groq', 'https://api.groq.com/openai/v1', 'GROQ_API_KEY', 'llama-3.3-70b-versatile')],
+    ['groq', checkOpenAICompatible('groq', 'https://api.groq.com/openai/v1', 'GROQ_API_KEY', 'openai/gpt-oss-120b')],
   ];
   const results = [];
   for (const [name, promise] of checks) {

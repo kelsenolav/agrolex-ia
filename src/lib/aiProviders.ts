@@ -46,7 +46,7 @@ export interface AiGenerateOptions {
 /**
  * Tetos de saída por provedor — FONTE ÚNICA (revisão de código 03/07 pegou
  * números espalhados divergindo). Valores DELIBERADAMENTE abaixo do máximo
- * real dos modelos default (gpt-4o 16k; haiku 4.5 64k; llama-3.3 32k; gemini
+ * real dos modelos default (gpt-4o 16k; haiku 4.5 64k; gpt-oss-120b 64k; gemini
  * flash 64k+) para sobreviverem a trocas de modelo via env var sem 400.
  * Um 400 por pedido inválido casa com NON_FALLBACK_PATTERNS ('invalid
  * request') e derrubaria a cascata INTEIRA — pior que truncar.
@@ -393,7 +393,7 @@ async function generateWithClaude(
   };
 }
 
-// ── Groq (Llama) ──────────────────────────────────────────────────────────────
+// ── Groq (gpt-oss) ────────────────────────────────────────────────────────────
 
 /**
  * Gera conteúdo usando Groq via SDK da OpenAI com baseURL customizada.
@@ -423,7 +423,9 @@ async function generateWithGroq(
     baseURL: 'https://api.groq.com/openai/v1'
   });
 
-  const modelName = getEnvVar('GROQ_MODEL', 'llama-3.3-70b-versatile');
+  // A Groq aposentou a família Llama 3.x (404 model_not_found, out/2026).
+  // gpt-oss raciocina antes de responder: os reasoning_tokens consomem max_tokens.
+  const modelName = getEnvVar('GROQ_MODEL', 'openai/gpt-oss-120b');
   const timeoutMs = options.timeoutMs || 90000;
   const maxTokens = clampOutputTokens(options.maxOutputTokens, 4096, PROVIDER_OUTPUT_CAPS.groq);
 
