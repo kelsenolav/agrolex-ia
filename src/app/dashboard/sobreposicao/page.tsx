@@ -100,6 +100,17 @@ function SobreposicaoInner() {
       </nav>
 
       <main className="container mx-auto max-w-6xl px-6 py-8">
+        {/* O PDF (window.print) vai para terceiros: sem esta faixa ele sairia sem marca, data nem origem. */}
+        {resultado && (
+          <div className="hidden print:flex items-center justify-between border-b-2 border-brand-green pb-3 mb-6">
+            <Logo size="sm" className="text-brand-green" />
+            <div className="text-right text-[11px] text-gray-600 leading-snug">
+              <p className="font-semibold text-gray-800">Relatório de Sobreposição Georreferenciada</p>
+              <p>Emitido em {new Date().toLocaleString('pt-BR')} · agrolexi.com.br</p>
+            </div>
+          </div>
+        )}
+
         <Link href="/dashboard/radar" className="flex items-center gap-2 text-gray-600 hover:text-brand-green mb-6 w-fit font-medium no-print">
           <ArrowLeft size={18} /> Voltar ao Radar
         </Link>
@@ -232,6 +243,15 @@ function SobreposicaoInner() {
                 <AlertTriangle size={14} className="text-amber-600 mt-0.5 shrink-0" />
                 <p className="text-[11px] text-amber-800 leading-relaxed">{resultado.disclaimer}</p>
               </div>
+            </div>
+
+            <div className="hidden print:block border-t-2 border-brand-green pt-4 text-[11px] text-gray-700 leading-relaxed" style={{ breakInside: 'avoid' }}>
+              <p className="font-bold text-gray-800 text-xs mb-1">AgrolexI — inteligência fundiária para imóveis rurais</p>
+              <p>
+                Este imóvel pode ser acompanhado continuamente pelo <strong>Radar de Monitoramento</strong> (situação do CAR,
+                embargos e alertas de desmatamento, a partir de R$ 49,90/mês) e ter a matrícula auditada por IA, com cadeia
+                dominial e ônus. Crie sua conta em <strong>agrolexi.com.br</strong>.
+              </p>
             </div>
           </div>
         )}
