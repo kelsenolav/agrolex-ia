@@ -14,6 +14,7 @@
  */
 
 import type { Feature, FeatureCollection, Polygon, MultiPolygon } from 'geojson';
+import { getFunai } from './funaiTls';
 
 export type GeoPoly = Feature<Polygon | MultiPolygon>;
 
@@ -50,6 +51,14 @@ function formEncode(params: Record<string, string>): string {
   return Object.entries(params)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join('&');
+}
+
+/** O fetch do Node devolve só "fetch failed"; o motivo real (TLS, DNS, reset) fica em `cause`. */
+function fetchErrorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+  const detail = cause?.code ?? cause?.message;
+  return detail ? `${err.message} (${detail})` : err.message;
 }
 
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Response> {
@@ -118,7 +127,7 @@ export async function fetchCarPolygon(carCode: string): Promise<CarPolygonResult
       municipio: (props.nom_municipio as string) ?? undefined,
     };
   } catch (err: unknown) {
-    return { status: 'falhou', erro: err instanceof Error ? err.message : String(err) };
+    return { status: 'falhou', erro: fetchErrorMessage(err) };
   }
 }
 
@@ -142,7 +151,7 @@ export async function fetchCarAtPoint(lon: number, lat: number, uf: string): Pro
     if (!res.ok) return { status: 'falhou', features: [], erro: `HTTP ${res.status}` };
     return { status: 'consultada', features: polyFeatures(await res.json()) };
   } catch (err: unknown) {
-    return { status: 'falhou', features: [], erro: err instanceof Error ? err.message : String(err) };
+    return { status: 'falhou', features: [], erro: fetchErrorMessage(err) };
   }
 }
 
@@ -167,7 +176,7 @@ export async function fetchNeighborCars(property: GeoPoly, carCode: string): Pro
     if (!res.ok) return { status: 'falhou', features: [], erro: `HTTP ${res.status}` };
     return { status: 'consultada', features: polyFeatures(await res.json()) };
   } catch (err: unknown) {
-    return { status: 'falhou', features: [], erro: err instanceof Error ? err.message : String(err) };
+    return { status: 'falhou', features: [], erro: fetchErrorMessage(err) };
   }
 }
 
@@ -191,7 +200,7 @@ export async function fetchEmbargosIbama(property: GeoPoly): Promise<LayerFetchR
     if (!res.ok) return { status: 'falhou', features: [], erro: `HTTP ${res.status}` };
     return { status: 'consultada', features: polyFeatures(await res.json()) };
   } catch (err: unknown) {
-    return { status: 'falhou', features: [], erro: err instanceof Error ? err.message : String(err) };
+    return { status: 'falhou', features: [], erro: fetchErrorMessage(err) };
   }
 }
 
@@ -216,11 +225,15 @@ function wfsBboxUrl(base: string, typeName: string, bbox: [number, number, numbe
 /** Terras Indígenas (FUNAI) no bbox do imóvel. */
 export async function fetchTerrasIndigenas(bbox: [number, number, number, number]): Promise<LayerFetchResult> {
   try {
-    const res = await fetchWithTimeout(wfsBboxUrl(FUNAI_WFS, 'Funai:tis_poligonais', bbox));
-    if (!res.ok) return { status: 'falhou', features: [], erro: `HTTP ${res.status}` };
-    return { status: 'consultada', features: polyFeatures(await res.json()) };
+    const res = await getFunai(
+      wfsBboxUrl(FUNAI_WFS, 'Funai:tis_poligonais', bbox),
+      { 'User-Agent': BROWSER_UA, Accept: 'application/json' },
+      DEFAULT_TIMEOUT_MS,
+    );
+    if (res.status < 200 || res.status >= 300) return { status: 'falhou', features: [], erro: `HTTP ${res.status}` };
+    return { status: 'consultada', features: polyFeatures(JSON.parse(res.body)) };
   } catch (err: unknown) {
-    return { status: 'falhou', features: [], erro: err instanceof Error ? err.message : String(err) };
+    return { status: 'falhou', features: [], erro: fetchErrorMessage(err) };
   }
 }
 
@@ -231,7 +244,7 @@ export async function fetchUnidadesConservacao(bbox: [number, number, number, nu
     if (!res.ok) return { status: 'falhou', features: [], erro: `HTTP ${res.status}` };
     return { status: 'consultada', features: polyFeatures(await res.json()) };
   } catch (err: unknown) {
-    return { status: 'falhou', features: [], erro: err instanceof Error ? err.message : String(err) };
+    return { status: 'falhou', features: [], erro: fetchErrorMessage(err) };
   }
 }
 
